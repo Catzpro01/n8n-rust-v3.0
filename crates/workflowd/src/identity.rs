@@ -20,7 +20,7 @@ pub struct ReleaseIdentity {
 #[derive(Debug, Clone, Serialize)]
 pub struct CapabilityIdentity {
     pub api_version: &'static str,
-    pub capabilities: [&'static str; 24],
+    pub capabilities: [&'static str; 25],
     pub runtime: RuntimeIdentity,
 }
 
@@ -71,6 +71,7 @@ impl CapabilityIdentity {
                 "reconnectable-run-sse",
                 "cooperative-run-cancellation",
                 "bounded-generate-items",
+                "deterministic-edit-fields",
                 "progressive-generate-checkpoints",
                 "encrypted-owner-artifacts",
                 "authorized-artifact-content",

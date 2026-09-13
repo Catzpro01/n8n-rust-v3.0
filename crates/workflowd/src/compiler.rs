@@ -2,6 +2,7 @@
 //! Pure, deterministic Draft-to-plan compilation. This module performs no I/O.
 use crate::canonical::{digest, CANONICALIZATION, DIGEST_ALGORITHM};
 use crate::draft::WorkflowDraft;
+use crate::edit_fields;
 use canopy_node_contract::{lock, validate, NodeContractLock};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -162,6 +163,10 @@ fn native_contracts() -> Result<Vec<Value>, String> {
         (
             "Generate Items",
             include_str!("../../../contracts/generate-items.v1alpha1.json"),
+        ),
+        (
+            "Edit Fields",
+            include_str!("../../../contracts/edit-fields.v1alpha1.json"),
         ),
     ]
     .into_iter()
@@ -383,7 +388,9 @@ fn validate_all(
             continue;
         }
         validate_configuration(node, diagnostics)?;
-        validate_expressions(&node.configuration, &node.id, "$", diagnostics)?;
+        if node.contract_lock.name != "edit-fields" {
+            validate_expressions(&node.configuration, &node.id, "$", diagnostics)?;
+        }
         validate_capabilities(contract, node, policy, diagnostics)?;
         validate_effects(contract, node, diagnostics)?;
         validate_budgets(contract, node, policy, diagnostics)?;
@@ -429,6 +436,26 @@ fn validate_configuration(
                         .and_then(|delta| start.checked_add(delta))
                         .is_some())
         }),
+        "edit-fields" => match edit_fields::validate_configuration(&node.configuration) {
+            Ok(()) => true,
+            Err(error) => {
+                let code = if error.code.starts_with("canopy.expression") {
+                    "E_EXPRESSION_UNSUPPORTED"
+                } else {
+                    "E_CONFIGURATION_INVALID"
+                };
+                push(
+                    diagnostics,
+                    code,
+                    "error",
+                    format!("node:{}", node.id),
+                    "The Edit Fields configuration is outside the approved native contract.",
+                    json!({"detail": error.message, "native_code": error.code}),
+                    false,
+                )?;
+                false
+            }
+        },
         _ => false,
     };
     if !valid {

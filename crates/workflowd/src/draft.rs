@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 use crate::config::ServeConfig;
+use crate::edit_fields;
 use canopy_node_contract::{lock, NodeContractLock};
 use rusqlite::{params, Connection, OptionalExtension, Transaction, TransactionBehavior};
 use serde::{Deserialize, Serialize};
@@ -278,6 +279,7 @@ impl DraftService {
         let contracts = [
             include_str!("../../../contracts/manual-trigger.v1alpha1.json"),
             include_str!("../../../contracts/generate-items.v1alpha1.json"),
+            include_str!("../../../contracts/edit-fields.v1alpha1.json"),
         ]
         .into_iter()
         .map(|source| {
@@ -1487,6 +1489,8 @@ fn validate_configuration(name: &str, value: &Value) -> Result<(), DraftError> {
                 Err(DraftError::Invalid("generate_items_configuration".into()))
             }
         }
+        "edit-fields" => edit_fields::validate_configuration(value)
+            .map_err(|error| DraftError::Invalid(error.code)),
         _ => Err(DraftError::Invalid("node_configuration".into())),
     }
 }

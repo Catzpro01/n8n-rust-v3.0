@@ -41,6 +41,14 @@ class ReleaseBundleAcceptanceTest(unittest.TestCase):
         self.assertIn(
             "usr/share/workflowd/contracts/generate-items.v1alpha1.json", relative
         )
+        self.assertIn(
+            "usr/share/workflowd/contracts/edit-fields.v1alpha1.json", relative
+        )
+        edit_fields_contract = json.loads(
+            (BUNDLE / "usr/share/workflowd/contracts/edit-fields.v1alpha1.json").read_text()
+        )
+        self.assertEqual(edit_fields_contract["identity"]["name"], "edit-fields")
+        self.assertEqual(edit_fields_contract["effects"]["class"], "pure")
         generate_contract = json.loads(
             (BUNDLE / "usr/share/workflowd/contracts/generate-items.v1alpha1.json").read_text()
         )

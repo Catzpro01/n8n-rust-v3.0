@@ -51,28 +51,32 @@ const html = `<!doctype html>
 </html>
 `;
 await writeFile(join(outputDirectory, "index.html"), html);
-const manualContract = JSON.parse(
-  await readFile(join(editorRoot, "../contracts/manual-trigger.v1alpha1.json"), "utf8"),
-);
-const contractBytes = JSON.stringify(canonical(manualContract));
+const contracts = await Promise.all([
+  "manual-trigger.v1alpha1.json",
+  "generate-items.v1alpha1.json",
+  "edit-fields.v1alpha1.json",
+].map(async (name) => JSON.parse(
+  await readFile(join(editorRoot, "../contracts", name), "utf8"),
+)));
+const catalogNodes = contracts.map((contract) => {
+  const contractBytes = JSON.stringify(canonical(contract));
+  return {
+    display_name: contract.extensions["canopy.workbench/display"].display_name,
+    description: contract.extensions["canopy.workbench/display"].description,
+    contract_lock: {
+      api_version: contract.identity.api_version,
+      namespace: contract.identity.namespace,
+      name: contract.identity.name,
+      version: contract.identity.version,
+      digest: `sha256:${createHash("sha256").update(contractBytes).digest("hex")}`,
+    },
+    configuration_schema: contract.configuration.schema,
+    editor_hints: contract.configuration.editor_hints,
+  };
+});
 await writeFile(
   join(outputDirectory, "catalog.v1.json"),
-  JSON.stringify({
-    schema: 1,
-    nodes: [{
-      display_name: manualContract.extensions["canopy.workbench/display"].display_name,
-      description: manualContract.extensions["canopy.workbench/display"].description,
-      contract_lock: {
-        api_version: manualContract.identity.api_version,
-        namespace: manualContract.identity.namespace,
-        name: manualContract.identity.name,
-        version: manualContract.identity.version,
-        digest: `sha256:${createHash("sha256").update(contractBytes).digest("hex")}`,
-      },
-      configuration_schema: manualContract.configuration.schema,
-      editor_hints: manualContract.configuration.editor_hints,
-    }],
-  }),
+  JSON.stringify({schema: 1, nodes: catalogNodes}),
 );
 
 const files = await listFiles(outputDirectory);
