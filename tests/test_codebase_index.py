@@ -58,9 +58,11 @@ class CodebaseIndexTests(unittest.TestCase):
             self.assertEqual(first_summary["changed"], 1)
             self.assertEqual(first_summary["reused"], 0)
 
+            cache_mtime = cache_path.stat().st_mtime_ns
             second_cache, second_summary = codebase_index.build_index(root, cache_path)
             self.assertEqual(second_summary["changed"], 0)
             self.assertEqual(second_summary["reused"], 1)
+            self.assertEqual(cache_path.stat().st_mtime_ns, cache_mtime)
 
             hits = codebase_index.search(second_cache, "run workflow")
             self.assertEqual(hits[0]["path"], "src/main.rs")

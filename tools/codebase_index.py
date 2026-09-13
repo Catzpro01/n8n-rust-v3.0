@@ -394,14 +394,7 @@ def build_index(root: Path, cache_path: Path, force: bool = False) -> tuple[Cach
         changed += 1
 
     removed = len(set(reusable) - set(records))
-    cache = Cache(
-        root=root_marker,
-        indexed_at=int(time.time()),
-        files=records,
-        postings=_postings_from_files(records),
-    )
-    cache.save(cache_path)
-    return cache, {
+    summary = {
         "scanned": scanned,
         "changed": changed,
         "reused": reused,
@@ -409,6 +402,32 @@ def build_index(root: Path, cache_path: Path, force: bool = False) -> tuple[Cach
         "skipped": skipped,
         "documents": len(records),
     }
+
+    # Do not rewrite a tracked cache on every lookup. This keeps the working
+    # tree clean for other agents and preserves the last-indexed timestamp when
+    # only the caller is asking for context. Rebuild the postings once when a
+    # legacy cache has file records but no persisted inverted index.
+    cache_is_current = (
+        cache_path.exists()
+        and previous.root == root_marker
+        and not force
+        and changed == 0
+        and removed == 0
+        and skipped == 0
+        and set(records) == set(previous.files)
+        and (bool(previous.postings) or not records)
+    )
+    if cache_is_current:
+        return previous, summary
+
+    cache = Cache(
+        root=root_marker,
+        indexed_at=int(time.time()),
+        files=records,
+        postings=_postings_from_files(records),
+    )
+    cache.save(cache_path)
+    return cache, summary
 
 
 def _postings_from_files(files: dict[str, FileRecord]) -> dict[str, dict[str, int]]:
