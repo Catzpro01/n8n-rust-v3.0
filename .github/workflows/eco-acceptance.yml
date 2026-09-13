@@ -68,7 +68,9 @@ jobs:
               repo: context.repo.repo,
               ref: context.sha,
             });
-            const check = checks.data.check_runs.find((item) => item.name === "eco-acceptance");
+            const check = checks.data.check_runs
+              .filter((item) => item.name === "eco-acceptance")
+              .sort((left, right) => Date.parse(right.started_at || right.created_at) - Date.parse(left.started_at || left.created_at))[0];
             if (check) {
               await github.rest.checks.update({
                 owner: context.repo.owner,
