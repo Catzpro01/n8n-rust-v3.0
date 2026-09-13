@@ -4,7 +4,7 @@
 
 **Blocked by:** 08: Transform items with Edit Fields and the safe expression VM
 
-**Status:** in-progress (2026-09-14)
+**Status:** complete (2026-09-14)
 
 - [x] If declares one typed/dynamic-item input, two stable named outputs, Per-Item Stream Activation Shape, Pure effects, and no capabilities.
 - [x] The editor catalog exposes the If contract and its bounded declarative condition configuration.
@@ -30,14 +30,17 @@
       handling.
 - [x] Add replay-stable route-chain evidence, durable true/false progress, and
       transformed logical-item coverage.
-- [ ] Complete the public/editor acceptance journey and attach release evidence.
+- [x] Complete the public/editor acceptance journey and attach release evidence.
 
 The native runtime implementation is in `crates/workflowd/src/if_node.rs` and
 `crates/workflowd/src/run.rs`; its operational contract is documented in
-`docs/operations/if-routing.md`. Focused Rust coverage and pinned repository
-validation are green in workflow run `34777304858` (push, 2026-09-14). The
+`docs/operations/if-routing.md`. The public seam acceptance in
+`tests/acceptance/test_if_runtime.py` publishes the four-node editor topology,
+runs transformed items through If, and verifies durable branch counts, trace
+activation order, route evidence, and integrity. It passed in pinned workflow
+`34777903085`; companion validation workflow `34777903071` (push) and
+`34777905652` (pull request) also passed formatting, workspace tests, editor
+build, and dependency-free repository tests on 2026-09-14. The
 contract/catalog work remains committed as `71e8c6a` plus formatting fix
 `292e3ca`; earlier push CI `34775814353` and pull-request CI `34775816647`
-passed the editor build, Rust formatting/tests, and repository checks. Ticket 09
-remains open until the public/editor acceptance and release-evidence gate is
-closed.
+passed the initial contract and editor checks.

@@ -1,7 +1,7 @@
 # Deterministic If routing
 
-**Status:** native runtime foundation complete; editor/public acceptance evidence remains
-part of Ticket 09's release gate.
+**Status:** native runtime and public/editor acceptance complete for Ticket 09's bounded
+If slice; broader compatibility remains out of scope.
 
 The approved `canopy.native/if` v1alpha1 runtime is a pure, deterministic branch
 stage for the bounded native generation path:
@@ -76,7 +76,10 @@ cannot publish a successful run.
 
 Focused Rust coverage exercises AND/OR and typed diagnostics in the If module,
 atomic batch provenance, replay-stable route digests, and transformed logical
-input. The pinned repository validation workflow also covers formatting,
-workspace tests, editor build, and dependency-free repository tests. Ticket 09
-remains open until its public/editor acceptance and release evidence are
-recorded.
+input. The public seam test `tests/acceptance/test_if_runtime.py` publishes the
+four-node editor topology and verifies terminal branch progress and Causal Trace
+facts. It passed in pinned workflow `34777903085`; repository validation passed
+in `34777903071` (push) and `34777905652` (pull request), covering formatting,
+workspace tests, editor build, and dependency-free repository tests. The
+bounded Ticket 09 If slice is released as verified evidence; downstream
+compatibility beyond this topology remains a later phase.

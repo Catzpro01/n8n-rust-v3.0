@@ -39,14 +39,16 @@
   deterministic/external dual evidence lanes, Rust-first resource/trust
   envelope, and full production-complete gate are accepted.
 - The decision map is complete. Begin core completion using the existing
-  first-runnable implementation tickets; Tickets 01–08 are recorded complete
-  and Ticket 09 (deterministic If routing) is the current core frontier.
+  first-runnable implementation tickets; Tickets 01–09 are recorded complete
+  and Ticket 10 (closed branch-stream Merge) is the current core frontier.
   Preserve the approved order before starting Hub or AI production slices. No
   production code for Hub, Skill Hub, or AI Agent has been started; the first
   AI implementation ticket is planned and phase-gated.
 
 ## Next action
 
-Resolve the next HITL frontier ticket, issue #11, while keeping the core and
-package lifecycle boundaries intact. Create implementation spec/tickets only
-after the remaining decisions and integrated release gate are accepted.
+Implement and verify Ticket 10's bounded Merge contract and runtime seam,
+including Artifact-backed branch spooling, deterministic true-then-false
+ordering, compiler rejection diagnostics, and cancellation/failure evidence.
+Keep the completed Ticket 09 topology and evidence intact while extending the
+core path.

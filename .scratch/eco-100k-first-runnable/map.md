@@ -10,8 +10,8 @@ Blocked by: none
 
 ## Frontier
 
-- Tickets 01 through 08 are complete. Ticket 09 is the current frontier because
-  its only blocker (Ticket 08) is complete. A later ticket becomes frontier
+- Tickets 01 through 09 are complete. Ticket 10 is the current frontier because
+  its only blocker (Ticket 09) is complete. A later ticket becomes frontier
   when every ticket listed in its `Blocked by` field is complete.
 
 ## Tickets
@@ -24,8 +24,8 @@ Blocked by: none
 6. [Run and trace Manual Trigger durably](issues/06-run-and-trace-manual-trigger-durably.md) — **complete**; implementation and verification evidence are recorded in the ticket.
 7. [Stream Generate Items through bounded Envelopes and Artifacts](issues/07-stream-generate-items-through-bounded-envelopes-and-artifacts.md) — **complete**; implementation and verification evidence are recorded in the ticket.
 8. [Transform items with Edit Fields and the safe expression VM](issues/08-transform-items-with-edit-fields-and-the-safe-expression-vm.md) — **complete**; v1alpha2 bounded label conversion and fresh verification are recorded in the ticket.
-9. [Route items deterministically with If](issues/09-route-items-deterministically-with-if.md) — current frontier; implementation must preserve the completed Ticket 08 contract.
-10. [Merge closed branch streams without unbounded memory](issues/10-merge-closed-branch-streams-without-unbounded-memory.md) — blocked by 09: Route items deterministically with If.
+9. [Route items deterministically with If](issues/09-route-items-deterministically-with-if.md) — **complete**; public/editor acceptance and release evidence are recorded in the ticket.
+10. [Merge closed branch streams without unbounded memory](issues/10-merge-closed-branch-streams-without-unbounded-memory.md) — current frontier; implementation must preserve the completed Ticket 09 contract.
 11. [Summarize the exact Eco 100K Run](issues/11-summarize-the-exact-eco-100k-run.md) — blocked by 10: Merge closed branch streams without unbounded memory.
 12. [Recover Eco 100K after an ungraceful daemon kill](issues/12-recover-eco-100k-after-an-ungraceful-daemon-kill.md) — blocked by 11: Summarize the exact Eco 100K Run.
 13. [Govern bounded work and scale across cgroup CPU profiles](issues/13-govern-bounded-work-and-scale-across-cgroup-cpu-profiles.md) — blocked by 12: Recover Eco 100K after an ungraceful daemon kill.
@@ -44,9 +44,10 @@ Blocked by: none
 
 ## Recovered status reconciliation — 2026-09-14
 
-The ticket evidence and pinned verification now record Tickets 01 through 08
-as complete. Ticket 09 is the current implementation frontier; no later core
-ticket is claimed complete by this map.
+The ticket evidence and pinned verification now record Tickets 01 through 09
+as complete. Ticket 10 is the current implementation frontier; no later core
+ticket is claimed complete by this map. Ticket 09's public acceptance workflow
+and companion validation runs are recorded in its ticket and operations guide.
 
 The shared GitHub Wayfinder map is [#2](https://github.com/Catzpro01/n8n-rust-v3.0/issues/2).
 The broader decision tickets are recorded in the expansion map. The retained
