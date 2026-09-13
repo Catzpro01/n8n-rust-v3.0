@@ -1,0 +1,49 @@
+name: Temporary build diagnostic
+
+on:
+  push:
+    branches: ["arena/01a09a2a-n8n-rust-v3-0"]
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+      - name: Install pinned Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.85.1
+      - name: Install pinned Node toolchain
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: editor/.nvmrc
+      - name: Build editor assets
+        working-directory: editor
+        run: |
+          npm ci
+          npm run build
+      - name: Capture daemon build output
+        shell: bash
+        run: |
+          set +e
+          cargo build -p workflowd --locked > "$RUNNER_TEMP/workflowd-build.log" 2>&1
+          status=$?
+          cat "$RUNNER_TEMP/workflowd-build.log"
+          {
+            echo '### workflowd build output'
+            echo '```text'
+            cat "$RUNNER_TEMP/workflowd-build.log"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "build_status=$status"
+          exit 0
+      - name: Upload daemon build output
+        uses: actions/upload-artifact@v4
+        with:
+          name: workflowd-build-log
+          path: ${{ runner.temp }}/workflowd-build.log
