@@ -97,9 +97,10 @@ starting a new frontend framework from scratch.
 - `git diff --check` — clean before this status update.
 - Pinned run `34779941760` passed compilation, 4 Node Contract tests, 50
   workflowd tests, doc tests, and the three public Merge acceptance cases.
-- Pinned run `34779941798` passed the public If/Merge acceptance lane; run
-  `34779941784` passed repository validation; run `34779941770` passed the
-  independent rustfmt check.
+- Final evidence-clean tip runs `34780097629` (public If/Merge acceptance) and
+  `34780097639` (editor build/typecheck, rustfmt, workspace tests, and
+  dependency-free repository tests) passed; `34779941770` independently passed
+  rustfmt before the temporary helper was removed.
 - `git diff --check` — clean before this status update.
 - The historical Ticket 07 full gate is recorded in
   `docs/legacy/session-archive/VERIFICATION.md`; it has not been re-claimed as
