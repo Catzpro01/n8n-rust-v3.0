@@ -6,7 +6,7 @@
 //! reflection access.
 
 use serde_json::{Map, Number, Value};
-use std::{fmt, str::FromStr};
+use std::{cmp::Ordering, fmt, str::FromStr};
 
 const MAX_TOKENS: usize = 512;
 const MAX_NODES: usize = 512;
@@ -1119,6 +1119,130 @@ enum NumericOperation {
     Remainder,
 }
 
+/// The JSON number representation used by serde_json keeps integers exact up to
+/// the signed and unsigned 64-bit bounds. Keep that exactness through the VM
+/// instead of falling back to f64 when an integer is not an i64.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct ExactInteger {
+    negative: bool,
+    magnitude: u128,
+}
+
+impl ExactInteger {
+    fn new(negative: bool, magnitude: u128) -> Self {
+        Self {
+            negative: negative && magnitude != 0,
+            magnitude,
+        }
+    }
+
+    fn from_number(number: &Number) -> Option<Self> {
+        if let Some(value) = number.as_i64() {
+            return Some(if value < 0 {
+                Self::new(true, value.unsigned_abs() as u128)
+            } else {
+                Self::new(false, value as u128)
+            });
+        }
+        number.as_u64().map(|value| Self::new(false, value as u128))
+    }
+
+    fn negate(self) -> Self {
+        Self::new(!self.negative, self.magnitude)
+    }
+
+    fn add(self, right: Self) -> Option<Self> {
+        if self.negative == right.negative {
+            return self
+                .magnitude
+                .checked_add(right.magnitude)
+                .map(|magnitude| Self::new(self.negative, magnitude));
+        }
+        if self.magnitude >= right.magnitude {
+            Some(Self::new(self.negative, self.magnitude - right.magnitude))
+        } else {
+            Some(Self::new(right.negative, right.magnitude - self.magnitude))
+        }
+    }
+
+    fn subtract(self, right: Self) -> Option<Self> {
+        self.add(right.negate())
+    }
+
+    fn multiply(self, right: Self) -> Option<Self> {
+        self.magnitude
+            .checked_mul(right.magnitude)
+            .map(|magnitude| Self::new(self.negative ^ right.negative, magnitude))
+    }
+
+    fn remainder(self, right: Self) -> Option<Self> {
+        if right.magnitude == 0 {
+            return None;
+        }
+        Some(Self::new(self.negative, self.magnitude % right.magnitude))
+    }
+
+    fn into_number(self) -> Option<Number> {
+        if self.negative {
+            let minimum_magnitude = i64::MAX as u128 + 1;
+            if self.magnitude == minimum_magnitude {
+                return Some(Number::from(i64::MIN));
+            }
+            return i64::try_from(self.magnitude)
+                .ok()?
+                .checked_neg()
+                .map(Number::from);
+        }
+        u64::try_from(self.magnitude).ok().map(Number::from)
+    }
+}
+
+impl Ord for ExactInteger {
+    fn cmp(&self, other: &Self) -> Ordering {
+        match (self.negative, other.negative) {
+            (true, false) => Ordering::Less,
+            (false, true) => Ordering::Greater,
+            (false, false) => self.magnitude.cmp(&other.magnitude),
+            (true, true) => other.magnitude.cmp(&self.magnitude),
+        }
+    }
+}
+
+impl PartialOrd for ExactInteger {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+fn number_as_f64(number: &Number, offset: usize) -> Result<f64, ExpressionError> {
+    let value = number
+        .as_f64()
+        .ok_or_else(|| ExpressionError::overflow("number cannot be represented safely", offset))?;
+    if !value.is_finite() {
+        return Err(ExpressionError::overflow("number is not finite", offset));
+    }
+    if let Some(integer) = ExactInteger::from_number(number) {
+        let magnitude = value.abs();
+        if magnitude.fract() != 0.0 || magnitude as u128 != integer.magnitude {
+            return Err(ExpressionError::overflow(
+                "integer cannot be represented safely as a decimal number",
+                offset,
+            ));
+        }
+    }
+    Ok(value)
+}
+
+fn exact_integer_result(
+    result: Option<ExactInteger>,
+    offset: usize,
+) -> Result<Value, ExpressionError> {
+    result
+        .and_then(ExactInteger::into_number)
+        .map(Value::Number)
+        .ok_or_else(|| ExpressionError::overflow("checked integer arithmetic overflowed", offset))
+}
+
 fn numeric_operation(
     left: Value,
     right: Value,
@@ -1149,32 +1273,29 @@ fn numeric_operation(
             ));
         }
     };
-    if !matches!(operation, NumericOperation::Divide) {
-        if let (Some(left), Some(right)) = (left_number.as_i64(), right_number.as_i64()) {
-            let result = match operation {
-                NumericOperation::Add => left.checked_add(right),
-                NumericOperation::Subtract => left.checked_sub(right),
-                NumericOperation::Multiply => left.checked_mul(right),
-                NumericOperation::Remainder => {
-                    if right == 0 {
-                        return Err(ExpressionError::overflow("remainder by zero", offset));
-                    }
-                    left.checked_rem(right)
-                }
-                NumericOperation::Divide => unreachable!(),
+    if let (Some(left), Some(right)) = (
+        ExactInteger::from_number(left_number),
+        ExactInteger::from_number(right_number),
+    ) {
+        match operation {
+            NumericOperation::Add => return exact_integer_result(left.add(right), offset),
+            NumericOperation::Subtract => {
+                return exact_integer_result(left.subtract(right), offset)
             }
-            .ok_or_else(|| {
-                ExpressionError::overflow("checked integer arithmetic overflowed", offset)
-            })?;
-            return Ok(Value::Number(Number::from(result)));
+            NumericOperation::Multiply => {
+                return exact_integer_result(left.multiply(right), offset)
+            }
+            NumericOperation::Remainder => {
+                if right.magnitude == 0 {
+                    return Err(ExpressionError::overflow("remainder by zero", offset));
+                }
+                return exact_integer_result(left.remainder(right), offset);
+            }
+            NumericOperation::Divide => {}
         }
     }
-    let left = left_number.as_f64().ok_or_else(|| {
-        ExpressionError::overflow("left number cannot be represented safely", offset)
-    })?;
-    let right = right_number.as_f64().ok_or_else(|| {
-        ExpressionError::overflow("right number cannot be represented safely", offset)
-    })?;
+    let left = number_as_f64(left_number, offset)?;
+    let right = number_as_f64(right_number, offset)?;
     if matches!(
         operation,
         NumericOperation::Divide | NumericOperation::Remainder
@@ -1195,17 +1316,16 @@ fn numeric_operation(
 }
 
 fn numeric_unary_minus(number: Number, offset: usize) -> Result<Value, ExpressionError> {
-    if let Some(value) = number.as_i64() {
-        return value
-            .checked_neg()
-            .map(|value| Value::Number(Number::from(value)))
+    if let Some(integer) = ExactInteger::from_number(&number) {
+        return integer
+            .negate()
+            .into_number()
+            .map(Value::Number)
             .ok_or_else(|| {
                 ExpressionError::overflow("checked integer arithmetic overflowed", offset)
             });
     }
-    let value = number
-        .as_f64()
-        .ok_or_else(|| ExpressionError::overflow("number cannot be represented safely", offset))?;
+    let value = number_as_f64(&number, offset)?;
     Number::from_f64(-value)
         .map(Value::Number)
         .ok_or_else(|| ExpressionError::overflow("numeric result is not finite", offset))
@@ -1218,9 +1338,15 @@ fn compare(
     offset: usize,
 ) -> Result<Value, ExpressionError> {
     let ordering = match (&left, &right) {
-        (Value::Number(left), Value::Number(right)) => left
-            .as_f64()
-            .and_then(|left| right.as_f64().map(|right| left.total_cmp(&right))),
+        (Value::Number(left), Value::Number(right)) => {
+            let left_integer = ExactInteger::from_number(left);
+            let right_integer = ExactInteger::from_number(right);
+            let ordering = match (left_integer, right_integer) {
+                (Some(left), Some(right)) => left.cmp(&right),
+                _ => number_as_f64(left, offset)?.total_cmp(&number_as_f64(right, offset)?),
+            };
+            Some(ordering)
+        }
         (Value::String(left), Value::String(right)) => Some(left.cmp(right)),
         _ => None,
     }
@@ -1321,7 +1447,11 @@ mod tests {
 
     #[test]
     fn checked_arithmetic_and_types_are_stable_errors() {
-        let overflow = compile("9223372036854775807 + 1")
+        assert_eq!(
+            evaluate("9223372036854775807 + 1", json!({}), 0),
+            json!(9223372036854775808_u64)
+        );
+        let overflow = compile("18446744073709551615 + 1")
             .unwrap()
             .evaluate(&json!({}), 0)
             .unwrap_err();
@@ -1341,5 +1471,30 @@ mod tests {
             .evaluate(&json!({}), 3)
             .unwrap_err();
         assert_eq!(reversed_conversion.code, "canopy.expression.type");
+    }
+
+    #[test]
+    fn large_json_integers_are_not_rounded_by_arithmetic_or_comparison() {
+        let input: Value =
+            serde_json::from_str(r#"{"value":9007199254740993,"other":9007199254740992}"#).unwrap();
+        assert_eq!(
+            evaluate("$json.value + 1", input.clone(), 0),
+            json!(9007199254740994_u64)
+        );
+        assert_eq!(
+            evaluate("$json.value > $json.other", input.clone(), 0),
+            json!(true)
+        );
+        assert_eq!(
+            evaluate("$json.value === 9007199254740993", input, 0),
+            json!(true)
+        );
+
+        let maximum: Value = serde_json::from_str(r#"{"value":18446744073709551615}"#).unwrap();
+        let overflow = compile("$json.value + 1")
+            .unwrap()
+            .evaluate(&maximum, 0)
+            .unwrap_err();
+        assert_eq!(overflow.code, "canopy.expression.overflow");
     }
 }

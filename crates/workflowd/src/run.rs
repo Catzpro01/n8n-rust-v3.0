@@ -2185,6 +2185,14 @@ struct GeneratedBatchEvent {
     started_at: i64,
 }
 
+#[derive(Debug)]
+struct AppliedEditFieldsBatch {
+    transformed_count: u64,
+    transformed_logical_bytes: u64,
+    transformed_batch_logical_bytes: u64,
+    transformed_stream_digest: String,
+}
+
 struct GeneratedProgressCommit {
     run_id: String,
     generated_count: u64,
@@ -2353,12 +2361,17 @@ fn apply_edit_fields_batch(
     configuration: Option<&CompiledConfiguration>,
     node_id: Option<&str>,
     artifact: Option<&ArtifactReference>,
-    transformed_count: &mut u64,
-    transformed_logical_bytes: &mut u64,
-    transformed_stream_digest: &mut String,
-) -> Result<(), GenerateFailure> {
+    transformed_count: u64,
+    transformed_logical_bytes: u64,
+    transformed_stream_digest: &str,
+) -> Result<AppliedEditFieldsBatch, GenerateFailure> {
     let Some(configuration) = configuration else {
-        return Ok(());
+        return Ok(AppliedEditFieldsBatch {
+            transformed_count,
+            transformed_logical_bytes,
+            transformed_batch_logical_bytes: 0,
+            transformed_stream_digest: transformed_stream_digest.into(),
+        });
     };
     let node_id = node_id.ok_or_else(|| {
         generate_failure(
@@ -2366,7 +2379,12 @@ fn apply_edit_fields_batch(
             "Edit Fields configuration has no node identity.",
         )
     })?;
-    for envelope in envelopes {
+    let initial_logical_bytes = transformed_logical_bytes;
+    let mut next_count = transformed_count;
+    let mut next_logical_bytes = transformed_logical_bytes;
+    let mut next_stream_digest = transformed_stream_digest.to_owned();
+    let mut staged = envelopes.to_vec();
+    for envelope in &mut staged {
         let transformed = configuration
             .apply(&envelope.logical_item, envelope.ordinal)
             .map_err(|error| GenerateFailure {
@@ -2379,7 +2397,7 @@ fn apply_edit_fields_batch(
                 code: "canopy.edit-fields.canonicalization_failed".into(),
                 message: error.to_string(),
             })?;
-        let next_bytes = transformed_logical_bytes
+        let next_bytes = next_logical_bytes
             .checked_add(logical_bytes.len() as u64)
             .ok_or_else(|| {
                 generate_failure(
@@ -2393,9 +2411,9 @@ fn apply_edit_fields_batch(
                 "Edit Fields logical output exceeded its bounded byte budget.",
             ));
         }
-        *transformed_stream_digest = digest(&json!({
+        next_stream_digest = digest(&json!({
             "schema":"canopy.edit-fields-chain/v1alpha2",
-            "previous":transformed_stream_digest.clone(),
+            "previous":next_stream_digest,
             "ordinal":envelope.ordinal,
             "item":logical_output.clone()
         }))
@@ -2404,15 +2422,19 @@ fn apply_edit_fields_batch(
             message,
         })?;
         let mut physical_output = logical_output;
-        if artifact.is_some() {
-            if let (Some(output), Some(data)) = (
-                physical_output.as_object_mut(),
-                envelope.item.get("data").cloned(),
-            ) {
-                if output.contains_key("data") {
-                    output.insert("data".into(), data);
-                }
-            }
+        if let Some(artifact) = artifact {
+            let output = physical_output.as_object_mut().ok_or_else(|| {
+                generate_failure(
+                    "canopy.edit-fields.output_shape",
+                    "Edit Fields output must be a JSON object.",
+                )
+            })?;
+            let data = envelope
+                .item
+                .get("data")
+                .cloned()
+                .unwrap_or_else(|| json!({"$artifact": artifact}));
+            output.insert("data".into(), data);
         }
         envelope.item = physical_output;
         if let Some(provenance) = envelope.provenance.as_object_mut() {
@@ -2438,10 +2460,21 @@ fn apply_edit_fields_batch(
                 "One transformed physical Envelope exceeds the micro-batch byte limit.",
             ));
         }
-        *transformed_count = transformed_count.saturating_add(1);
-        *transformed_logical_bytes = next_bytes;
+        next_count = next_count.checked_add(1).ok_or_else(|| {
+            generate_failure(
+                "canopy.edit-fields.output_count_exceeded",
+                "Edit Fields output exceeded its bounded item budget.",
+            )
+        })?;
+        next_logical_bytes = next_bytes;
     }
-    Ok(())
+    envelopes.clone_from_slice(&staged);
+    Ok(AppliedEditFieldsBatch {
+        transformed_count: next_count,
+        transformed_logical_bytes: next_logical_bytes,
+        transformed_batch_logical_bytes: next_logical_bytes.saturating_sub(initial_logical_bytes),
+        transformed_stream_digest: next_stream_digest,
+    })
 }
 
 fn start_executor(
@@ -2614,20 +2647,18 @@ fn start_executor(
                                 generated_count = progress.0;
                                 logical_bytes = progress.1;
                                 stream_digest = progress.2.to_owned();
-                                let transformed_batch_start = transformed_logical_bytes;
-                                if let Err(error) = apply_edit_fields_batch(
+                                let transformed = match apply_edit_fields_batch(
                                     &mut batch,
                                     transform_configuration.as_ref(),
                                     transform_node_id.as_deref(),
                                     artifact.as_ref(),
-                                    &mut transformed_count,
-                                    &mut transformed_logical_bytes,
-                                    &mut transformed_stream_digest,
+                                    transformed_count,
+                                    transformed_logical_bytes,
+                                    &transformed_stream_digest,
                                 ) {
-                                    break Err(error);
-                                }
-                                let transformed_batch_logical_bytes = transformed_logical_bytes
-                                    .saturating_sub(transformed_batch_start);
+                                    Ok(progress) => progress,
+                                    Err(error) => break Err(error),
+                                };
                                 let sent = Instant::now();
                                 if envelopes
                                     .send(GeneratedBatchEvent {
@@ -2637,10 +2668,13 @@ fn start_executor(
                                         logical_bytes,
                                         stream_digest: stream_digest.clone(),
                                         transform_node_id: transform_node_id.clone(),
-                                        transformed_count,
-                                        transformed_logical_bytes,
-                                        transformed_batch_logical_bytes,
-                                        transformed_stream_digest: transformed_stream_digest
+                                        transformed_count: transformed.transformed_count,
+                                        transformed_logical_bytes: transformed
+                                            .transformed_logical_bytes,
+                                        transformed_batch_logical_bytes: transformed
+                                            .transformed_batch_logical_bytes,
+                                        transformed_stream_digest: transformed
+                                            .transformed_stream_digest
                                             .clone(),
                                         backpressure_micros,
                                         artifact: artifact.clone(),
@@ -2650,6 +2684,9 @@ fn start_executor(
                                 {
                                     return;
                                 }
+                                transformed_count = transformed.transformed_count;
+                                transformed_logical_bytes = transformed.transformed_logical_bytes;
+                                transformed_stream_digest = transformed.transformed_stream_digest;
                                 let blocked_micros =
                                     sent.elapsed().as_micros().min(u64::MAX as u128) as u64;
                                 backpressure_micros =
@@ -4567,22 +4604,19 @@ mod tests {
             logical_bytes: 64,
             provenance: json!({"ordinal":12}),
         }];
-        let mut count = 0;
-        let mut bytes = 0;
-        let mut stream_digest = "genesis".into();
-        apply_edit_fields_batch(
+        let applied = apply_edit_fields_batch(
             &mut envelopes,
             Some(&configuration),
             Some("edit-fields"),
             Some(&artifact),
-            &mut count,
-            &mut bytes,
-            &mut stream_digest,
+            0,
+            0,
+            "genesis",
         )
         .unwrap();
-        assert_eq!(count, 1);
-        assert!(bytes > 0);
-        assert!(stream_digest.starts_with("sha256:"));
+        assert_eq!(applied.transformed_count, 1);
+        assert!(applied.transformed_logical_bytes > 0);
+        assert!(applied.transformed_stream_digest.starts_with("sha256:"));
         assert_eq!(envelopes[0].item["eco"], true);
         assert_eq!(envelopes[0].item["label"], "eco-12");
         assert_eq!(
@@ -4594,5 +4628,88 @@ mod tests {
             "edit-fields"
         );
         assert_eq!(envelopes[0].provenance["input_ordinal"], 12);
+    }
+
+    #[test]
+    fn edit_fields_replace_preserves_artifact_data() {
+        let configuration = edit_fields::compile_configuration(&json!({
+            "mode": "replace",
+            "assignments": [
+                {"path": ["label"], "kind": "fixed", "value": "eco-replaced"}
+            ]
+        }))
+        .unwrap();
+        let artifact = ArtifactReference {
+            artifact_id: "artifact-replace".into(),
+            format: "canopy.artifact+xchacha20poly1305/v1alpha1".into(),
+            media_type: "application/json".into(),
+            logical_bytes: 32,
+            content_digest_algorithm: "blake3-256".into(),
+        };
+        let mut envelopes = vec![GeneratedEnvelope {
+            ordinal: 4,
+            item: json!({"index":4,"value":7,"data":{"$artifact":artifact}}),
+            logical_item: json!({"index":4,"value":7,"data":{"payload":"eco"}}),
+            logical_bytes: 64,
+            provenance: json!({"ordinal":4}),
+        }];
+        apply_edit_fields_batch(
+            &mut envelopes,
+            Some(&configuration),
+            Some("edit-fields"),
+            Some(&artifact),
+            0,
+            0,
+            "genesis",
+        )
+        .unwrap();
+        assert_eq!(envelopes[0].item["label"], "eco-replaced");
+        assert_eq!(
+            envelopes[0].item["data"]["$artifact"]["artifact_id"],
+            "artifact-replace"
+        );
+    }
+
+    #[test]
+    fn edit_fields_batch_does_not_publish_partial_transform_state_on_error() {
+        let configuration = edit_fields::compile_configuration(&json!({
+            "mode": "merge",
+            "assignments": [
+                {"path": ["doubled"], "kind": "expression", "source": "$json.value * 2"}
+            ]
+        }))
+        .unwrap();
+        let mut envelopes = vec![
+            GeneratedEnvelope {
+                ordinal: 0,
+                item: json!({"index":0,"value":2,"data":{}}),
+                logical_item: json!({"index":0,"value":2,"data":{}}),
+                logical_bytes: 32,
+                provenance: json!({"ordinal":0}),
+            },
+            GeneratedEnvelope {
+                ordinal: 1,
+                item: json!({"index":1,"value":"bad","data":{}}),
+                logical_item: json!({"index":1,"value":"bad","data":{}}),
+                logical_bytes: 32,
+                provenance: json!({"ordinal":1}),
+            },
+        ];
+        let original = envelopes.clone();
+        let error = apply_edit_fields_batch(
+            &mut envelopes,
+            Some(&configuration),
+            Some("edit-fields"),
+            None,
+            7,
+            123,
+            "prior-digest",
+        )
+        .unwrap_err();
+        assert_eq!(error.code, "canopy.expression.type");
+        assert_eq!(envelopes[0].item, original[0].item);
+        assert_eq!(envelopes[0].provenance, original[0].provenance);
+        assert_eq!(envelopes[1].item, original[1].item);
+        assert_eq!(envelopes[1].provenance, original[1].provenance);
     }
 }
