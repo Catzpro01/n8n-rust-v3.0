@@ -1503,9 +1503,8 @@ fn validate_configuration(name: &str, value: &Value) -> Result<(), DraftError> {
         "merge" => {
             merge::validate_configuration(value).map_err(|error| DraftError::Invalid(error.code))
         }
-        "summarize" => {
-            summarize::validate_configuration(value).map_err(|error| DraftError::Invalid(error.code))
-        }
+        "summarize" => summarize::validate_configuration(value)
+            .map_err(|error| DraftError::Invalid(error.code)),
         _ => Err(DraftError::Invalid("node_configuration".into())),
     }
 }

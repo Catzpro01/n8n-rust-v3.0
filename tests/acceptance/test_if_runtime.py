@@ -305,13 +305,15 @@ class IfRuntimeAcceptance(unittest.TestCase):
         return api(origin, f"/api/v1/workflows/{workflow_id}/publication", headers=self.auth)[2]
 
     def wait_terminal(self, run_id: str, attempts: int = 4_000) -> dict:
+        last = None
         for _ in range(attempts):
             response = api(self.daemon.origin, f"/api/v1/runs/{run_id}", headers=self.auth)
             self.assertEqual(response[0], 200, response[2])
-            if response[2]["durable"]["terminal"]:
-                return response[2]
+            last = response[2]
+            if last["durable"]["terminal"]:
+                return last
             time.sleep(0.01)
-        self.fail("If runtime Run did not become terminal")
+        self.fail(f"If runtime Run did not become terminal: {last}")
 
     def test_transformed_items_are_routed_and_persisted(self):
         publication = self.publish_workflow()
