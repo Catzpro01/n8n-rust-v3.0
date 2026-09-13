@@ -64,7 +64,7 @@ jobs:
                 check_run_id: check.id,
                 output: {
                   title: "Temporary workflowd build output",
-                  summary: `\\`\\`\\`text\\n${log.slice(-60000)}\\n\\`\\`\\``,
+                  summary: "Temporary workflowd build output\\n\\n" + log.slice(-60000),
                 },
               });
             }
