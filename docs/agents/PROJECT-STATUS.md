@@ -52,9 +52,10 @@ starting a new frontend framework from scratch.
 ## Active work
 
 - **Owner:** none
-- **Ticket:** Ticket 08 is the current frontier and is authorized for
-  implementation within ADRs 0057 and 0058.
-- **Blockers:** none known in the approved Ticket 08 scope; local Cargo remains
+- **Map:** Canopy Workbench full platform expansion, GitHub issue #8.
+- **Frontier:** decision issue #9 (Node Form/Execution Lane contract) and
+  research issue #14 (external agent/package boundaries).
+- **Blockers:** the expansion is decision-gated; local Cargo remains
   unavailable, so pinned GitHub CI is the Rust verification environment.
 
 ## Last verified in this checkout
