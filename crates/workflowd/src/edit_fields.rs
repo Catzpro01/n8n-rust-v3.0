@@ -125,8 +125,7 @@ pub fn compile_configuration(value: &Value) -> Result<CompiledConfiguration, Tra
             "assignment limit is {MAX_ASSIGNMENTS}"
         )));
     }
-    let mut compiled: Vec<CompiledAssignment> =
-        Vec::with_capacity(configuration.assignments.len());
+    let mut compiled: Vec<CompiledAssignment> = Vec::with_capacity(configuration.assignments.len());
     for assignment in configuration.assignments {
         validate_path(&assignment.path)?;
         for previous in &compiled {
