@@ -10,8 +10,7 @@ use crate::{
         self, GenerateFailure, GenerateResume, GenerateSession, GenerateStart, GenerateSummary,
         GeneratedEnvelope,
     },
-    if_node,
-    merge,
+    if_node, merge,
     run_engine::{self, ActivationOutcome, ManualActivationInput, ManualActivationResult},
 };
 use rand_core::{OsRng, RngCore};
@@ -1575,12 +1574,16 @@ fn complete_generated_transaction(
             .find(|node| node.contract_lock.name == "if")
             .map(|node| node.node_instance_id.clone())
     });
-    let merge_node = completed.merge.as_ref().map(|merge| merge.node_instance_id.clone()).or_else(|| {
-        plan.nodes
-            .iter()
-            .find(|node| node.contract_lock.name == "merge")
-            .map(|node| node.node_instance_id.clone())
-    });
+    let merge_node = completed
+        .merge
+        .as_ref()
+        .map(|merge| merge.node_instance_id.clone())
+        .or_else(|| {
+            plan.nodes
+                .iter()
+                .find(|node| node.contract_lock.name == "merge")
+                .map(|node| node.node_instance_id.clone())
+        });
     let has_transform = transform_node.is_some();
     let has_branch = branch_node.is_some();
     let has_merge = merge_node.is_some();
@@ -1649,7 +1652,11 @@ fn complete_generated_transaction(
             ));
         }
     }
-    let branch_order = if transform_should_commit { 4_u64 } else { 3_u64 };
+    let branch_order = if transform_should_commit {
+        4_u64
+    } else {
+        3_u64
+    };
     let merge_order = branch_order + 1;
     let final_order = if merge_should_commit {
         merge_order
@@ -1706,7 +1713,8 @@ fn complete_generated_transaction(
                     "item_linking":"one_to_one"
                 }));
             }
-            if let (Some(merge_node), Some(merge)) = (merge_node.as_ref(), completed.merge.as_ref()) {
+            if let (Some(merge_node), Some(merge)) = (merge_node.as_ref(), completed.merge.as_ref())
+            {
                 logical_outcomes.push(json!({
                     "logical_order":merge_order,
                     "node_instance_id":merge_node,
@@ -2161,7 +2169,9 @@ fn complete_generated_transaction(
     let (succeeded, cancelled, failed) = match state {
         "succeeded" => (attempted, 0, 0),
         "cancelled" => (1, attempted.saturating_sub(1), 0),
-        _ if transform_failed || branch_failed || merge_failed => (attempted.saturating_sub(1), 0, 1),
+        _ if transform_failed || branch_failed || merge_failed => {
+            (attempted.saturating_sub(1), 0, 1)
+        }
         _ => (1, 0, 1),
     };
     let output_count = if has_merge {
@@ -2199,11 +2209,7 @@ fn complete_generated_transaction(
         .as_ref()
         .map(canonical_text)
         .transpose()?;
-    let merge_json = completed
-        .merge
-        .as_ref()
-        .map(canonical_text)
-        .transpose()?;
+    let merge_json = completed.merge.as_ref().map(canonical_text).transpose()?;
     transaction.execute(
         "INSERT INTO run_generation_progress(run_id,state,generated_count,logical_bytes,stream_digest,backpressure_events,backpressure_micros,artifact_json,transform_node_id,transformed_count,transformed_logical_bytes,transformed_stream_digest,branch_node_id,branch_true_count,branch_false_count,branch_stream_digest,merge_json,updated_at)
          VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18)
@@ -3039,11 +3045,9 @@ impl MergeSpool {
     }
 
     fn append(&mut self, record: &merge::MergeRecord) -> Result<(), merge::MergeError> {
-        let mut line = serde_jcs::to_vec(record).map_err(|error| {
-            merge::MergeError {
-                code: "canopy.merge.canonicalization".into(),
-                message: error.to_string(),
-            }
+        let mut line = serde_jcs::to_vec(record).map_err(|error| merge::MergeError {
+            code: "canopy.merge.canonicalization".into(),
+            message: error.to_string(),
         })?;
         line.push(b'\n');
         if line.len() > generate_engine::MICRO_BATCH_BYTES {
@@ -3208,7 +3212,9 @@ impl Iterator for MergeArtifactIterator {
                 let line = &line[..line.len().saturating_sub(1)];
                 return Some(
                     serde_json::from_slice::<Value>(line)
-                        .map_err(|error| Self::error(format!("Merge record JSON is invalid: {error}")))
+                        .map_err(|error| {
+                            Self::error(format!("Merge record JSON is invalid: {error}"))
+                        })
                         .and_then(merge::record_from_value),
                 );
             }
@@ -3227,7 +3233,9 @@ impl Iterator for MergeArtifactIterator {
                     let line = std::mem::take(&mut self.buffer);
                     return Some(
                         serde_json::from_slice::<Value>(&line)
-                            .map_err(|error| Self::error(format!("Merge final record JSON is invalid: {error}")))
+                            .map_err(|error| {
+                                Self::error(format!("Merge final record JSON is invalid: {error}"))
+                            })
                             .and_then(merge::record_from_value),
                     );
                 }
