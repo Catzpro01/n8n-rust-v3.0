@@ -77,12 +77,33 @@ claiming completion, committing, or opening a PR.
 - Never treat the cache or graph as the source of truth; checked-out source is
   authoritative.
 
+## Multi-agent and cross-session continuity
+
+The repository is intended to be worked on by multiple agents. Before a large
+or resumed task, read `docs/agents/PROJECT-STATUS.md` and `CONTEXT.md` after
+this skill. Use `docs/agents/COLLABORATION.md` for the writer/reviewer protocol
+and `docs/agents/HANDOFF-TEMPLATE.md` at a context boundary.
+
+For a project larger than one session, `/ask-matt` should route to:
+
+1. `/setup-matt-pocock-skills` once, so the issue tracker and domain-doc layout
+   are explicit;
+2. `/wayfinder` to map unresolved architecture/product decisions;
+3. `/to-spec`, then `/to-tickets`, when the way is clear;
+4. one fresh `/implement` session per vertical ticket;
+5. `/code-review` and `verification-before-completion` before integration.
+
+Do not carry the entire conversation into the next session. Carry only the
+status, ticket, decisions, evidence, blockers, and next action as a handoff.
+
 ## Completion checklist
 
 1. Confirm the scope and current Git state.
-2. Run the discovery layer and select the smallest Matt skill.
-3. Make the smallest coherent change.
-4. Run focused tests/checks and `git diff --check`.
-5. Refresh `cache.kv` if source paths or symbols changed.
-6. Report what was indexed, what was verified locally, and any unavailable MCP
+2. Read the durable status/context and run the discovery layer.
+3. Select the smallest Matt skill and any applicable guardrail.
+4. Make the smallest coherent change.
+5. Run focused tests/checks and `git diff --check`.
+6. Refresh `cache.kv` if source paths or symbols changed.
+7. Update durable status or write a handoff before changing sessions.
+8. Report what was indexed, what was verified locally, and any unavailable MCP
    capability instead of inventing results.

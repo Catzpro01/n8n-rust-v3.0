@@ -10,8 +10,10 @@ the selected Matt skill, not the whole collection.
 | Fix a hard or slow bug | `diagnosing-bugs` | reproduction, instrumentation, regression test |
 | Choose a module/interface/seam | `codebase-design` | interface and adapter impact, tests at the seam |
 | Plan is vague or has competing options | `grill-me` | resolve open decisions before implementation |
+| Project larger than one session | `wayfinder` | decision map, blockers, and explicit destination |
 | Explore a large/unfamiliar area | `improve-codebase-architecture` | bounded scope and source evidence |
 | Review an existing diff | `code-review` | standards and spec review against a fixed point |
+| Continue in a fresh session/agent | `handoff` | status, evidence, blockers, one next action |
 | Before completion, commit, or PR | `verification-before-completion` | fresh command output proving the claim |
 | Create or update agent docs | `writing-for-agents` | concise pointer, no duplicated instructions |
 | Configure issue/domain docs | `setup-matt-pocock-skills` | user confirmation before writing repo config |

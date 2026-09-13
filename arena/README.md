@@ -16,6 +16,10 @@ The local `cache.kv` index and `tools/arena_context.py` keep the first pass
 small. The graph/index is only a discovery accelerator; checked-out source
 remains authoritative.
 
+Cross-session state lives in `CONTEXT.md`, `docs/agents/PROJECT-STATUS.md`,
+`docs/agents/COLLABORATION.md`, and ticket/PR/ADR links. Use the handoff
+template instead of copying a whole chat into the next session.
+
 Quick context command:
 
 ```bash
