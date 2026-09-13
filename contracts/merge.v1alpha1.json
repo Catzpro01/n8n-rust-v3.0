@@ -1,0 +1,136 @@
+{
+  "activation": {
+    "bounded_batch": null,
+    "ordering": "declared_input_then_output_ordinal",
+    "shape": "barrier_reducer"
+  },
+  "capabilities": [],
+  "compatibility": {
+    "aliases": [],
+    "profile": "native",
+    "safe_opaque_fields": {}
+  },
+  "configuration": {
+    "defaults": {
+      "mode": "true_then_false"
+    },
+    "editor_hints": {
+      "mode": {
+        "control": "select",
+        "label": "Merge order"
+      }
+    },
+    "schema": {
+      "additionalProperties": false,
+      "properties": {
+        "mode": {
+          "enum": [
+            "true_then_false"
+          ],
+          "type": "string"
+        }
+      },
+      "required": [
+        "mode"
+      ],
+      "type": "object"
+    }
+  },
+  "effects": {
+    "approval_required": false,
+    "class": "pure",
+    "deterministic": true,
+    "idempotent": true,
+    "reconciliation": "not_required",
+    "retry": "safe"
+  },
+  "extensions": {
+    "canopy.workbench/display": {
+      "accent": "cyan",
+      "description": "Wait for both closed branch streams and merge them in declared order.",
+      "display_name": "Merge"
+    },
+    "canopy.workbench/merge-profile": {
+      "branch_order": [
+        "true",
+        "false"
+      ],
+      "spooling": "artifact-backed-segments",
+      "version": "canopy.merge/v1alpha1"
+    }
+  },
+  "identity": {
+    "api_version": "v1alpha1",
+    "license": "Apache-2.0",
+    "name": "merge",
+    "namespace": "canopy.native",
+    "publisher": "Canopy Workbench",
+    "version": "0.1.0"
+  },
+  "outcomes": {
+    "allowed": [
+      "success",
+      "permanent_failure",
+      "durable_suspension",
+      "cancelled"
+    ],
+    "error_namespace": "canopy.merge"
+  },
+  "ports": {
+    "inputs": [
+      {
+        "cardinality": "many",
+        "id": "true",
+        "multiplicity": "many",
+        "required": true,
+        "schema": {
+          "type": "dynamic-item"
+        }
+      },
+      {
+        "cardinality": "many",
+        "id": "false",
+        "multiplicity": "many",
+        "required": true,
+        "schema": {
+          "type": "dynamic-item"
+        }
+      }
+    ],
+    "outputs": [
+      {
+        "cardinality": "many",
+        "id": "items",
+        "multiplicity": "many",
+        "required": true,
+        "schema": {
+          "type": "dynamic-item"
+        }
+      }
+    ]
+  },
+  "resources": {
+    "default": {
+      "artifact_bytes": 33554432,
+      "concurrency": 1,
+      "cpu_millis": 5000,
+      "input_bytes": 67108864,
+      "input_count": 50000,
+      "memory_bytes": 4194304,
+      "output_bytes": 67108864,
+      "output_count": 50000,
+      "wall_millis": 300000
+    },
+    "hard": {
+      "artifact_bytes": 67108864,
+      "concurrency": 1,
+      "cpu_millis": 300000,
+      "input_bytes": 67108864,
+      "input_count": 50000,
+      "memory_bytes": 16777216,
+      "output_bytes": 67108864,
+      "output_count": 50000,
+      "wall_millis": 900000
+    }
+  }
+}

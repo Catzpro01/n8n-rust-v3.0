@@ -282,6 +282,7 @@ impl DraftService {
             include_str!("../../../contracts/generate-items.v1alpha1.json"),
             include_str!("../../../contracts/edit-fields.v1alpha2.json"),
             include_str!("../../../contracts/if.v1alpha1.json"),
+            include_str!("../../../contracts/merge.v1alpha1.json"),
         ]
         .into_iter()
         .map(|source| {

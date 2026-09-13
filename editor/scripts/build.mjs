@@ -56,6 +56,7 @@ const contracts = await Promise.all([
   "generate-items.v1alpha1.json",
   "edit-fields.v1alpha2.json",
   "if.v1alpha1.json",
+  "merge.v1alpha1.json",
 ].map(async (name) => JSON.parse(
   await readFile(join(editorRoot, "../contracts", name), "utf8"),
 )));

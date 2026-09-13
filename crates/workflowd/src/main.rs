@@ -17,6 +17,7 @@ mod expression;
 mod generate_engine;
 mod identity;
 mod if_node;
+mod merge;
 mod owner_http;
 mod publication;
 mod publication_http;
