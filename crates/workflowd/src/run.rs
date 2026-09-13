@@ -4594,10 +4594,7 @@ fn handle_generated_batch(
         branch_stream_digest: batch.branch_stream_digest.clone(),
         backpressure_events: state.backpressure_events,
         backpressure_micros: batch.backpressure_micros,
-        elapsed_wall_micros: now_millis()
-            .saturating_sub(batch.started_at)
-            .max(0) as u64
-            * 1_000,
+        elapsed_wall_micros: now_millis().saturating_sub(batch.started_at).max(0) as u64 * 1_000,
         cpu_micros: None,
         first_ordinal: state.generated_count,
         last_ordinal: batch.generated_count.saturating_sub(1),
@@ -5215,7 +5212,9 @@ fn load_trace(connection: &Connection, run_id: &str) -> Result<TraceView, RunErr
                 "retained_item_provenance": "artifact-backed-merge-spool"
             })
         })
-        .unwrap_or_else(|| json!({"source_merge_output_segments": [], "retained_ordinal_range": [null, null]}));
+        .unwrap_or_else(
+            || json!({"source_merge_output_segments": [], "retained_ordinal_range": [null, null]}),
+        );
     Ok(TraceView {
         schema: TRACE_SCHEMA.into(),
         run: TraceRunIdentity {

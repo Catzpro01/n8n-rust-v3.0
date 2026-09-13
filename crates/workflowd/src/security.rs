@@ -825,7 +825,9 @@ mod tests {
 
         let connection = service.connect().unwrap();
         let locked_until: i64 = connection
-            .query_row("SELECT locked_until FROM owners WHERE id=1", [], |row| row.get(0))
+            .query_row("SELECT locked_until FROM owners WHERE id=1", [], |row| {
+                row.get(0)
+            })
             .unwrap();
         assert!(locked_until > now());
         fs::remove_dir_all(root).unwrap();
