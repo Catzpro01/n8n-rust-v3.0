@@ -16,6 +16,14 @@ jobs:
         with:
           toolchain: 1.85.1
           components: rustfmt
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: editor/.nvmrc
+          cache: npm
+          cache-dependency-path: editor/package-lock.json
+      - name: Build editor assets
+        working-directory: editor
+        run: npm ci && npm run build
       - name: Capture test failure
         run: |
           set +e
