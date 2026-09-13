@@ -199,6 +199,19 @@ pub struct MergeProgress {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct SummaryProgress {
+    pub node_instance_id: String,
+    pub operation: String,
+    pub total_count: u64,
+    pub true_count: u64,
+    pub false_count: u64,
+    pub logical_bytes: u64,
+    pub output_digest: String,
+    pub first_ordinal: Option<u64>,
+    pub last_ordinal: Option<u64>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct QueueProfileView {
     pub profile: String,
     pub maximum_nonterminal_runs: usize,
