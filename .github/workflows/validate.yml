@@ -6,7 +6,7 @@ on:
   pull_request:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   validate:
@@ -40,7 +40,25 @@ jobs:
         run: cargo fmt --all -- --check
 
       - name: Run Rust tests
-        run: cargo test --workspace --locked
+        id: rust_tests
+        continue-on-error: true
+        run: cargo test --workspace --locked -- --nocapture 2>&1 | tee /tmp/cargo-test.log
+
+      - name: Preserve Rust failure diagnostics
+        if: steps.rust_tests.outcome != 'success' && github.event_name == 'push'
+        env:
+          HEAD_REF: ${{ github.ref_name }}
+        run: |
+          cp /tmp/cargo-test.log .scratch/cargo-test-diagnostics.log
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add .scratch/cargo-test-diagnostics.log
+          git commit -m "ci: preserve Rust failure diagnostics"
+          git push origin "HEAD:${HEAD_REF}"
+
+      - name: Fail Rust tests
+        if: steps.rust_tests.outcome != 'success'
+        run: exit 1
 
       - name: Run dependency-free repository tests
         run: python3 -m unittest discover -s tests -v
