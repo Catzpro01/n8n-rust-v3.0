@@ -24,3 +24,4 @@
 - GitHub edit/close for issue #10 was also rejected with `Resource not accessible by integration`; the local ADR/spec/ticket records are authoritative until issue write access is repaired.
 - Resolved research issue #14 by writing `docs/research/external-agent-package-adapters-2026-09.md` from official MCP, A2A, OpenAI, Hermes, OpenCode, OpenClaw, Claude Code, and Antigravity sources. The note records adapter boundaries, licensing/evidence requirements, and the unresolved MiroFish identity; no third-party code was imported.
 - GitHub edit/close for issue #14 was rejected with `Resource not accessible by integration`, like issues #9/#10; the local research note and ticket record the result until issue write access is repaired.
+- Research records were committed as `fa6bfaf` and pushed to `arena/01a09a2a-n8n-rust-v3-0`; push CI `34770570470` and pull-request CI `34770573141` passed. Node.js 20 deprecation annotations remain non-blocking.
