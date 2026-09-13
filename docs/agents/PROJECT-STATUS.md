@@ -25,23 +25,26 @@ with n8n; it is one demonstrable vertical slice.
 
 ## Frontier
 
-1. Resolve the product boundary and clean-room compatibility target in
-   [#3](https://github.com/Catzpro01/n8n-rust-v3.0/issues/3), the first
+1. Run a reversible architecture spike, as selected during the Wayfinder
+   conversation, before committing to a vertical product slice.
+2. Use the spike to resolve the product boundary and clean-room compatibility
+   target in [#3](https://github.com/Catzpro01/n8n-rust-v3.0/issues/3), the first
    decision frontier in the [Wayfinder map #2](https://github.com/Catzpro01/n8n-rust-v3.0/issues/2).
-2. Use the resolved boundary to evaluate the browser/UI architecture (#4) and
+3. Use the resolved boundary to evaluate the browser/UI architecture (#4) and
    workflow domain/execution semantics (#5).
-3. Resolve persistence/security (#6) and GitHub validation/delivery (#7) only
+4. Resolve persistence/security (#6) and GitHub validation/delivery (#7) only
    after their stated blockers are settled.
-4. Turn the settled decisions into an ADR-backed spec and then vertical
+5. Turn the settled decisions into an ADR-backed spec and then vertical
    implementation tickets.
-5. Scaffold the smallest selected Rust slice only after the relevant decision
+6. Scaffold the smallest selected Rust slice only after the relevant decision
    records are green.
 
 ## Active work
 
 - **Owner:** none
-- **Ticket:** [#3](https://github.com/Catzpro01/n8n-rust-v3.0/issues/3) is ready for
-  agent work but is not claimed.
+- **Ticket:** [#3](https://github.com/Catzpro01/n8n-rust-v3.0/issues/3) is the first
+  frontier; the next action is a reversible architecture spike, not product
+  implementation.
 - **Blockers:** product boundary and clean-room acceptance criteria; framework,
   domain, persistence, and delivery decisions remain downstream.
 
