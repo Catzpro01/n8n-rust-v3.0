@@ -4,7 +4,7 @@
 **Branch:** `arena/01a09a2a-n8n-rust-v3-0`
 **Previous handoff:** `workspace-sessions/previous/SESSION.md`
 **Active map:** `.scratch/canopy-platform-expansion/map.md`
-**Active decision:** GitHub issue #10, “Decide the Workflow and Skill Package lifecycle” (issue #9 resolved as ADR 0059)
+**Active decision:** GitHub issue #11, “Decide the AI Agent Node and Agent Engine contract” (issues #9/#10 resolved as ADRs 0059/0060)
 
 ## Owner direction
 
@@ -24,13 +24,15 @@
 - Issue #9 is resolved as ADR 0059: Contract, Implementation, Form, and Lane
   stay separate; Rust is the in-process promotion path; C++ and other languages
   use the common External Process/WASM boundary; Plans pin exact identities.
-- Frontier decision tickets are #10 (Workflow/Skill Package lifecycle), #11
-  (AI Agent/Agent Engine), and #14 (external adapter research). No production
-  code for Hub, Skill Hub, or AI Agent has been started.
+- Issue #10 is resolved as ADR 0060: Workflow/Skill and Skill Package lifecycle
+  uses immutable locks, verified Draft/sandbox flow, explicit scope, reviewed
+  side-by-side updates, and reference-safe retirement.
+- Frontier decision tickets are #11 (AI Agent/Agent Engine) and #14 (external
+  adapter research). No production code for Hub, Skill Hub, or AI Agent has
+  been started.
 
 ## Next action
 
-Resolve the next HITL frontier ticket, issue #10, while keeping the core
-implementation and language-neutral extension boundary intact. Create the
-implementation spec/tickets only after the remaining decisions and integrated
-release gate are accepted.
+Resolve the next HITL frontier ticket, issue #11, while keeping the core and
+package lifecycle boundaries intact. Create implementation spec/tickets only
+after the remaining decisions and integrated release gate are accepted.

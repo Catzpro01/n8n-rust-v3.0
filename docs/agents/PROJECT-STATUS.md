@@ -43,12 +43,12 @@ within ADRs 0057 and 0058, including the bounded v1alpha2 integer-label rule.
 - **Status:** `implemented-and-pinned-verified`
 - **Expansion map:** `.scratch/canopy-platform-expansion/map.md` and GitHub
   issue [#8](https://github.com/Catzpro01/n8n-rust-v3.0/issues/8)
-- **Resolved expansion decision:** issue #9 is recorded as ADR 0059; language
-  bindings remain behind a common contract/lane boundary and plans pin exact
-  implementation identities.
+- **Resolved expansion decisions:** issue #9 is recorded as ADR 0059 for the
+  language-neutral contract/lane boundary; issue #10 is recorded as ADR 0060
+  for Workflow/Skill Package lifecycle and safe retirement.
 - **Next action:** Resolve the remaining expansion decision frontier before
   creating implementation tickets; future expansion requires explicit ADRs
-  beyond ADRs 0057–0059.
+  beyond ADRs 0057–0060.
 
 The earlier Wayfinder selection of “architecture spike first” now means a
 reversible audit/reconciliation of the recovered Rust + connected Preact
@@ -59,8 +59,8 @@ starting a new frontend framework from scratch.
 
 - **Owner:** none
 - **Map:** Canopy Workbench full platform expansion, GitHub issue #8.
-- **Frontier:** decision issues #10 (Workflow/Skill Package lifecycle) and #11
-  (AI Agent/Agent Engine contract), plus research issue #14.
+- **Frontier:** decision issue #11 (AI Agent/Agent Engine contract) and
+  research issue #14 (external agent/package boundaries).
 - **Blockers:** the expansion is decision-gated; local Cargo remains
   unavailable, so pinned GitHub CI is the Rust verification environment.
 
