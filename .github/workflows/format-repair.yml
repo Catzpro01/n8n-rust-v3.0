@@ -1,6 +1,8 @@
 name: Temporary format repair
 
 on:
+  push:
+    branches: ["arena/**"]
   workflow_dispatch:
 
 permissions:
