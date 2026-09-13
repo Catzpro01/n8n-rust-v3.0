@@ -2,6 +2,7 @@
 use crate::config::ServeConfig;
 use crate::edit_fields;
 use crate::if_node;
+use crate::merge;
 use canopy_node_contract::{lock, NodeContractLock};
 use rusqlite::{params, Connection, OptionalExtension, Transaction, TransactionBehavior};
 use serde::{Deserialize, Serialize};
@@ -1496,6 +1497,9 @@ fn validate_configuration(name: &str, value: &Value) -> Result<(), DraftError> {
             .map_err(|error| DraftError::Invalid(error.code)),
         "if" => {
             if_node::validate_configuration(value).map_err(|error| DraftError::Invalid(error.code))
+        }
+        "merge" => {
+            merge::validate_configuration(value).map_err(|error| DraftError::Invalid(error.code))
         }
         _ => Err(DraftError::Invalid("node_configuration".into())),
     }
