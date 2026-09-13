@@ -6435,31 +6435,3 @@ mod tests {
         assert_eq!(envelopes[1].provenance, original[1].provenance);
     }
 }
-      assert_eq!(envelopes[1].provenance, original[1].provenance);
-    }
-}
-ior-digest",
-        )
-        .unwrap_err();
-        assert_eq!(error.code, "canopy.expression.type");
-        assert_eq!(envelopes[0].item, original[0].item);
-        assert_eq!(envelopes[0].provenance, original[0].provenance);
-        assert_eq!(envelopes[1].item, original[1].item);
-        assert_eq!(envelopes[1].provenance, original[1].provenance);
-    }
-}
-eq!(envelopes[1].provenance, original[1].provenance);
-    }
-}
-ce);
-    }
-}
-ance, original[1].provenance);
-    }
-}
-eq!(envelopes[1].provenance, original[1].provenance);
-    }
-}
-ce);
-    }
-}
