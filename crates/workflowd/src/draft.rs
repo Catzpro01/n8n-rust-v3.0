@@ -1493,8 +1493,9 @@ fn validate_configuration(name: &str, value: &Value) -> Result<(), DraftError> {
         }
         "edit-fields" => edit_fields::validate_configuration(value)
             .map_err(|error| DraftError::Invalid(error.code)),
-        "if" => if_node::validate_configuration(value)
-            .map_err(|error| DraftError::Invalid(error.code)),
+        "if" => {
+            if_node::validate_configuration(value).map_err(|error| DraftError::Invalid(error.code))
+        }
         _ => Err(DraftError::Invalid("node_configuration".into())),
     }
 }
