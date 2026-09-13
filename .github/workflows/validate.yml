@@ -58,12 +58,27 @@ jobs:
           fi
 
       - name: Run Edit Fields browser seam
+        id: browser_seam
+        continue-on-error: true
         working-directory: editor
         env:
           WORKFLOWD_BIN: ../target/debug/workflowd
         run: |
           npx playwright install chromium
-          node tests/edit-fields-run.mjs
+          node tests/edit-fields-run.mjs 2>&1 | tee /tmp/edit-fields-browser.log
+
+      - name: Publish browser diagnostics
+        if: always()
+        run: |
+          {
+            echo '### Edit Fields browser output'
+            echo '```text'
+            cat /tmp/edit-fields-browser.log 2>/dev/null || true
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          if [[ "${{ steps.browser_seam.outcome }}" != "success" ]]; then
+            exit 1
+          fi
 
       - name: Run dependency-free repository tests
         run: python3 -m unittest discover -s tests -v
