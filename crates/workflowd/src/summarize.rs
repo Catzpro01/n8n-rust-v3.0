@@ -95,10 +95,7 @@ impl CompiledConfiguration {
         &self.operation
     }
 
-    pub fn summarize<Records>(
-        &self,
-        records: Records,
-    ) -> Result<Summary, SummarizeError>
+    pub fn summarize<Records>(&self, records: Records) -> Result<Summary, SummarizeError>
     where
         Records: IntoIterator<Item = Result<SummaryRecord, SummarizeError>>,
     {
@@ -273,11 +270,7 @@ mod tests {
         ]);
         assert_eq!(duplicate.unwrap_err().code, "canopy.summarize.integrity");
 
-        let unknown = configuration.summarize(vec![Ok(record(
-            5,
-            "other",
-            json!({"value": 5}),
-        ))]);
+        let unknown = configuration.summarize(vec![Ok(record(5, "other", json!({"value": 5})))]);
         assert_eq!(unknown.unwrap_err().code, "canopy.summarize.input");
     }
 

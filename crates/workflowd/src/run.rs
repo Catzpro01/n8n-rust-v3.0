@@ -10,8 +10,9 @@ use crate::{
         self, GenerateFailure, GenerateResume, GenerateSession, GenerateStart, GenerateSummary,
         GeneratedEnvelope,
     },
-    if_node, merge, summarize,
+    if_node, merge,
     run_engine::{self, ActivationOutcome, ManualActivationInput, ManualActivationResult},
+    summarize,
 };
 use rand_core::{OsRng, RngCore};
 use rusqlite::{params, Connection, OptionalExtension, Transaction, TransactionBehavior};
@@ -2141,7 +2142,11 @@ fn complete_generated_transaction(
                 } else {
                     None
                 },
-                failure: if summary_failed { failure.as_ref() } else { None },
+                failure: if summary_failed {
+                    failure.as_ref()
+                } else {
+                    None
+                },
                 checkpoint,
                 started_at: completed.started_at,
                 completed_at: completed.completed_at,

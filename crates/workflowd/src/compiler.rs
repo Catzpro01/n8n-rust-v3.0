@@ -446,7 +446,10 @@ fn validate_eco_fixture(
         .nodes
         .iter()
         .find(|node| node.contract_lock.name == "edit-fields");
-    let branch = draft.nodes.iter().find(|node| node.contract_lock.name == "if");
+    let branch = draft
+        .nodes
+        .iter()
+        .find(|node| node.contract_lock.name == "if");
     let merge = draft
         .nodes
         .iter()
@@ -476,9 +479,8 @@ fn validate_eco_fixture(
                 "conditions":[{"expression":r#"$json.parity === "even""#}]
             })
     });
-    let merge_ok = merge.is_some_and(|node| {
-        node.configuration == json!({"mode":"true_then_false"})
-    });
+    let merge_ok =
+        merge.is_some_and(|node| node.configuration == json!({"mode":"true_then_false"}));
     let summary_ok = summarize_node.configuration == json!({"operation":"output_digest"});
     if names != expected || !range_ok || !transform_ok || !branch_ok || !merge_ok || !summary_ok {
         push(
