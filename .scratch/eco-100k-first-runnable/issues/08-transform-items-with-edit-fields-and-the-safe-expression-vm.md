@@ -4,7 +4,7 @@
 
 **Blocked by:** 07: Stream Generate Items through bounded Envelopes and Artifacts
 
-**Status:** approved-for-implementation
+**Status:** complete (2026-09-13)
 
 ## Shared-understanding gate
 

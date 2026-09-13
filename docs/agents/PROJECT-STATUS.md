@@ -45,11 +45,15 @@ within ADRs 0057 and 0058, including the bounded v1alpha2 integer-label rule.
   issue [#8](https://github.com/Catzpro01/n8n-rust-v3.0/issues/8)
 - **Resolved expansion decisions:** issue #9 is recorded as ADR 0059 for the
   language-neutral contract/lane boundary; issue #10 is recorded as ADR 0060
-  for Workflow/Skill Package lifecycle and safe retirement; research issue #14
-  is recorded in `docs/research/external-agent-package-adapters-2026-09.md`.
-- **Next action:** Resolve the remaining expansion decision frontier before
-  creating implementation tickets; future expansion requires explicit ADRs
-  beyond ADRs 0057–0060.
+  for Workflow/Skill Package lifecycle and safe retirement; issue #11 is
+  recorded as ADR 0061 for the durable, capability-bound Agent Turn contract;
+  issue #12 is recorded as ADR 0062 for verified release slots and extension
+  state recovery; issue #13 is recorded as ADR 0063 for the integrated
+  private-first dual-lane release gate; research issue #14 is recorded in
+  `docs/research/external-agent-package-adapters-2026-09.md`.
+- **Next action:** Begin implementation in the approved phase order, starting
+  with core completion; future expansion still requires the ADRs, contracts,
+  tests, documentation, and release evidence recorded above.
 
 The earlier Wayfinder selection of “architecture spike first” now means a
 reversible audit/reconciliation of the recovered Rust + connected Preact
@@ -60,9 +64,12 @@ starting a new frontend framework from scratch.
 
 - **Owner:** none
 - **Map:** Canopy Workbench full platform expansion, GitHub issue #8.
-- **Frontier:** decision issue #11 (AI Agent/Agent Engine contract).
-- **Blockers:** the expansion is decision-gated; local Cargo remains
-  unavailable, so pinned GitHub CI is the Rust verification environment.
+- **Frontier:** implementation phase 1, core completion; the expansion
+  decision map (#9–#14) is resolved locally through ADRs 0059–0063 and the
+  external-adapter research note.
+- **Blockers:** local Cargo remains unavailable, so pinned GitHub CI is the Rust
+  verification environment; Hub and Agent production work remains ordered after
+  core and extension foundation.
 
 ## Last verified in this checkout
 

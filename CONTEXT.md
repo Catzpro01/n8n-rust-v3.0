@@ -321,6 +321,14 @@ _Avoid_: n8n version, compatibility mode
 The selected reasoning and action runtime for one AI Agent turn, whether built in or reached through a model, MCP, A2A, CLI, or process adapter.
 _Avoid_: Model when the runtime performs more than inference
 
+**Agent Turn**:
+One bounded, durable AI Agent Activation with frozen Run/Plan/Blueprint identities, explicit grants, hard budget, normalized events, and one typed terminal outcome.
+_Avoid_: Chat session when referring to the durable execution boundary
+
+**Agent Outcome**:
+The typed terminal result of an Agent Turn: Succeeded, Suspended, Failed, Uncertain, or Cancelled, with durable references and reconciliation evidence where needed.
+_Avoid_: Provider response when referring to the workflow-visible result
+
 **Model Route**:
 A versioned policy that selects an allowed provider/model or ordered fallback using capability, health, quota, cost, data, and determinism constraints.
 _Avoid_: Model name when selection can change under policy

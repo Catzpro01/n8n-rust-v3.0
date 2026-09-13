@@ -28,14 +28,21 @@ Implement every explicitly recorded product design in the current workspace as a
 - [Decide the Workflow and Skill Package lifecycle](https://github.com/Catzpro01/n8n-rust-v3.0/issues/10) resolved as ADR 0060: separate immutable package types, verified Draft/sandbox flow, explicit Skill scope, evidence-based trust labels, side-by-side updates, and reference-safe retirement.
 - [Research external agent and package adapter boundaries](https://github.com/Catzpro01/n8n-rust-v3.0/issues/14) resolved in `docs/research/external-agent-package-adapters-2026-09.md`: MCP/A2A/provider facts, optional adapter boundaries, and unresolved MiroFish identity were recorded without importing code.
 
-## Current frontier
+## Resolved decision
 
-- [Decide the AI Agent Node and Agent Engine contract](https://github.com/Catzpro01/n8n-rust-v3.0/issues/11) — unblocked; primary HITL decision.
+- [Decide the AI Agent Node and Agent Engine contract](https://github.com/Catzpro01/n8n-rust-v3.0/issues/11) resolved as ADR 0061: durable, capability-bound Agent Turns with ordered pre-side-effect fallback, typed outcomes, validated output, and locked Agent Blueprints.
+- [Decide upgrade and recovery for Hub and Agent state](https://github.com/Catzpro01/n8n-rust-v3.0/issues/12) resolved as ADR 0062: verified release slots, complete incremental Recovery Sets, a traffic-boundary rollback rule, and honest disaster-recovery readiness.
+- [Define the integrated expansion acceptance and release gate](https://github.com/Catzpro01/n8n-rust-v3.0/issues/13) resolved as ADR 0063: a private-first vertical journey, dual deterministic/external evidence lanes, Rust-first resource envelope, and a full production-evidence gate.
+
+## Implementation frontier
+
+- Begin the approved phase order with core completion, using `.scratch/eco-100k-first-runnable/issues/09–21` and the existing first-runnable map.
+- After core and extension foundation, implement Workflow/Skill Hub, then the planned AI Agent vertical slice in `.scratch/canopy-platform-expansion/issues/07-ai-agent-first-vertical-slice.md`.
+- Keep signed upgrade/recovery and the integrated gate as acceptance requirements for every later phase; do not claim a phase complete from design documents alone.
 
 ## Later tickets
 
-- [Decide upgrade and recovery for Hub and Agent state](https://github.com/Catzpro01/n8n-rust-v3.0/issues/12) — blocked by #11; #10 and #14 are resolved.
-- [Define the integrated expansion acceptance and release gate](https://github.com/Catzpro01/n8n-rust-v3.0/issues/13) — blocked by #11 and #12; #10 and #14 are resolved.
+- No later expansion decision ticket is currently defined; #9, #10, #11, #12, #13, and #14 are resolved.
 
 ## Core implementation dependency
 

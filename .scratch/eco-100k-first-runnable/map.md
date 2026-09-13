@@ -10,19 +10,21 @@ Blocked by: none
 
 ## Frontier
 
-- Tickets 01 through 03 are resolved. Ticket 04 is the current frontier because its only blocker is complete. A later ticket becomes frontier when every ticket listed in its `Blocked by` field is complete.
+- Tickets 01 through 08 are complete. Ticket 09 is the current frontier because
+  its only blocker (Ticket 08) is complete. A later ticket becomes frontier
+  when every ticket listed in its `Blocked by` field is complete.
 
 ## Tickets
 
 1. [Boot the production-shaped daemon and editor shell](issues/01-boot-the-production-shaped-daemon-and-editor-shell.md) — **resolved**; implementation and verification evidence are recorded in the ticket.
 2. [Establish the Owner and recovery root](issues/02-establish-the-owner-and-recovery-root.md) — **resolved**; implementation and verification evidence are recorded in the ticket.
 3. [Create the first Node Contract and durable Draft](issues/03-create-the-first-node-contract-and-durable-draft.md) — **resolved**; implementation and verification evidence are recorded in the ticket.
-4. [Recover and arbitrate Draft editing](issues/04-recover-and-arbitrate-draft-editing.md) — blocked by 03: Create the first Node Contract and durable Draft.
-5. [Publish and roll back a Manual Trigger revision](issues/05-publish-and-roll-back-a-manual-trigger-revision.md) — blocked by 04: Recover and arbitrate Draft editing.
-6. [Run and trace Manual Trigger durably](issues/06-run-and-trace-manual-trigger-durably.md) — blocked by 05: Publish and roll back a Manual Trigger revision.
-7. [Stream Generate Items through bounded Envelopes and Artifacts](issues/07-stream-generate-items-through-bounded-envelopes-and-artifacts.md) — blocked by 06: Run and trace Manual Trigger durably.
-8. [Transform items with Edit Fields and the safe expression VM](issues/08-transform-items-with-edit-fields-and-the-safe-expression-vm.md) — blocked by 07: Stream Generate Items through bounded Envelopes and Artifacts.
-9. [Route items deterministically with If](issues/09-route-items-deterministically-with-if.md) — blocked by 08: Transform items with Edit Fields and the safe expression VM.
+4. [Recover and arbitrate Draft editing](issues/04-recover-and-arbitrate-draft-editing.md) — **complete**; durable lease, recovery copy, arbitration, and browser evidence are recorded in the ticket.
+5. [Publish and roll back a Manual Trigger revision](issues/05-publish-and-roll-back-a-manual-trigger-revision.md) — **complete**; implementation and verification evidence are recorded in the ticket.
+6. [Run and trace Manual Trigger durably](issues/06-run-and-trace-manual-trigger-durably.md) — **complete**; implementation and verification evidence are recorded in the ticket.
+7. [Stream Generate Items through bounded Envelopes and Artifacts](issues/07-stream-generate-items-through-bounded-envelopes-and-artifacts.md) — **complete**; implementation and verification evidence are recorded in the ticket.
+8. [Transform items with Edit Fields and the safe expression VM](issues/08-transform-items-with-edit-fields-and-the-safe-expression-vm.md) — **complete**; v1alpha2 bounded label conversion and fresh verification are recorded in the ticket.
+9. [Route items deterministically with If](issues/09-route-items-deterministically-with-if.md) — current frontier; implementation must preserve the completed Ticket 08 contract.
 10. [Merge closed branch streams without unbounded memory](issues/10-merge-closed-branch-streams-without-unbounded-memory.md) — blocked by 09: Route items deterministically with If.
 11. [Summarize the exact Eco 100K Run](issues/11-summarize-the-exact-eco-100k-run.md) — blocked by 10: Merge closed branch streams without unbounded memory.
 12. [Recover Eco 100K after an ungraceful daemon kill](issues/12-recover-eco-100k-after-an-ungraceful-daemon-kill.md) — blocked by 11: Summarize the exact Eco 100K Run.
@@ -40,15 +42,13 @@ Blocked by: none
 
 - Ticket 21 certifies the release only after every direct and transitive blocker is complete and the external evidence manifest passes.
 
-## Recovered status reconciliation — 2026-09-13
+## Recovered status reconciliation — 2026-09-14
 
-The original map's frontier sentence predates the recovered session handoff.
-The retained session state and ticket evidence record Tickets 01 through 07 as
-complete. Ticket 08 is the current frontier, but its proposed owner decisions
-are not approved for production implementation.
+The ticket evidence and pinned verification now record Tickets 01 through 08
+as complete. Ticket 09 is the current implementation frontier; no later core
+ticket is claimed complete by this map.
 
 The shared GitHub Wayfinder map is [#2](https://github.com/Catzpro01/n8n-rust-v3.0/issues/2).
-The broader decision tickets are #3 through #7. The current Arena instruction to
-perform an architecture spike first is satisfied by auditing this recovered
-Rust + connected Preact baseline; it does not authorize deleting this map or
-restarting the implementation.
+The broader decision tickets are recorded in the expansion map. The retained
+Rust + connected Preact baseline remains the implementation surface; do not
+delete it or restart with a new frontend framework.
