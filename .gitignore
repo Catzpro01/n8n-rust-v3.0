@@ -1,0 +1,9 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+
+# Artefak build lokal
+/target/
+/skills-kv
+*.kv.tmp
