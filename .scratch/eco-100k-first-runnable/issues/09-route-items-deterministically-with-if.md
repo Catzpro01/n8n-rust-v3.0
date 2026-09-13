@@ -30,4 +30,7 @@
 
 The runtime wiring remains the next implementation step; this ticket is not
 complete until the exactly-one-branch, backpressure, cancellation, and release
-evidence checks pass in pinned CI.
+evidence checks pass in pinned CI. Contract/catalog work is committed as
+`71e8c6a` plus formatting fix `292e3ca`; push CI `34775814353` and pull-request
+CI `34775816647` pass the editor build, Rust formatting/tests, and repository
+checks.
