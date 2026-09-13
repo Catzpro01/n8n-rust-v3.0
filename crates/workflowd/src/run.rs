@@ -5215,7 +5215,12 @@ fn verify_trace(
                     == Some(activation.activation_id.as_str())
                 && event.payload["outcome"].as_str() == Some(activation.outcome.as_str())
                 && event.payload["input_digest"].as_str() == Some(activation.input_digest.as_str())
-                && event.payload["output_digest"].as_str() == activation.output_digest.as_deref()
+                && event
+                    .payload
+                    .get("output_digest_value")
+                    .and_then(Value::as_str)
+                    .or_else(|| event.payload["output_digest"].as_str())
+                    == activation.output_digest.as_deref()
         }) {
             return Err(RunError::Integrity(
                 "Activation Causal Trace event is unavailable".into(),
