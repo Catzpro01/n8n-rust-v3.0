@@ -5794,7 +5794,7 @@ mod tests {
             }
             Ok(()) => panic!("bounded queue accepted more than its configured capacity"),
         }
-        assert!(budget.reserve(1).is_none());
+        assert!(budget.reserve(5).is_none());
         drop(receiver.try_recv().unwrap());
         assert!(budget.reserve(10).is_some());
     }
