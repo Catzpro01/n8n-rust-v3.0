@@ -3632,8 +3632,7 @@ fn next_candidate(
                         "durable If node identity changed".into(),
                     ));
                 }
-                if branch_true_count.saturating_add(branch_false_count) != stored_generated_count
-                {
+                if branch_true_count.saturating_add(branch_false_count) != stored_generated_count {
                     return Err(RunError::Integrity(
                         "durable If counts do not cover the generated cursor".into(),
                     ));
