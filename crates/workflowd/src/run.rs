@@ -2429,12 +2429,7 @@ fn apply_edit_fields_batch(
                     "Edit Fields output must be a JSON object.",
                 )
             })?;
-            let data = envelope
-                .item
-                .get("data")
-                .cloned()
-                .unwrap_or_else(|| json!({"$artifact": artifact}));
-            output.insert("data".into(), data);
+            output.insert("data".into(), json!({"$artifact": artifact}));
         }
         envelope.item = physical_output;
         if let Some(provenance) = envelope.provenance.as_object_mut() {
