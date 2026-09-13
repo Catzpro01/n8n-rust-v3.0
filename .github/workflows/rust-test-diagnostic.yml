@@ -56,6 +56,11 @@ jobs:
               overall=1
             fi
           done
+          echo "===== full workspace test suite =====" | tee -a .scratch/rust-test-diagnostic.log
+          cargo test --workspace --locked -- --test-threads=1 2>&1 \
+            | tee -a .scratch/rust-test-diagnostic.log
+          full_status=${PIPESTATUS[0]}
+          echo "full workspace exit: $full_status" | tee -a .scratch/rust-test-diagnostic.log
           echo "diagnostic exit: $overall" | tee -a .scratch/rust-test-diagnostic.log
           exit 0
 
