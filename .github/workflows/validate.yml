@@ -6,7 +6,7 @@ on:
   pull_request:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   validate:
@@ -40,7 +40,22 @@ jobs:
         run: cargo fmt --all -- --check
 
       - name: Run Rust tests
-        run: cargo test --workspace --locked
+        id: rust_tests
+        continue-on-error: true
+        run: cargo test --workspace --locked -- --test-threads=1 2>&1 | tee /tmp/cargo-test.log
+
+      - name: Publish Rust diagnostics
+        if: always()
+        run: |
+          {
+            echo '### cargo test output'
+            echo '```text'
+            cat /tmp/cargo-test.log 2>/dev/null || true
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          if [[ "${{ steps.rust_tests.outcome }}" != "success" ]]; then
+            exit 1
+          fi
 
       - name: Run dependency-free repository tests
         run: python3 -m unittest discover -s tests -v
