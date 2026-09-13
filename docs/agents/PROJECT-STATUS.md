@@ -41,8 +41,8 @@ is frozen by `docs/adr/0057-approve-edit-fields-and-safe-expression-vm.md`.
 
 - **Ticket 08:** `08-transform-items-with-edit-fields-and-the-safe-expression-vm.md`
 - **Status:** `approved-for-implementation`
-- **Next action:** write red pure compiler/VM and transformation tests before
-  changing the production execution path.
+- **Next action:** wire transformed Envelopes into the durable Run scheduler
+  after the pure compiler/VM seam is verified in the pinned Rust environment.
 
 The earlier Wayfinder selection of “architecture spike first” now means a
 reversible audit/reconciliation of the recovered Rust + connected Preact
@@ -54,15 +54,18 @@ starting a new frontend framework from scratch.
 - **Owner:** none
 - **Ticket:** Ticket 08 is the current frontier and is authorized for
   implementation within ADR 0057.
-- **Blockers:** local Rust toolchain is unavailable for verification; the first
-  implementation step is the pure red-test/compiler seam.
+- **Blockers:** local Rust toolchain is unavailable for verification; durable
+  Run integration and public-seam tests remain after the pure compiler/VM seam.
 
 ## Last verified in this checkout
 
 - Combined four-part archive: `unzip -t` passed for the outer and inner ZIPs.
 - `python3 tools/codebase_index.py index` — 218 documents indexed.
-- `python3 -m unittest discover -s tests -v` — 3 indexer tests passed.
-- `git diff --check` — clean after the recovery merge.
+- `python3 -m unittest discover -s tests -v` — 3 indexer tests passed after
+  the recovery and Ticket 08 foundation changes.
+- `node --check` passed for the changed editor build script and browser test.
+- JSON/Python metadata checks passed for the changed contract/release paths.
+- `git diff --check` — clean before the current Ticket 08 progress update.
 - The historical Ticket 07 full gate is recorded in
   `docs/legacy/session-archive/VERIFICATION.md`; it has not been re-claimed as
   a fresh local result.

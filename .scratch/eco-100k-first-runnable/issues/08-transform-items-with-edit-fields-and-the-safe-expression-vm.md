@@ -39,3 +39,21 @@ Frozen: preserve an internal Missing value distinct from JSON null. Missing path
 - [ ] Logical clock and seeded randomness are controlled; ambient time/random/environment access is unavailable.
 - [ ] Backpressure, cancellation, output limits, and forced Artifact spill remain effective across the transform.
 - [ ] Repeated and restart/replay executions produce byte-for-byte canonical logical outputs and the same trace facts.
+
+## Implementation progress — 2026-09-13
+
+- [x] Owner approval recorded in this ticket and ADR 0057.
+- [x] `edit-fields.v1alpha1` declares a pure deterministic per-item contract
+      with bounded resources and no capabilities.
+- [x] The compiler/catalog/release paths recognize the Edit Fields contract.
+- [x] The pure Rust safe-expression compiler/evaluator and immutable-input
+      Edit Fields assignment module have focused unit tests.
+- [ ] Wire transformed Envelopes into the durable Run scheduler while
+      preserving Ticket 07's checkpoints, backpressure, cancellation, Artifact
+      spill, item linking, and replay invariants.
+- [ ] Add public-seam and browser configuration/diagnostic acceptance coverage.
+
+The local sandbox has no Cargo toolchain, so the new Rust unit tests still need
+fresh verification in the pinned GitHub/Rust-enabled environment. The
+repository validation workflow is `.github/workflows/validate.yml`; the current
+GitHub integration did not permit manual workflow dispatch.

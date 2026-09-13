@@ -1056,18 +1056,24 @@ fn numeric_operation(
     operation: NumericOperation,
     offset: usize,
 ) -> Result<Value, ExpressionError> {
-    let left_number = left.as_number().ok_or_else(|| {
-        ExpressionError::type_error(
-            format!("numeric operation requires numbers, got {}", value_type(&left)),
-            offset,
-        )
-    })?;
-    let right_number = right.as_number().ok_or_else(|| {
-        ExpressionError::type_error(
-            format!("numeric operation requires numbers, got {}", value_type(&right)),
-            offset,
-        )
-    })?;
+    let left_number = match &left {
+        Value::Number(number) => number,
+        _ => {
+            return Err(ExpressionError::type_error(
+                format!("numeric operation requires numbers, got {}", value_type(&left)),
+                offset,
+            ));
+        }
+    };
+    let right_number = match &right {
+        Value::Number(number) => number,
+        _ => {
+            return Err(ExpressionError::type_error(
+                format!("numeric operation requires numbers, got {}", value_type(&right)),
+                offset,
+            ));
+        }
+    };
     if !matches!(operation, NumericOperation::Divide)
         && let (Some(left), Some(right)) = (left_number.as_i64(), right_number.as_i64())
     {
