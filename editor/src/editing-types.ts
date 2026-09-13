@@ -85,7 +85,7 @@ export type RunView = {
   durable: { state: "queued" | "cancel_requested" | "suspended" | "succeeded" | "failed" | "cancelled"; checkpoint_sequence: number; logical_order: number; terminal: boolean; updated_at: number };
   live?: { state: string; speculative: boolean; boot_epoch: string; sequence: number };
   correctness: { canonicalization: string; algorithm: string; digest?: string; complete: boolean; attempted: number; succeeded: number; cancelled: number; failed: number; output_count: number };
-  generation?: { state: "running" | "suspended" | "succeeded" | "failed" | "cancelled"; generated_count: number; logical_bytes: number; stream_digest: string; backpressure_events: number; artifact?: ArtifactReference };
+  generation?: { state: "running" | "suspended" | "succeeded" | "failed" | "cancelled"; generated_count: number; logical_bytes: number; stream_digest: string; backpressure_events: number; artifact?: ArtifactReference; transform?: { node_instance_id: string; transformed_count: number; logical_bytes: number; stream_digest: string } };
   admitted_at: number;
   started_at?: number;
   terminal_at?: number;

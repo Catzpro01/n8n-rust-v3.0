@@ -1475,7 +1475,6 @@ fn complete_generated_transaction(
             .map(|node| node.node_instance_id.clone())
     });
     let has_transform = transform_node.is_some();
-    let final_order = if has_transform { 3_u64 } else { 2_u64 };
     let cancel_won = current.durable.state == "cancel_requested" || completed.cancelled;
     let state = if cancel_won {
         "cancelled"
@@ -1500,6 +1499,9 @@ fn complete_generated_transaction(
         .as_ref()
         .and_then(|failure| failure["code"].as_str())
         .is_some_and(|code| code.starts_with("canopy.edit-fields"));
+    let transform_should_commit =
+        has_transform && (state == "succeeded" || state == "cancelled" || transform_failed);
+    let final_order = if transform_should_commit { 3_u64 } else { 2_u64 };
     let correctness_digest = if state == "succeeded" {
         if let Some(transform_node) = transform_node.as_ref() {
             digest(&json!({
@@ -1590,8 +1592,6 @@ fn complete_generated_transaction(
             provenance: json!({"engine_abi":generate_engine::GENERATE_ENGINE_ABI,"lane":"native-cpu","effect_class":"pure","output_port":"items","backpressure_micros":completed.backpressure_micros}),
         },
     )?;
-    let transform_should_commit =
-        has_transform && (state == "succeeded" || state == "cancelled" || transform_failed);
     let transform_outcome = if state == "succeeded" {
         "success"
     } else if state == "cancelled" {
@@ -2297,7 +2297,16 @@ fn generation_plan_and_transform(
             && dependency.target_node_id == edit.node_instance_id
             && dependency.target_port_id == "input"
     });
-    if plan.nodes.len() != 3 || plan.scheduling_dependencies.len() != 2 || !has_generate_to_edit {
+    let edit_is_native_pure = edit.contract_lock.namespace == "canopy.native"
+        && edit.contract_lock.api_version == "v1alpha2"
+        && edit.capabilities.is_empty()
+        && edit.effects["class"] == "pure"
+        && edit.effects["deterministic"] == true;
+    if plan.nodes.len() != 3
+        || plan.scheduling_dependencies.len() != 2
+        || !has_generate_to_edit
+        || !edit_is_native_pure
+    {
         return Err(generate_failure(
             "canopy.generate-items.invalid_pinned_plan",
             "The pinned plan has unsupported Edit Fields topology.",
@@ -3088,7 +3097,7 @@ fn next_candidate(
 ) -> Result<Option<Candidate>, RunError> {
     let mut statement = connection
         .prepare(
-            "SELECT r.run_id,r.revision_id,r.revision_digest,r.plan_digest,p.payload_json,r.captured_invocation_json,r.checkpoint_sequence,g.generated_count,g.logical_bytes,g.stream_digest,g.transform_node_id,g.transformed_count,g.transformed_logical_bytes,g.transformed_stream_digest
+            "SELECT r.run_id,r.revision_id,r.revision_digest,r.plan_digest,p.payload_json,r.captured_invocation_json,r.checkpoint_sequence,g.generated_count,g.logical_bytes,g.stream_digest,g.transform_node_id,g.transformed_count,g.transformed_logical_bytes,g.transformed_stream_digest,g.artifact_json
              FROM runs r JOIN execution_plans p ON p.plan_id=r.plan_id
              LEFT JOIN run_generation_progress g ON g.run_id=r.run_id
              WHERE r.state='queued' AND NOT EXISTS(SELECT 1 FROM run_suspensions s WHERE s.run_id=r.run_id)
@@ -3121,6 +3130,19 @@ fn next_candidate(
             .get::<_, Option<String>>(13)
             .map_err(storage_error)?
             .unwrap_or_else(|| "genesis".into());
+        let artifact = row
+            .get::<_, Option<String>>(14)
+            .map_err(storage_error)?
+            .as_deref()
+            .map(parse_sql_json)
+            .transpose()
+            .map_err(storage_error)?
+            .map(|value| {
+                serde_json::from_value(value).map_err(|error| {
+                    RunError::Integrity(format!("durable Artifact reference is invalid: {error}"))
+                })
+            })
+            .transpose()?;
         let edit_fields = match edit_fields_definition {
             Some((node_id, configuration)) => {
                 if stored_transform_node_id
@@ -3171,7 +3193,7 @@ fn next_candidate(
                 .transpose()?,
             edit_fields,
             logical_data_override: None,
-            artifact: None,
+            artifact,
         }));
     }
     Ok(None)
@@ -3929,10 +3951,37 @@ fn safe_resource_facts() -> Value {
     })
 }
 
+fn load_artifact_data(
+    artifacts: &ArtifactService,
+    artifact_id: &str,
+) -> Result<(ArtifactReference, Value), RunError> {
+    let (view, bytes, _, _, _) = artifacts
+        .content(artifact_id, None)
+        .map_err(|error| match error {
+            ArtifactError::Storage(message) => RunError::Storage(message),
+            ArtifactError::NotAuthorized => {
+                RunError::Integrity("Generate Items Artifact reference was denied".into())
+            }
+            other => RunError::Integrity(format!(
+                "Generate Items Artifact could not be verified: {other}"
+            )),
+        })?;
+    let logical_data: Value = serde_json::from_slice(&bytes)
+        .map_err(|_| RunError::Integrity("Generate Items Artifact is not valid JSON".into()))?;
+    reject_sensitive_keys(&logical_data)?;
+    Ok((view.reference, logical_data))
+}
+
 fn prepare_candidate_artifact(
     artifacts: &ArtifactService,
     candidate: &mut Candidate,
 ) -> Result<(), RunError> {
+    if let Some(reference) = candidate.artifact.as_ref() {
+        let (reference, logical_data) = load_artifact_data(artifacts, &reference.artifact_id)?;
+        candidate.logical_data_override = Some(logical_data);
+        candidate.artifact = Some(reference);
+        return Ok(());
+    }
     let Some(node) = candidate
         .plan
         .nodes
@@ -3945,23 +3994,9 @@ fn prepare_candidate_artifact(
     let configuration = node.configuration.clone();
     let data = configuration.get("data").cloned().unwrap_or(Value::Null);
     if let Some(artifact_id) = configured_artifact_id(&data) {
-        let (view, bytes, _, _, _) =
-            artifacts
-                .content(&artifact_id, None)
-                .map_err(|error| match error {
-                    ArtifactError::Storage(message) => RunError::Storage(message),
-                    ArtifactError::NotAuthorized => {
-                        RunError::Integrity("Generate Items Artifact reference was denied".into())
-                    }
-                    other => RunError::Integrity(format!(
-                        "Generate Items Artifact could not be verified: {other}"
-                    )),
-                })?;
-        let logical_data: Value = serde_json::from_slice(&bytes)
-            .map_err(|_| RunError::Integrity("Generate Items Artifact is not valid JSON".into()))?;
-        reject_sensitive_keys(&logical_data)?;
+        let (reference, logical_data) = load_artifact_data(artifacts, &artifact_id)?;
         candidate.logical_data_override = Some(logical_data);
-        candidate.artifact = Some(view.reference);
+        candidate.artifact = Some(reference);
         return Ok(());
     }
 
@@ -4501,5 +4536,52 @@ mod tests {
         let mut receiver = hub.subscribe(run_id, Some(&initial), &snapshot).unwrap();
         assert_eq!(receiver.try_recv().unwrap().event, "gap");
         assert_eq!(receiver.try_recv().unwrap().event, "resync");
+    }
+
+    #[test]
+    fn edit_fields_batch_preserves_artifact_data_and_numeric_item_linking() {
+        let configuration = edit_fields::compile_configuration(&json!({
+            "mode": "merge",
+            "assignments": [
+                {"path": ["eco"], "kind": "fixed", "value": true},
+                {"path": ["label"], "kind": "expression", "source": "\"eco-\" + $json.index"}
+            ]
+        }))
+        .unwrap();
+        let artifact = ArtifactReference {
+            artifact_id: "artifact-test".into(),
+            format: "canopy.artifact+xchacha20poly1305/v1alpha1".into(),
+            media_type: "application/json".into(),
+            logical_bytes: 32,
+            content_digest_algorithm: "blake3-256".into(),
+        };
+        let mut envelopes = vec![GeneratedEnvelope {
+            ordinal: 12,
+            item: json!({"index":12,"value":7,"data":{"$artifact":artifact}}),
+            logical_item: json!({"index":12,"value":7,"data":{"payload":"eco"}}),
+            logical_bytes: 64,
+            provenance: json!({"ordinal":12}),
+        }];
+        let mut count = 0;
+        let mut bytes = 0;
+        let mut stream_digest = "genesis".into();
+        apply_edit_fields_batch(
+            &mut envelopes,
+            Some(&configuration),
+            Some("edit-fields"),
+            Some(&artifact),
+            &mut count,
+            &mut bytes,
+            &mut stream_digest,
+        )
+        .unwrap();
+        assert_eq!(count, 1);
+        assert!(bytes > 0);
+        assert!(stream_digest.starts_with("sha256:"));
+        assert_eq!(envelopes[0].item["eco"], true);
+        assert_eq!(envelopes[0].item["label"], "eco-12");
+        assert_eq!(envelopes[0].item["data"]["$artifact"]["artifact_id"], "artifact-test");
+        assert_eq!(envelopes[0].provenance["edit_fields_node_instance_id"], "edit-fields");
+        assert_eq!(envelopes[0].provenance["input_ordinal"], 12);
     }
 }

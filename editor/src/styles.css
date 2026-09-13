@@ -177,8 +177,14 @@ code { font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace; ov
 .run-states strong { text-transform: capitalize; }
 .run-states small { margin-top: .35rem; color: var(--muted); }
 .generation-card { padding: 1rem; border-bottom: 1px solid var(--line); background: linear-gradient(135deg, #101d2b 0%, #0d1915 72%); }
-.generation-summary, .artifact-summary, .artifact-detail > div:first-child { display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
+.generation-summary, .artifact-summary, .transform-summary, .artifact-detail > div:first-child { display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
 .generation-summary h4 { margin: 0 0 .25rem; font-size: 1.25rem; }
+.transform-summary { margin-top: .75rem; padding: .75rem; border: 1px solid #2b6650; background: #0c241b; }
+.transform-summary > div { display: flex; align-items: center; gap: .65rem; }
+.transform-summary strong, .transform-summary small { display: block; }
+.transform-summary small { color: var(--muted); }
+.transform-summary code { color: var(--mint); font-size: .72rem; }
+.transform-mark { display: grid; width: 1.7rem; height: 1.7rem; place-items: center; border: 1px solid var(--mint); color: var(--mint); font-weight: 700; }
 .generation-summary small, .artifact-summary small { display: block; color: var(--muted); overflow-wrap: anywhere; }
 .spill { flex: 0 0 auto; padding: .35rem .55rem; border: 1px solid; font-size: .7rem; letter-spacing: .04em; text-transform: uppercase; }
 .spill.artifact { color: #e3ddff; border-color: #766ea4; background: #292640; }
@@ -243,7 +249,7 @@ code { font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace; ov
   .revision-history li button { width: 100%; }
   .run-identity, .trace-view dl, .trace-io { grid-template-columns: 1fr; }
   .run-actions > p { margin-left: 0; }
-  .generation-summary, .artifact-summary { align-items: stretch; flex-direction: column; }
+  .generation-summary, .artifact-summary, .transform-summary { align-items: stretch; flex-direction: column; }
   .artifact-summary button { width: 100%; }
   .artifact-detail dl { grid-template-columns: 1fr; }
 }
