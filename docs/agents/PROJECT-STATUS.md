@@ -1,7 +1,7 @@
 # Project status
 
 **Last updated:** 2026-09-13
-**Stage:** recovered implementation baseline; Ticket 08 implementation
+**Stage:** recovered implementation baseline; full platform expansion mapped
 **Current branch:** `arena/01a09a2a-n8n-rust-v3-0`
 **Current PR:** [#1](https://github.com/Catzpro01/n8n-rust-v3.0/pull/1)
 **Recovered source baseline:** Canopy Workbench / `workflow-rust`
@@ -36,13 +36,19 @@ profile.
 ## Retained implementation frontier
 
 Tickets 01–07 in `.scratch/eco-100k-first-runnable/` are recorded as complete
-by the recovered session evidence. Ticket 08 is now authorized by ADR 0057;
-ADR 0058 records the follow-up v1alpha2 contract revision for its Eco label.
+by the recovered session evidence. Ticket 08 is implemented and pinned-verified
+within ADRs 0057 and 0058, including the bounded v1alpha2 integer-label rule.
 
 - **Ticket 08:** `08-transform-items-with-edit-fields-and-the-safe-expression-vm.md`
 - **Status:** `implemented-and-pinned-verified`
-- **Next action:** Owner review of the verified Ticket 08 seam; future expansion
-  requires a new decision record beyond ADRs 0057 and 0058.
+- **Expansion map:** `.scratch/canopy-platform-expansion/map.md` and GitHub
+  issue [#8](https://github.com/Catzpro01/n8n-rust-v3.0/issues/8)
+- **Resolved expansion decision:** issue #9 is recorded as ADR 0059; language
+  bindings remain behind a common contract/lane boundary and plans pin exact
+  implementation identities.
+- **Next action:** Resolve the remaining expansion decision frontier before
+  creating implementation tickets; future expansion requires explicit ADRs
+  beyond ADRs 0057–0059.
 
 The earlier Wayfinder selection of “architecture spike first” now means a
 reversible audit/reconciliation of the recovered Rust + connected Preact
@@ -53,8 +59,8 @@ starting a new frontend framework from scratch.
 
 - **Owner:** none
 - **Map:** Canopy Workbench full platform expansion, GitHub issue #8.
-- **Frontier:** decision issue #9 (Node Form/Execution Lane contract) and
-  research issue #14 (external agent/package boundaries).
+- **Frontier:** decision issues #10 (Workflow/Skill Package lifecycle) and #11
+  (AI Agent/Agent Engine contract), plus research issue #14.
 - **Blockers:** the expansion is decision-gated; local Cargo remains
   unavailable, so pinned GitHub CI is the Rust verification environment.
 

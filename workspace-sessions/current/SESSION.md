@@ -4,7 +4,7 @@
 **Branch:** `arena/01a09a2a-n8n-rust-v3-0`
 **Previous handoff:** `workspace-sessions/previous/SESSION.md`
 **Active map:** `.scratch/canopy-platform-expansion/map.md`
-**Active decision:** GitHub issue #9, “Decide the Node Form and Execution Lane extension contract”
+**Active decision:** GitHub issue #10, “Decide the Workflow and Skill Package lifecycle” (issue #9 resolved as ADR 0059)
 
 ## Owner direction
 
@@ -21,16 +21,16 @@
 ## Current state
 
 - The full expansion Wayfinder map is published as GitHub issue #8.
-- Frontier decision tickets are #9 (Node Form/Execution Lane) and #14
-  (external adapter research); later tickets #10–#13 are blocked by them.
-- No production code for Hub, Skill Hub, or AI Agent has been started.
-- The current task is a HITL decision: inspect existing contracts and ask the
-  Owner the bounded frontier questions before recording an ADR or creating
-  implementation tickets.
+- Issue #9 is resolved as ADR 0059: Contract, Implementation, Form, and Lane
+  stay separate; Rust is the in-process promotion path; C++ and other languages
+  use the common External Process/WASM boundary; Plans pin exact identities.
+- Frontier decision tickets are #10 (Workflow/Skill Package lifecycle), #11
+  (AI Agent/Agent Engine), and #14 (external adapter research). No production
+  code for Hub, Skill Hub, or AI Agent has been started.
 
 ## Next action
 
-Complete the first decision round for issue #9, then record the Owner-approved
-contract in the ticket/map and add an ADR only if it is hard to reverse,
-surprising, and a real trade-off. Do not implement the extension while the
-contract is unresolved.
+Resolve the next HITL frontier ticket, issue #10, while keeping the core
+implementation and language-neutral extension boundary intact. Create the
+implementation spec/tickets only after the remaining decisions and integrated
+release gate are accepted.

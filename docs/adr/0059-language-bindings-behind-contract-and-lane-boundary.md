@@ -1,0 +1,6 @@
+---
+status: accepted
+---
+# Keep language bindings behind one Node Contract and lane boundary
+
+Node Contract, Node Implementation, Node Form, and Execution Lane remain separate: one observable contract may have multiple executable bindings, and each immutable Execution Plan pins the exact contract, implementation, selected lane, worker/runtime identity, capability policy, and resource budget. The compiler selects the cheapest valid lane; an owner may restrict execution only toward a safer or more isolated lane, never bypassing declared capabilities. Rust Native is the default in-process promotion target after reproducible build, signature, dependency, resource, conformance, and soak evidence; C++ and every other non-Rust language remain fully supported through a common versioned framed External Process protocol, with Artifact references and typed outcomes rather than a language-specific ABI. Initial official SDKs target Rust, C++, Python, and JavaScript; any other language may participate through the protocol or WASM boundary. Builds occur outside the production daemon, packages carry source/build/dependency/provenance evidence, and no implementation or worker update silently changes an active Run or Published Revision.

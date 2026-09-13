@@ -98,6 +98,17 @@ JavaScript, host access, mutation, methods, loops, regex, eval, and imports
 remain outside the approved contract. Any expansion requires a new decision
 record and explicit approval.
 
+The full-platform expansion map is now approved as a separate, staged effort.
+ADR 0059 records the first resolved expansion decision: Node Contract, Node
+Implementation, Node Form, and Execution Lane remain separate; the compiler
+chooses the cheapest valid lane; Rust Native is the default in-process
+Promotion path; C++ and other languages use the common versioned External
+Process or WASM boundary; and Execution Plans pin exact implementation,
+lane, worker/runtime, capability, and budget identities. Initial official SDKs
+are Rust, C++, Python, and JavaScript; other languages may use the protocol.
+Hub/Agent implementation remains decision-gated by
+`.scratch/canopy-platform-expansion/map.md`.
+
 ## Wayfinder checkpoint
 
 The GitHub map is [#2](https://github.com/Catzpro01/n8n-rust-v3.0/issues/2), with
@@ -257,6 +268,14 @@ _Avoid_: Native node identity, official node
 **Node Implementation**:
 A separately versioned executable binding that claims one Node Contract and must pass its conformance fixtures in an eligible Execution Lane.
 _Avoid_: Node Contract, Node Form
+
+**Language Binding**:
+A language-specific SDK or protocol adapter that implements one Node Contract without changing the contract's observable semantics; initial official bindings target Rust, C++, Python, and JavaScript, while other languages may use the common protocol or WASM boundary.
+_Avoid_: Node Form, Execution Lane
+
+**External Process Binding**:
+A Node Implementation hosted outside the daemon through the versioned language-neutral framed process protocol, using bounded activation messages, Artifact references, capability/Secret Lease handles, cancellation, and typed outcomes.
+_Avoid_: language runtime as a security boundary, plugin ABI
 
 **Community Node Package**:
 A user-supplied or owner-curated separately installed distribution of external Node Implementations governed by its own license and trust evidence.
