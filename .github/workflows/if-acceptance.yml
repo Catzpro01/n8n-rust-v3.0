@@ -6,7 +6,7 @@ on:
   pull_request:
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   if-runtime:
@@ -21,20 +21,21 @@ jobs:
         with:
           toolchain: 1.85.1
 
-      - name: Build workflow daemon
+      - name: Install pinned Node toolchain
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: editor/.nvmrc
+          cache: npm
+          cache-dependency-path: editor/package-lock.json
+
+      - name: Build editor assets
+        working-directory: editor
         run: |
-          set +e
-          cargo build -p workflowd --locked 2>&1 | tee /tmp/if-build.log
-          status=${PIPESTATUS[0]}
-          if [ "$status" -ne 0 ]; then
-            cp /tmp/if-build.log .scratch/if-acceptance-build.log
-            git config user.name "github-actions[bot]"
-            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git add .scratch/if-acceptance-build.log
-            git commit -m "ci: capture If acceptance build diagnostic"
-            git push
-            exit "$status"
-          fi
+          npm ci
+          npm run build
+
+      - name: Build workflow daemon
+        run: cargo build -p workflowd --locked
 
       - name: Run public If acceptance
         run: python3 -m unittest tests.acceptance.test_if_runtime -v
