@@ -1,0 +1,46 @@
+name: Temporary browser diagnostic
+
+on:
+  push:
+    branches: ["arena/**"]
+
+permissions:
+  contents: write
+
+jobs:
+  diagnostic:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+      - name: Install pinned Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.85.1
+      - name: Install pinned Node toolchain
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: editor/.nvmrc
+          cache: npm
+          cache-dependency-path: editor/package-lock.json
+      - name: Build editor assets
+        working-directory: editor
+        run: npm ci && npm run build
+      - name: Build workflow daemon
+        run: cargo build -p workflowd --locked
+      - name: Install Chromium
+        working-directory: editor
+        run: npx playwright install --with-deps chromium
+      - name: Capture browser diagnostics
+        run: |
+          mkdir -p .scratch
+          set +e
+          (cd editor && npm run test:browser) > .scratch/current-browser-test.log 2>&1
+          status=$?
+          printf '\nbrowser-test-exit=%s\n' "$status" >> .scratch/current-browser-test.log
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add .scratch/current-browser-test.log
+          git commit -m "chore: record temporary browser diagnostics"
+          git push origin "HEAD:${GITHUB_REF_NAME}"
+          exit 0
