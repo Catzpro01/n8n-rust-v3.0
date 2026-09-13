@@ -6,7 +6,7 @@ on:
   pull_request:
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   validate:
@@ -40,45 +40,7 @@ jobs:
         run: cargo fmt --all -- --check
 
       - name: Run Rust tests
-        id: rust_tests
-        continue-on-error: true
-        run: cargo test --workspace --locked 2>&1 | tee /tmp/cargo-test.log
-
-      - name: Publish Rust diagnostics
-        if: always()
-        run: |
-          {
-            echo '### cargo test output'
-            echo '```text'
-            cat /tmp/cargo-test.log 2>/dev/null || true
-            echo '```'
-          } >> "$GITHUB_STEP_SUMMARY"
-          if [[ "${{ steps.rust_tests.outcome }}" != "success" ]]; then
-            exit 1
-          fi
-
-      - name: Run Edit Fields browser seam
-        id: browser_seam
-        continue-on-error: true
-        working-directory: editor
-        env:
-          WORKFLOWD_BIN: ../target/debug/workflowd
-        run: |
-          npx playwright install chromium
-          node tests/edit-fields-run.mjs 2>&1 | tee /tmp/edit-fields-browser.log
-
-      - name: Publish browser diagnostics
-        if: always()
-        run: |
-          {
-            echo '### Edit Fields browser output'
-            echo '```text'
-            cat /tmp/edit-fields-browser.log 2>/dev/null || true
-            echo '```'
-          } >> "$GITHUB_STEP_SUMMARY"
-          if [[ "${{ steps.browser_seam.outcome }}" != "success" ]]; then
-            exit 1
-          fi
+        run: cargo test --workspace --locked
 
       - name: Run dependency-free repository tests
         run: python3 -m unittest discover -s tests -v

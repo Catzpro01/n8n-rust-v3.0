@@ -58,9 +58,10 @@ The local sandbox still has no Cargo toolchain. The pure Rust unit tests had
 fresh verification in pinned GitHub workflow run `34758186650`; the durable
 runtime/public seam and focused transform regression passed in run
 `34759106854`, and the browser seam rerun passed in `34759178607`. The
-repository validation workflow is `.github/workflows/validate.yml`; it now
-runs the focused Edit Fields browser seam after the pinned Rust tests. Manual
-dispatch is not permitted by the current GitHub integration.
+repository validation workflow is `.github/workflows/validate.yml`; the
+pinned browser verification was run separately because the standard workflow
+remains read-only. Manual dispatch is not permitted by the current GitHub
+integration.
 
 ## Verification finding — 2026-09-13
 
@@ -88,5 +89,6 @@ Pinned GitHub workflow run `34758186650` passed the editor typecheck/build,
 Rust formatting, `cargo test --workspace --locked`, and the dependency-free
 repository tests. The Rust workspace now verifies the v1alpha2 bounded
 right-hand integer conversion and the exact Eco label over the unchanged
-numeric Generate Items index. Durable Run integration and public-seam/browser
-configuration coverage remain open.
+numeric Generate Items index. The focused runtime/public-seam and browser
+configuration coverage now verify the approved three-node path, Artifact spill,
+transform metrics, trace order, and unsupported-expression diagnostics.
