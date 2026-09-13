@@ -1,6 +1,6 @@
 # Project status
 
-**Last updated:** 2026-09-13
+**Last updated:** 2026-09-14
 **Stage:** recovered implementation baseline; full platform expansion mapped
 **Current branch:** `arena/01a09a2a-n8n-rust-v3-0`
 **Current PR:** [#1](https://github.com/Catzpro01/n8n-rust-v3.0/pull/1)
@@ -38,6 +38,10 @@ profile.
 Tickets 01–07 in `.scratch/eco-100k-first-runnable/` are recorded as complete
 by the recovered session evidence. Ticket 08 is implemented and pinned-verified
 within ADRs 0057 and 0058, including the bounded v1alpha2 integer-label rule.
+Ticket 09's native If slice is complete. Ticket 10's bounded native Merge
+success, empty-branch, Artifact-spooling, cleanup, durable-progress, restart,
+trace, and public acceptance slice is now pinned-verified; dedicated runtime
+fault-injection acceptance remains before claiming the whole ticket complete.
 
 - **Ticket 08:** `08-transform-items-with-edit-fields-and-the-safe-expression-vm.md`
 - **Status:** `implemented-and-pinned-verified`
@@ -64,9 +68,10 @@ starting a new frontend framework from scratch.
 
 - **Owner:** none
 - **Map:** Canopy Workbench full platform expansion, GitHub issue #8.
-- **Frontier:** implementation phase 1, core completion; the expansion
-  decision map (#9–#14) is resolved locally through ADRs 0059–0063 and the
-  external-adapter research note.
+- **Frontier:** implementation phase 1, core completion; Ticket 10 has a
+  pinned-verified bounded Merge slice, with runtime fault-injection coverage
+  still outstanding. The expansion decision map (#9–#14) is resolved locally
+  through ADRs 0059–0063 and the external-adapter research note.
 - **Blockers:** local Cargo remains unavailable, so pinned GitHub CI is the Rust
   verification environment; Hub and Agent production work remains ordered after
   core and extension foundation.
@@ -89,6 +94,12 @@ starting a new frontend framework from scratch.
   browser/public-seam test for v1alpha2 configuration diagnostics, 17-item
   transform metrics, Artifact spill, three Activation trace order, and mobile
   overflow.
+- `git diff --check` — clean before this status update.
+- Pinned run `34779941760` passed compilation, 4 Node Contract tests, 50
+  workflowd tests, doc tests, and the three public Merge acceptance cases.
+- Pinned run `34779941798` passed the public If/Merge acceptance lane; run
+  `34779941784` passed repository validation; run `34779941770` passed the
+  independent rustfmt check.
 - `git diff --check` — clean before this status update.
 - The historical Ticket 07 full gate is recorded in
   `docs/legacy/session-archive/VERIFICATION.md`; it has not been re-claimed as

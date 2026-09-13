@@ -1,8 +1,0 @@
-test_closed_branches_are_reduced_and_persisted (tests.acceptance.test_if_runtime.IfRuntimeAcceptance.test_closed_branches_are_reduced_and_persisted) ... ok
-test_empty_true_branch_is_reduced_without_padding (tests.acceptance.test_if_runtime.IfRuntimeAcceptance.test_empty_true_branch_is_reduced_without_padding) ... ok
-test_transformed_items_are_routed_and_persisted (tests.acceptance.test_if_runtime.IfRuntimeAcceptance.test_transformed_items_are_routed_and_persisted) ... ok
-
-----------------------------------------------------------------------
-Ran 3 tests in 2.906s
-
-OK
