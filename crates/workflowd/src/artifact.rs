@@ -394,7 +394,7 @@ impl ArtifactService {
             .mutation
             .lock()
             .map_err(|_| ArtifactError::Storage("Artifact reference lock is poisoned".into()))?;
-        let mut connection = self.connect().map_err(ArtifactError::Storage)?;
+        let connection = self.connect().map_err(ArtifactError::Storage)?;
         let artifact_ids = {
             let mut statement = connection
                 .prepare("SELECT artifact_id FROM artifact_references WHERE owner_id=1 AND reference_id=?1")

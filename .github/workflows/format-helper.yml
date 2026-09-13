@@ -1,0 +1,21 @@
+name: Temporary Rust format check
+
+on:
+  push:
+    branches: ["arena/01a09a2a-n8n-rust-v3-0"]
+
+permissions:
+  contents: read
+
+jobs:
+  format:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.85.1
+          components: rustfmt
+      - name: Check Rust formatting
+        run: cargo fmt --all -- --check
