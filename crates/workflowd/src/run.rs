@@ -2875,7 +2875,7 @@ impl MergeSpool {
                 message: error.to_string(),
             }
         })?;
-        line.push(b'\\n');
+        line.push(b'\n');
         if line.len() > generate_engine::MICRO_BATCH_BYTES {
             return Err(merge::MergeError {
                 code: "canopy.merge.record_too_large".into(),
@@ -3024,7 +3024,7 @@ impl Iterator for MergeArtifactIterator {
             return None;
         }
         loop {
-            if let Some(newline) = self.buffer.iter().position(|byte| *byte == b'\\n') {
+            if let Some(newline) = self.buffer.iter().position(|byte| *byte == b'\n') {
                 let line: Vec<u8> = self.buffer.drain(..=newline).collect();
                 let line = &line[..line.len().saturating_sub(1)];
                 return Some(
