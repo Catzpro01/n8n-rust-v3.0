@@ -30,11 +30,13 @@ Read in this order:
 6. the active ticket, currently Ticket 08
 7. relevant ADRs under `docs/adr/`
 
-The previous session completed Tickets 01–07. Ticket 08 contains proposed
-Edit Fields and safe-expression-VM decisions, but those recommendations are
-not approved until the Owner explicitly confirms them. See
-`docs/legacy/session-archive/SESSION_STATE.md` and
-`docs/legacy/session-archive/DECISIONS.md` for the recovered handoff evidence.
+The previous session completed Tickets 01–07. Ticket 08 is now authorized
+within ADR 0057 after explicit Owner approval of its bounded Edit Fields and
+safe-expression-VM decisions. See
+`docs/legacy/session-archive/SESSION_STATE.md`,
+`docs/legacy/session-archive/DECISIONS.md`, and
+`.scratch/eco-100k-first-runnable/issues/08-transform-items-with-edit-fields-and-the-safe-expression-vm.md`
+for the recovered handoff and frozen scope.
 
 ## Builder quick start
 

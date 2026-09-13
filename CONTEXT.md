@@ -88,10 +88,15 @@ identity with chunked XChaCha20-Poly1305, crash-safe staged placement, the
 50,000-item and 64 MiB/32 MiB hard budgets, progressive checkpoints, typed
 outcomes, and lease/quarantine protections.
 
-Ticket 08 is **not approved for production implementation**. Its recommended
-Eco transformation, assignment model, safe expression subset, and Missing/
-time/random semantics remain proposals until the Owner explicitly confirms
-them. Do not infer approval from the recovered code or from silence.
+Ticket 08 was explicitly approved for production implementation in Arena on
+2026-09-13. ADR
+[`0057`](docs/adr/0057-approve-edit-fields-and-safe-expression-vm.md) freezes
+its scope: the Eco transformation, explicit fixed/expression assignments,
+merge/replace modes, immutable-input evaluation, bounded safe expression
+subset, and distinct Missing/null semantics. Ambient time, randomness, arbitrary
+JavaScript, host access, mutation, methods, loops, regex, eval, and imports
+remain outside the approved contract. Any expansion requires a new decision
+record and explicit approval.
 
 ## Wayfinder checkpoint
 

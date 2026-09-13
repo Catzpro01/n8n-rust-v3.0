@@ -1,7 +1,7 @@
 # Project status
 
 **Last updated:** 2026-09-13
-**Stage:** recovered implementation baseline; Ticket 08 approval gate
+**Stage:** recovered implementation baseline; Ticket 08 implementation
 **Current branch:** `arena/01a09a2a-n8n-rust-v3-0`
 **Current PR:** [#1](https://github.com/Catzpro01/n8n-rust-v3.0/pull/1)
 **Recovered source baseline:** Canopy Workbench / `workflow-rust`
@@ -36,12 +36,13 @@ profile.
 ## Retained implementation frontier
 
 Tickets 01–07 in `.scratch/eco-100k-first-runnable/` are recorded as complete
-by the recovered session evidence. The next implementation ticket is:
+by the recovered session evidence. Ticket 08 is now authorized and its scope
+is frozen by `docs/adr/0057-approve-edit-fields-and-safe-expression-vm.md`.
 
 - **Ticket 08:** `08-transform-items-with-edit-fields-and-the-safe-expression-vm.md`
-- **Status:** `owner-decision-round-1`
-- **Gate:** the proposed 08-A through 08-D decisions are not approved. Do not
-  begin production implementation until the Owner explicitly confirms them.
+- **Status:** `approved-for-implementation`
+- **Next action:** write red pure compiler/VM and transformation tests before
+  changing the production execution path.
 
 The earlier Wayfinder selection of “architecture spike first” now means a
 reversible audit/reconciliation of the recovered Rust + connected Preact
@@ -51,10 +52,10 @@ starting a new frontend framework from scratch.
 ## Active work
 
 - **Owner:** none
-- **Ticket:** Ticket 08 is the next frontier but remains unclaimed and blocked
-  on explicit Owner confirmation.
-- **Blockers:** explicit approval of the bounded Edit Fields/expression VM
-  decisions; local Rust toolchain is also unavailable for verification.
+- **Ticket:** Ticket 08 is the current frontier and is authorized for
+  implementation within ADR 0057.
+- **Blockers:** local Rust toolchain is unavailable for verification; the first
+  implementation step is the pure red-test/compiler seam.
 
 ## Last verified in this checkout
 
