@@ -43,8 +43,9 @@ Frozen: preserve an internal Missing value distinct from JSON null. Missing path
 ## Implementation progress — 2026-09-13
 
 - [x] Owner approval recorded in this ticket and ADR 0057.
-- [x] `edit-fields.v1alpha1` declares a pure deterministic per-item contract
-      with bounded resources and no capabilities.
+- [x] `edit-fields.v1alpha2` declares the active pure deterministic per-item
+      contract with bounded resources, no capabilities, and its explicit
+      integer-label conversion profile.
 - [x] The compiler/catalog/release paths recognize the Edit Fields contract.
 - [x] The pure Rust safe-expression compiler/evaluator and immutable-input
       Edit Fields assignment module have focused unit tests.
@@ -70,13 +71,10 @@ strings. The safe VM correctly rejects the mixed operation with
 `canopy.expression.type`, so this is a frozen-contract inconsistency rather
 than a runtime coercion bug.
 
-Implementation is paused at this boundary pending Owner choice:
-
-1. retain 08-C's strict typing and revise the Eco label expression/fixture to
-   provide a string operand (no numeric-to-string coercion);
-2. approve a separately recorded deterministic numeric-to-string conversion
-   for the label; or
-3. change Generate Items' public `index` type from number to string, which
-   would require revisiting Ticket 07's existing item and digest tests.
-
-No coercion or Generate Items schema change has been made silently.
+The Owner selected option 2 in Arena on 2026-09-13. ADR 0058 records the
+bounded v1alpha2 revision: only `string + JSON integer` converts the right
+integer to canonical base-10 text; decimals, reverse-order conversion, and
+other JavaScript coercions remain rejected. Generate Items' numeric `index`
+shape is unchanged. The active catalog/release path now uses
+`canopy.native/edit-fields/v1alpha2`; the v1alpha1 contract bytes remain
+immutable and packaged as historical compatibility evidence.

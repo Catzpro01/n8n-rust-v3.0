@@ -279,7 +279,7 @@ impl DraftService {
         let contracts = [
             include_str!("../../../contracts/manual-trigger.v1alpha1.json"),
             include_str!("../../../contracts/generate-items.v1alpha1.json"),
-            include_str!("../../../contracts/edit-fields.v1alpha1.json"),
+            include_str!("../../../contracts/edit-fields.v1alpha2.json"),
         ]
         .into_iter()
         .map(|source| {

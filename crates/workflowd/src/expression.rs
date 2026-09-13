@@ -1076,8 +1076,38 @@ fn numeric_or_string_add(
 ) -> Result<Value, ExpressionError> {
     match (left, right) {
         (Value::String(left), Value::String(right)) => Ok(Value::String(left + &right)),
+        (Value::String(left), Value::Number(right)) => {
+            let right = canonical_integer_string(&right).ok_or_else(|| {
+                ExpressionError::type_error(
+                    "string concatenation only converts JSON integers",
+                    offset,
+                )
+            })?;
+            Ok(Value::String(left + &right))
+        }
+        (Value::String(_), right) => Err(ExpressionError::type_error(
+            format!(
+                "string concatenation requires a string or JSON integer, got {}",
+                value_type(&right)
+            ),
+            offset,
+        )),
+        (left, Value::String(_)) => Err(ExpressionError::type_error(
+            format!(
+                "numeric-to-string conversion is only allowed on the right operand, got {}",
+                value_type(&left)
+            ),
+            offset,
+        )),
         (left, right) => numeric_operation(left, right, NumericOperation::Add, offset),
     }
+}
+
+fn canonical_integer_string(number: &Number) -> Option<String> {
+    number
+        .as_i64()
+        .map(|value| value.to_string())
+        .or_else(|| number.as_u64().map(|value| value.to_string()))
 }
 
 #[derive(Clone, Copy)]
@@ -1242,7 +1272,7 @@ mod tests {
 
     #[test]
     fn evaluates_the_frozen_eco_expression_set() {
-        let input = json!({"value": 7, "nested": {"name": "Ada"}});
+        let input = json!({"index": 3, "value": 7, "nested": {"name": "Ada"}});
         assert_eq!(
             evaluate(
                 "$json.value % 2 === 0 ? \"even\" : \"odd\"",
@@ -1252,7 +1282,8 @@ mod tests {
             json!("odd")
         );
         assert_eq!(evaluate("$json.value * 2", input.clone(), 0), json!(14));
-        assert_eq!(evaluate("\"eco-\" + $itemIndex", input, 3), json!("eco-3"));
+        assert_eq!(evaluate("\"eco-\" + $json.index", input, 3), json!("eco-3"));
+        assert_eq!(evaluate("\"eco-\" + $itemIndex", json!({}), 3), json!("eco-3"));
     }
 
     #[test]
@@ -1297,5 +1328,15 @@ mod tests {
             .evaluate(&json!({"value": 1}), 0)
             .unwrap_err();
         assert_eq!(type_error.code, "canopy.expression.type");
+        let decimal_conversion = compile("\"eco-\" + 1.5")
+            .unwrap()
+            .evaluate(&json!({}), 0)
+            .unwrap_err();
+        assert_eq!(decimal_conversion.code, "canopy.expression.type");
+        let reversed_conversion = compile("$itemIndex + \"-eco\"")
+            .unwrap()
+            .evaluate(&json!({}), 3)
+            .unwrap_err();
+        assert_eq!(reversed_conversion.code, "canopy.expression.type");
     }
 }

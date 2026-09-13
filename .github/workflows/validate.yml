@@ -6,7 +6,7 @@ on:
   pull_request:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   validate:
@@ -38,6 +38,24 @@ jobs:
 
       - name: Check Rust formatting
         run: cargo fmt --all -- --check
+
+      - name: Apply Rust formatting
+        if: always()
+        run: cargo fmt --all
+
+      - name: Commit Rust formatting
+        if: always() && github.event_name == 'push'
+        env:
+          HEAD_REF: ${{ github.ref_name }}
+        run: |
+          if git diff --quiet -- '*.rs'; then
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -- '*.rs'
+          git commit -m "style: format Rust sources"
+          git push origin "HEAD:${HEAD_REF}"
 
       - name: Run Rust tests
         run: cargo test --workspace --locked

@@ -44,11 +44,22 @@ class ReleaseBundleAcceptanceTest(unittest.TestCase):
         self.assertIn(
             "usr/share/workflowd/contracts/edit-fields.v1alpha1.json", relative
         )
+        self.assertIn(
+            "usr/share/workflowd/contracts/edit-fields.v1alpha2.json", relative
+        )
         edit_fields_contract = json.loads(
             (BUNDLE / "usr/share/workflowd/contracts/edit-fields.v1alpha1.json").read_text()
         )
         self.assertEqual(edit_fields_contract["identity"]["name"], "edit-fields")
         self.assertEqual(edit_fields_contract["effects"]["class"], "pure")
+        edit_fields_v2 = json.loads(
+            (BUNDLE / "usr/share/workflowd/contracts/edit-fields.v1alpha2.json").read_text()
+        )
+        self.assertEqual(edit_fields_v2["identity"]["api_version"], "v1alpha2")
+        self.assertEqual(
+            edit_fields_v2["extensions"]["canopy.workbench/expression-profile"]["profile"],
+            "canopy.edit-fields/v1alpha2",
+        )
         generate_contract = json.loads(
             (BUNDLE / "usr/share/workflowd/contracts/generate-items.v1alpha1.json").read_text()
         )

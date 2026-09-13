@@ -49,8 +49,9 @@ The first compiler/VM accepts JSON-compatible literals, `$json`,
 `$itemIndex`, field and array-index access, parentheses, unary `!` and `-`,
 checked arithmetic `+ - * / %`, strict equality `=== !==`, typed comparisons
 `< <= >= >`, boolean/coalescing operators `&& || ??`, and the ternary operator.
-String concatenation is allowed only for two strings. Fixed assignments may hold
-nested arrays and objects.
+String concatenation is allowed only for two strings in v1alpha1. The
+narrow, right-operand JSON-integer conversion approved for v1alpha2 is recorded
+in ADR 0058. Fixed assignments may hold nested arrays and objects.
 
 Arbitrary JavaScript, mutation, prototypes, constructors, method calls, loops,
 regex, `eval`, imports, and host access are rejected before publication and

@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 use std::fmt;
 
-pub const EDIT_FIELDS_ABI: &str = "canopy.edit-fields/v1alpha1";
+pub const EDIT_FIELDS_ABI: &str = "canopy.edit-fields/v1alpha2";
 const MAX_ASSIGNMENTS: usize = 256;
 const MAX_PATH_SEGMENTS: usize = 32;
 
@@ -295,7 +295,7 @@ mod tests {
                 {"path": ["eco"], "kind": "fixed", "value": true},
                 {"path": ["parity"], "kind": "expression", "source": "$json.value % 2 === 0 ? \"even\" : \"odd\""},
                 {"path": ["doubled"], "kind": "expression", "source": "$json.value * 2"},
-                {"path": ["label"], "kind": "expression", "source": "\"eco-\" + $itemIndex"}
+                {"path": ["label"], "kind": "expression", "source": "\"eco-\" + $json.index"}
             ]
         })
     }
@@ -303,11 +303,12 @@ mod tests {
     #[test]
     fn applies_frozen_eco_assignments_against_immutable_input() {
         let compiled = compile_configuration(&configuration()).unwrap();
-        let input = json!({"value": 7, "data": {"keep": true}});
+        let input = json!({"index": 12, "value": 7, "data": {"keep": true}});
         let output = compiled.apply(&input, 12).unwrap();
         assert_eq!(
             output.item,
             json!({
+                "index": 12,
                 "value": 7,
                 "data": {"keep": true},
                 "eco": true,
@@ -316,7 +317,10 @@ mod tests {
                 "label": "eco-12"
             })
         );
-        assert_eq!(input, json!({"value": 7, "data": {"keep": true}}));
+        assert_eq!(
+            input,
+            json!({"index": 12, "value": 7, "data": {"keep": true}})
+        );
     }
 
     #[test]

@@ -36,14 +36,14 @@ profile.
 ## Retained implementation frontier
 
 Tickets 01–07 in `.scratch/eco-100k-first-runnable/` are recorded as complete
-by the recovered session evidence. Ticket 08 is now authorized and its scope
-is frozen by `docs/adr/0057-approve-edit-fields-and-safe-expression-vm.md`.
+by the recovered session evidence. Ticket 08 is now authorized by ADR 0057;
+ADR 0058 records the follow-up v1alpha2 contract revision for its Eco label.
 
 - **Ticket 08:** `08-transform-items-with-edit-fields-and-the-safe-expression-vm.md`
 - **Status:** `approved-for-implementation`
-- **Next action:** resolve the frozen Eco label's numeric-index/string-
-  concatenation inconsistency, then wire transformed Envelopes into the
-  durable Run scheduler.
+- **Next action:** verify the v1alpha2 bounded integer-label revision in the
+  pinned CI workflow, then wire transformed Envelopes into the durable Run
+  scheduler.
 
 The earlier Wayfinder selection of “architecture spike first” now means a
 reversible audit/reconciliation of the recovered Rust + connected Preact
@@ -54,10 +54,9 @@ starting a new frontend framework from scratch.
 
 - **Owner:** none
 - **Ticket:** Ticket 08 is the current frontier and is authorized for
-  implementation within ADR 0057.
-- **Blockers:** the pinned CI environment compiles the pure seam, but exposes
-  a frozen 08-A/08-C type conflict for the Eco label; durable Run integration
-  and public-seam tests remain after that decision.
+  implementation within ADRs 0057 and 0058.
+- **Blockers:** the v1alpha2 revision is implemented but needs a fresh pinned
+  CI run; durable Run integration and public-seam tests remain afterward.
 
 ## Last verified in this checkout
 
@@ -69,7 +68,8 @@ starting a new frontend framework from scratch.
 - JSON/Python metadata checks passed for the changed contract/release paths.
 - Pinned GitHub workflow run `34757520909` passed editor build and Rust
   formatting/compilation, then failed two focused Eco label tests because of
-  the recorded mixed string/number operation.
+  the now-recorded mixed string/number conflict; ADR 0058 and the v1alpha2
+  revision are the follow-up pending fresh verification.
 - `git diff --check` — clean before the current Ticket 08 progress update.
 - The historical Ticket 07 full gate is recorded in
   `docs/legacy/session-archive/VERIFICATION.md`; it has not been re-claimed as

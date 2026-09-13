@@ -31,8 +31,8 @@ Read in this order:
 7. relevant ADRs under `docs/adr/`
 
 The previous session completed Tickets 01–07. Ticket 08 is now authorized
-within ADR 0057 after explicit Owner approval of its bounded Edit Fields and
-safe-expression-VM decisions. See
+within ADRs 0057 and 0058 after explicit Owner approval of its bounded Edit
+Fields, safe-expression-VM, and v1alpha2 integer-label revision decisions. See
 `docs/legacy/session-archive/SESSION_STATE.md`,
 `docs/legacy/session-archive/DECISIONS.md`, and
 `.scratch/eco-100k-first-runnable/issues/08-transform-items-with-edit-fields-and-the-safe-expression-vm.md`

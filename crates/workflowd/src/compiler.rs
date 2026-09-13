@@ -166,7 +166,7 @@ fn native_contracts() -> Result<Vec<Value>, String> {
         ),
         (
             "Edit Fields",
-            include_str!("../../../contracts/edit-fields.v1alpha1.json"),
+            include_str!("../../../contracts/edit-fields.v1alpha2.json"),
         ),
     ]
     .into_iter()

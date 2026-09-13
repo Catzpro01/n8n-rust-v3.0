@@ -104,7 +104,10 @@ The GitHub map is [#2](https://github.com/Catzpro01/n8n-rust-v3.0/issues/2), wit
 child decision issues #3–#7. The recovered local implementation map is
 `.scratch/eco-100k-first-runnable/map.md` and is more detailed for execution.
 The next safe action is to inspect and reconcile the recovered baseline with
-those decisions, then continue from Ticket 08's explicit approval gate.
+those decisions. ADR 0058 records the Owner-approved v1alpha2 bounded
+integer-label conversion that resolves the Eco expression typing edge without
+changing Generate Items' numeric index or adding general JavaScript coercion.
+
 
 ## Security boundary
 
