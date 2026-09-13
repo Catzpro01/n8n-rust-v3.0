@@ -1,18 +1,7 @@
-test_closed_branches_are_reduced_and_persisted (tests.acceptance.test_if_runtime.IfRuntimeAcceptance.test_closed_branches_are_reduced_and_persisted) ... FAIL
+test_closed_branches_are_reduced_and_persisted (tests.acceptance.test_if_runtime.IfRuntimeAcceptance.test_closed_branches_are_reduced_and_persisted) ... ok
 test_transformed_items_are_routed_and_persisted (tests.acceptance.test_if_runtime.IfRuntimeAcceptance.test_transformed_items_are_routed_and_persisted) ... ok
 
-======================================================================
-FAIL: test_closed_branches_are_reduced_and_persisted (tests.acceptance.test_if_runtime.IfRuntimeAcceptance.test_closed_branches_are_reduced_and_persisted)
 ----------------------------------------------------------------------
-Traceback (most recent call last):
-  File "/home/runner/work/n8n-rust-v3.0/n8n-rust-v3.0/tests/acceptance/test_if_runtime.py", line 328, in test_closed_branches_are_reduced_and_persisted
-    publication = self.publish_workflow(include_merge=True)
-                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/home/runner/work/n8n-rust-v3.0/n8n-rust-v3.0/tests/acceptance/test_if_runtime.py", line 217, in publish_workflow
-    self.assertEqual(response[0], 200, response[2])
-AssertionError: 422 != 200 : {'type': 'urn:canopy:draft-problem', 'title': 'Draft request was rejected', 'status': 422, 'code': 'invalid_draft_command'}
+Ran 2 tests in 1.929s
 
-----------------------------------------------------------------------
-Ran 2 tests in 1.129s
-
-FAILED (failures=1)
+OK
