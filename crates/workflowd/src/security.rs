@@ -117,7 +117,7 @@ pub struct SecurityService {
 impl SecurityService {
     #[cfg(test)]
     pub(crate) fn initialize_for_test(state: &Path) -> Self {
-        Self {
+        let service = Self {
             database: state.join("workflow.sqlite3"),
             master_key: Some(Zeroizing::new([0x5a; 32])),
             origin: "http://127.0.0.1:8787".into(),
@@ -127,7 +127,10 @@ impl SecurityService {
             argon_iterations: 1,
             recovery: AtomicU8::new(1),
             login_lock: Mutex::new(()),
-        }
+        };
+        let connection = service.connect().expect("test security database");
+        create_schema(&connection).expect("test security schema");
+        service
     }
 
     pub fn initialize(state: &Path, config: &ServeConfig) -> Result<Self, AppError> {
@@ -147,45 +150,7 @@ impl SecurityService {
         let connection = service
             .connect()
             .map_err(|e| AppError::Security(format!("security schema: {e:?}")))?;
-        connection
-            .execute_batch(
-                r#"
-                CREATE TABLE IF NOT EXISTS owners (
-                    id INTEGER PRIMARY KEY CHECK(id = 1),
-                    email TEXT NOT NULL UNIQUE,
-                    password_phc TEXT NOT NULL,
-                    failed_logins INTEGER NOT NULL DEFAULT 0,
-                    locked_until INTEGER NOT NULL DEFAULT 0,
-                    created_at INTEGER NOT NULL
-                ) STRICT;
-                CREATE TABLE IF NOT EXISTS owner_sessions (
-                    token_hash BLOB PRIMARY KEY,
-                    csrf_hash BLOB NOT NULL,
-                    expires_at INTEGER NOT NULL,
-                    created_at INTEGER NOT NULL,
-                    owner_id INTEGER NOT NULL REFERENCES owners(id)
-                ) STRICT;
-                CREATE TABLE IF NOT EXISTS vault_metadata (
-                    id INTEGER PRIMARY KEY CHECK(id = 1),
-                    key_fingerprint BLOB NOT NULL,
-                    nonce BLOB NOT NULL,
-                    ciphertext BLOB NOT NULL
-                ) STRICT;
-                CREATE TABLE IF NOT EXISTS recovery_status (
-                    id INTEGER PRIMARY KEY CHECK(id = 1),
-                    kit_checksum TEXT NOT NULL,
-                    acknowledged_at INTEGER
-                ) STRICT;
-                CREATE TABLE IF NOT EXISTS owner_audit (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    occurred_at INTEGER NOT NULL,
-                    actor_id TEXT NOT NULL,
-                    action TEXT NOT NULL,
-                    outcome TEXT NOT NULL
-                ) STRICT;
-                "#,
-            )
-            .map_err(internal)?;
+        create_schema(&connection).map_err(internal)?;
         let owner_count: i64 = connection
             .query_row("SELECT count(*) FROM owners", [], |r| r.get(0))
             .map_err(internal)?;
@@ -683,6 +648,45 @@ fn validate_vault(c: &Connection, key: &[u8; 32]) -> Result<(), SecurityError> {
         return Err(SecurityError::Unauthorized);
     }
     Ok(())
+}
+fn create_schema(connection: &Connection) -> Result<(), rusqlite::Error> {
+    connection.execute_batch(
+        r#"
+        CREATE TABLE IF NOT EXISTS owners (
+            id INTEGER PRIMARY KEY CHECK(id = 1),
+            email TEXT NOT NULL UNIQUE,
+            password_phc TEXT NOT NULL,
+            failed_logins INTEGER NOT NULL DEFAULT 0,
+            locked_until INTEGER NOT NULL DEFAULT 0,
+            created_at INTEGER NOT NULL
+        ) STRICT;
+        CREATE TABLE IF NOT EXISTS owner_sessions (
+            token_hash BLOB PRIMARY KEY,
+            csrf_hash BLOB NOT NULL,
+            expires_at INTEGER NOT NULL,
+            created_at INTEGER NOT NULL,
+            owner_id INTEGER NOT NULL REFERENCES owners(id)
+        ) STRICT;
+        CREATE TABLE IF NOT EXISTS vault_metadata (
+            id INTEGER PRIMARY KEY CHECK(id = 1),
+            key_fingerprint BLOB NOT NULL,
+            nonce BLOB NOT NULL,
+            ciphertext BLOB NOT NULL
+        ) STRICT;
+        CREATE TABLE IF NOT EXISTS recovery_status (
+            id INTEGER PRIMARY KEY CHECK(id = 1),
+            kit_checksum TEXT NOT NULL,
+            acknowledged_at INTEGER
+        ) STRICT;
+        CREATE TABLE IF NOT EXISTS owner_audit (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            occurred_at INTEGER NOT NULL,
+            actor_id TEXT NOT NULL,
+            action TEXT NOT NULL,
+            outcome TEXT NOT NULL
+        ) STRICT;
+        "#,
+    )
 }
 fn make_recovery_kit(
     master: &[u8; 32],
