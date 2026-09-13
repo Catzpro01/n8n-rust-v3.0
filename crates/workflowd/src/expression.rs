@@ -1283,7 +1283,10 @@ mod tests {
         );
         assert_eq!(evaluate("$json.value * 2", input.clone(), 0), json!(14));
         assert_eq!(evaluate("\"eco-\" + $json.index", input, 3), json!("eco-3"));
-        assert_eq!(evaluate("\"eco-\" + $itemIndex", json!({}), 3), json!("eco-3"));
+        assert_eq!(
+            evaluate("\"eco-\" + $itemIndex", json!({}), 3),
+            json!("eco-3")
+        );
     }
 
     #[test]
