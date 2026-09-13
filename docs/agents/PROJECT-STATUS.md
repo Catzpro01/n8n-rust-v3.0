@@ -1,59 +1,70 @@
 # Project status
 
 **Last updated:** 2026-09-13
-**Stage:** foundation and planning; Rust application scaffolding has not started
+**Stage:** recovered implementation baseline; Ticket 08 approval gate
 **Current branch:** `arena/01a09a2a-n8n-rust-v3-0`
 **Current PR:** [#1](https://github.com/Catzpro01/n8n-rust-v3.0/pull/1)
+**Recovered source baseline:** Canopy Workbench / `workflow-rust`
 
 ## Destination
 
-A testable Rust workflow-automation product with a browser node editor and a
-small end-to-end execution path. The first milestone is not feature parity
-with n8n; it is one demonstrable vertical slice.
+Continue the original Rust workflow-automation product rather than restarting
+from the earlier empty scaffold. The target is an independently authored,
+self-hosted workflow platform with a browser editor, durable revisions,
+reliable execution, public compatibility seams, and a small-resource default
+profile.
 
 ## Current truth
 
-- Project-scoped skills are installed under `.agents/skills/`.
-- Arena routing is defined in `.agents/skills/arena/` and required by
-  `AGENTS.md`.
-- `cache.kv` contains the local incremental discovery index. It is not project
-  memory and must not be treated as a source of truth.
-- The current repository contains tooling and planning artifacts, not the Rust
-  workflow engine yet.
-- The current sandbox does not provide `cargo`; GitHub Actions or a Rust-enabled
-  development environment will be the first Rust build verifier.
+- The four uploaded split parts are present in the branch as
+  `workspace-split.zip.001.pdf` through `.004.pdf`.
+- Concatenating the parts produced a valid outer ZIP; its inner workspace ZIP
+  also passed `unzip -t`.
+- The recovered `workflow-rust` implementation has been merged into the
+  repository root, including Rust crates, Preact editor, contracts, ADRs,
+  operations/security/spec docs, `.scratch` tickets, acceptance tests, and
+  release packaging.
+- Historical session records are preserved under
+  `docs/legacy/session-archive/`. They are evidence, not freshly rerun checks.
+- Historical `.ssh` material and other recovery-only secrets were intentionally
+  not imported.
+- The local sandbox has Node/npm/Python but no `cargo`; Rust and browser gates
+  have not been rerun in this checkout.
+- The current context preserves both the earlier Arena decisions and the
+  recovered project's canonical glossary and ADR decisions.
 
-## Frontier
+## Retained implementation frontier
 
-1. Run a reversible architecture spike, as selected during the Wayfinder
-   conversation, before committing to a vertical product slice.
-2. Use the spike to resolve the product boundary and clean-room compatibility
-   target in [#3](https://github.com/Catzpro01/n8n-rust-v3.0/issues/3), the first
-   decision frontier in the [Wayfinder map #2](https://github.com/Catzpro01/n8n-rust-v3.0/issues/2).
-3. Use the resolved boundary to evaluate the browser/UI architecture (#4) and
-   workflow domain/execution semantics (#5).
-4. Resolve persistence/security (#6) and GitHub validation/delivery (#7) only
-   after their stated blockers are settled.
-5. Turn the settled decisions into an ADR-backed spec and then vertical
-   implementation tickets.
-6. Scaffold the smallest selected Rust slice only after the relevant decision
-   records are green.
+Tickets 01–07 in `.scratch/eco-100k-first-runnable/` are recorded as complete
+by the recovered session evidence. The next implementation ticket is:
+
+- **Ticket 08:** `08-transform-items-with-edit-fields-and-the-safe-expression-vm.md`
+- **Status:** `owner-decision-round-1`
+- **Gate:** the proposed 08-A through 08-D decisions are not approved. Do not
+  begin production implementation until the Owner explicitly confirms them.
+
+The earlier Wayfinder selection of “architecture spike first” now means a
+reversible audit/reconciliation of the recovered Rust + connected Preact
+baseline. It does not authorize throwing away the existing implementation or
+starting a new frontend framework from scratch.
 
 ## Active work
 
 - **Owner:** none
-- **Ticket:** [#3](https://github.com/Catzpro01/n8n-rust-v3.0/issues/3) is the first
-  frontier; the next action is a reversible architecture spike, not product
-  implementation.
-- **Blockers:** product boundary and clean-room acceptance criteria; framework,
-  domain, persistence, and delivery decisions remain downstream.
+- **Ticket:** Ticket 08 is the next frontier but remains unclaimed and blocked
+  on explicit Owner confirmation.
+- **Blockers:** explicit approval of the bounded Edit Fields/expression VM
+  decisions; local Rust toolchain is also unavailable for verification.
 
-## Last verified
+## Last verified in this checkout
 
-- `python3 -m unittest discover -s tests -v` — 3 tests passed.
-- `python3 tools/codebase_index.py index` — 15 files indexed.
-- `git diff --check` — clean before the Wayfinder issue update.
-- Latest pushed commit: `283360b` (`docs: configure GitHub issue workflow`).
+- Combined four-part archive: `unzip -t` passed for the outer and inner ZIPs.
+- `python3 tools/codebase_index.py index` — 218 documents indexed.
+- `python3 -m unittest discover -s tests -v` — 3 indexer tests passed.
+- `git diff --check` — clean after the recovery merge.
+- The historical Ticket 07 full gate is recorded in
+  `docs/legacy/session-archive/VERIFICATION.md`; it has not been re-claimed as
+  a fresh local result.
 
 ## Resume protocol
 
@@ -63,9 +74,10 @@ A new agent should read, in order:
 2. `.agents/skills/arena/SKILL.md`
 3. this file
 4. `CONTEXT.md`
-5. the active ticket or PR
-6. only then the relevant source paths from `cache.kv` or Codebase Memory
+5. `docs/legal/clean-room-policy.md`
+6. `.scratch/eco-100k-first-runnable/map.md`
+7. the active ticket and relevant ADRs
+8. only then the relevant source paths from `cache.kv` or Codebase Memory
 
-Update this file only with durable state: decisions, ownership, blockers,
-last-green commit, and the next verifiable step. Do not paste conversation
-transcripts here.
+Do not paste recovery secrets or the entire archive into a handoff. Update this
+file with durable state, decisions, ownership, blockers, and fresh evidence.

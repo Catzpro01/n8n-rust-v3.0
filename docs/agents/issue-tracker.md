@@ -1,9 +1,12 @@
-# Issue tracker: GitHub
+# Issue tracker: GitHub plus local implementation specs
 
-Issues and specs for this repository live as GitHub Issues. Use `gh` for all
-issue and PR operations.
+GitHub Issues through `gh` are the shared intake, ownership, triage, and status
+surface for this repository. The recovered workflow implementation retains its
+local Markdown tickets under `.scratch/` because they contain detailed
+acceptance criteria, dependency order, test evidence, and durable design notes.
+Use both layers; do not replace one with the other.
 
-## Conventions
+## GitHub conventions
 
 - Create: `gh issue create --title "..." --body "..."`.
 - Read: `gh issue view <number> --comments` and inspect labels.
@@ -14,26 +17,40 @@ issue and PR operations.
 - Infer the repository from the current clone; never hard-code a different
   remote.
 
-## Pull requests as a triage surface
+Pull requests are not an intake surface for `/triage`. Regular PR review still
+uses `gh pr view`, `gh pr diff`, and the Arena review loop.
 
-**No.** Pull requests are not treated as an intake surface for `/triage`.
-Regular PR review still uses `gh pr view`, `gh pr diff`, and the Arena review
-loop.
+## Local implementation tickets
+
+- One effort lives in `.scratch/<effort>/`.
+- Its Wayfinder map is `.scratch/<effort>/map.md`.
+- Child or implementation tickets are numbered files under
+  `.scratch/<effort>/issues/` and preserve dependency order.
+- `Type:`, `Status:`, and `Blocked by:` lines carry workflow metadata.
+- A ticket is on the local frontier when it is open, unclaimed, and every
+  listed blocker is resolved.
+- Claim by setting `Status: claimed` before editing the ticket.
+- Resolve by appending `## Answer`, setting `Status: resolved`, and adding a
+  named context pointer to the map.
+
+## Recovered project map
+
+The retained implementation frontier is
+`.scratch/eco-100k-first-runnable/map.md`. Tickets 01–07 are recorded as
+complete in the recovered evidence; Ticket 08 is an owner-decision gate and
+must not be implemented until its recommendations are explicitly approved.
+The previous ADRs and ticket evidence remain authoritative unless a new ADR
+explicitly supersedes them.
 
 ## Wayfinder operations
 
-- **Map:** create one issue labelled `wayfinder:map` containing the destination,
-  notes, decisions-so-far, and fog of war.
-- **Child ticket:** create one issue per decision with a `wayfinder:<type>` label
-  (`research`, `prototype`, `grilling`, or `task`), and link it to the map as a
-  sub-issue where GitHub supports it.
-- **Blocking:** prefer GitHub's native issue dependencies. If unavailable, put
-  `Blocked by: #<number>` at the top of the issue body.
-- **Claim:** assign the ticket to the current agent before editing it.
-- **Resolve:** add the resolution as a comment, close the issue, then append a
-  short linked decision pointer to the map.
-
-## When a skill says "publish to the issue tracker"
-
-Create or update a GitHub Issue. Keep acceptance criteria and blocking edges in
-the issue; keep implementation detail in the code and tests.
+- **Map:** create one GitHub issue labelled `wayfinder:map` and keep the
+  detailed local map synchronized when issue permissions permit.
+- **Child ticket:** create one GitHub issue per major decision with a
+  `wayfinder:<type>` label, while retaining the detailed local ticket.
+- **Blocking:** prefer GitHub native dependencies; otherwise put the issue
+  reference and the local `Blocked by:` edge in both records.
+- **Claim:** assign the GitHub issue and set the local ticket to `claimed` before
+  editing it.
+- **Resolve:** record the resolution in the local ticket and ADR first, then
+  comment/close the GitHub issue and update the map.

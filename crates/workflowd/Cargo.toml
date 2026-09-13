@@ -1,0 +1,35 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+[package]
+name = "workflowd"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+build = "build.rs"
+[dependencies]
+canopy-node-contract = { path = "../node-contract" }
+argon2.workspace = true
+axum.workspace = true
+axum-server.workspace = true
+base64.workspace = true
+blake3.workspace = true
+chacha20poly1305.workspace = true
+ed25519-dalek.workspace = true
+futures-util.workspace = true
+rand_core.workspace = true
+rusqlite.workspace = true
+rustls.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+serde_jcs.workspace = true
+sha2.workspace = true
+subtle.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+tokio-stream.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+zeroize.workspace = true
+[build-dependencies]
+sha2.workspace = true

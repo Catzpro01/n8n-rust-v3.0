@@ -1,6 +1,19 @@
-# Python test/runtime artifacts
+# Rust/build outputs
+/target/
+/editor/node_modules/
+/editor/dist/
+/out/
+*.sqlite3
+*.sqlite3-shm
+*.sqlite3-wal
+
+# Node/Python runtime artifacts
 __pycache__/
 *.py[cod]
 
 # Atomic cache writes should never be committed if interrupted
 cache.kv.tmp
+
+# Reconstructed archive artifact; the four uploaded split parts remain the
+# provenance source, but the combined archive must not enter Git.
+/workspace-split.zip

@@ -1,63 +1,84 @@
-# n8n-rust-v3.0
+# n8n-rust-v3.0 / Canopy Workbench
 
-This repository includes a small, dependency-free codebase indexer for fast local navigation. It uses an incremental `cache.kv` file in the repository root, similar in spirit to the local index that powers editor search tools such as Cursor.
+Canopy Workbench is the recovered, independently implemented Rust workflow
+automation baseline for this project. It is intended to provide familiar
+workflow concepts without copying n8n source, Enterprise files, UI assets,
+icons, product copy, or distinctive trade dress.
 
-## Fast codebase indexing
+The recovered production slice contains a Rust execution daemon with embedded
+TypeScript/Preact editor assets, bundled SQLite startup, versioned health,
+release, and resource APIs, direct HTTP/HTTPS support, and a hardened native
+systemd package. It can author and sign an immutable Manual Trigger revision,
+admit its exact pinned plan durably, execute a deterministic Activation, expose
+reconnectable progress, cancel cooperatively, and verify checkpointed Causal
+Trace evidence. The dependency-ordered continuation tickets are under
+`.scratch/eco-100k-first-runnable/`.
 
-The indexer:
+## Continue the recovered project
 
-- scans source and documentation files while skipping `.git`, `.agents`, dependencies, and build output;
-- reuses unchanged files using size and modification time metadata;
-- tokenizes natural-language words and common identifier styles such as `snake_case` and `CamelCase`;
-- extracts lightweight symbols (`fn`, `class`, `function`, `struct`, `def`, and similar definitions);
-- ranks search results using an inverted index with TF-IDF-style scoring plus path, prefix, and symbol boosts;
-- stores file metadata and the inverted index in `cache.kv` without storing source contents, so search does not need to rebuild postings on every invocation.
+The previous workspace was split into four uploaded archive parts and restored
+from the branch. The source implementation is now at the repository root;
+there is no need to restart from an empty scaffold.
 
-### Usage
+Read in this order:
+
+1. `AGENTS.md`
+2. `CONTEXT.md`
+3. `docs/legal/clean-room-policy.md`
+4. `docs/agents/PROJECT-STATUS.md`
+5. `.scratch/eco-100k-first-runnable/map.md`
+6. the active ticket, currently Ticket 08
+7. relevant ADRs under `docs/adr/`
+
+The previous session completed Tickets 01–07. Ticket 08 contains proposed
+Edit Fields and safe-expression-VM decisions, but those recommendations are
+not approved until the Owner explicitly confirms them. See
+`docs/legacy/session-archive/SESSION_STATE.md` and
+`docs/legacy/session-archive/DECISIONS.md` for the recovered handoff evidence.
+
+## Builder quick start
+
+The build is pinned to Rust 1.85.1 and Node.js 22.19.0.
 
 ```bash
-# Build or incrementally refresh the index
-python3 tools/codebase_index.py index
-
-# Search by concept, filename, or symbol prefix
-python3 tools/codebase_index.py search "workflow execution"
-python3 tools/codebase_index.py search run_workflow --limit 20
-
-# Inspect the cache
-python3 tools/codebase_index.py stats
-
-# Force a full rebuild
-python3 tools/codebase_index.py index --force
+make editor
+make test
+./scripts/build-release.sh
+python3 -m unittest tests/acceptance/test_release_bundle.py
 ```
 
-The cache is updated atomically, so an interrupted refresh does not leave a partially written index. Run `search --no-index` when a read-only lookup must use exactly the current cache.
+For Owner bootstrap and recovery-key handling, see
+[`docs/operations/owner-bootstrap.md`](docs/operations/owner-bootstrap.md).
+The public Run, SSE, cancellation, checkpoint, queue, and Causal Trace
+contract is documented in [`docs/run-durability.md`](docs/run-durability.md).
+For native installation, resource limits, HTTPS configuration, and
+state-preserving uninstall, see
+[`docs/operations/install-systemd.md`](docs/operations/install-systemd.md).
 
-### Arena workflow
+## Local codebase discovery
 
-The project-level skill at `.agents/skills/arena/SKILL.md` combines the two
-installed skill families without loading all of their instructions on every
-turn:
-
-- `codebase-memory-mcp` for bounded discovery and impact tracing;
-- the smallest relevant Matt Pocock skill for design, TDD, diagnosis, or
-  review;
-- two lean Superpowers guardrails: `systematic-debugging` and
-  `verification-before-completion`.
-
-For a compact task context packet:
+This repository also retains a small dependency-free incremental indexer for
+fast navigation. It stores metadata and postings in `cache.kv`, never source
+contents.
 
 ```bash
+python3 tools/codebase_index.py index
+python3 tools/codebase_index.py search "workflow execution"
+python3 tools/codebase_index.py stats
 python3 tools/arena_context.py "<what you are changing>"
 ```
 
-`AGENTS.md` points agents to this workflow at the start of every task. The
-local index is only a discovery accelerator; checked-out source remains the
-source of truth.
+The index is only a discovery accelerator. Checked-out source, tests, ADRs,
+issues, and tickets remain authoritative.
 
-### Tests
+## Tests
 
 ```bash
 python3 -m unittest discover -s tests -v
+make check
+make test
 ```
 
-The index is intentionally lexical and local: it does not require an embedding model, API key, database, or background service. That keeps first-time setup reliable and makes incremental refreshes fast. A semantic/vector layer can be added later without changing the `cache.kv` file contract.
+The current sandbox may not have the pinned Rust toolchain or browser runtime.
+When a command cannot run locally, report that limitation and use the approved
+GitHub/Rust-enabled verification environment rather than lowering the gate.

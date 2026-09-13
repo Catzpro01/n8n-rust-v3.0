@@ -1,0 +1,262 @@
+{
+  "schema": 1,
+  "pack": "arena-design-skills",
+  "installed_at": "2026-09-11",
+  "mode": "workspace-instruction-pack",
+  "upstream_code_installed": false,
+  "auto_activation": {
+    "enabled": true,
+    "router": "route.py",
+    "policy": "select-minimal-matching-design-skills",
+    "explicit_opt_out_supported": true
+  },
+  "skills": [
+    {
+      "name": "excalidraw",
+      "description": "Create editable system diagrams, architecture flows, wireframes, and matching SVG previews.",
+      "kind": "artifact workflow",
+      "path": "excalidraw/SKILL.md",
+      "source": "https://github.com/excalidraw/excalidraw",
+      "source_license": "MIT",
+      "audited_at": "2026-09-11",
+      "auto_activate": true,
+      "triggers": [
+        "diagram",
+        "architecture",
+        "arsitektur",
+        "flowchart",
+        "sequence",
+        "wireframe",
+        "sketch"
+      ]
+    },
+    {
+      "name": "penpot",
+      "description": "Prepare open design-system handoff artifacts, vector assets, tokens, components, and CSS-ready specifications.",
+      "kind": "handoff workflow",
+      "path": "penpot/SKILL.md",
+      "source": "https://github.com/penpot/penpot",
+      "source_license": "MPL-2.0",
+      "audited_at": "2026-09-11",
+      "auto_activate": true,
+      "triggers": [
+        "penpot",
+        "design handoff",
+        "handoff desain",
+        "vector handoff"
+      ]
+    },
+    {
+      "name": "onlook",
+      "description": "Inspect and improve React, Next.js, or compatible component UIs through source edits and real browser feedback.",
+      "kind": "visual source-edit workflow",
+      "path": "onlook/SKILL.md",
+      "source": "https://github.com/onlook-dev/onlook",
+      "source_license": "Apache-2.0",
+      "audited_at": "2026-09-11",
+      "auto_activate": true,
+      "triggers": [
+        "frontend",
+        "react",
+        "next.js",
+        "preact",
+        "css",
+        "web page",
+        "halaman",
+        "dashboard",
+        "editor UI"
+      ]
+    },
+    {
+      "name": "shadcn-ui-engine",
+      "description": "Design and implement accessible, composable UI components using the host project's own stack.",
+      "kind": "component workflow",
+      "path": "shadcn-ui-engine/SKILL.md",
+      "source": "https://github.com/shadcn-ui/ui",
+      "source_license": "MIT",
+      "audited_at": "2026-09-11",
+      "auto_activate": true,
+      "triggers": [
+        "component",
+        "komponen",
+        "form",
+        "dialog",
+        "menu",
+        "table",
+        "tabel",
+        "button"
+      ]
+    },
+    {
+      "name": "assistant-generative-ui",
+      "description": "Design truthful streaming assistant interfaces, tool cards, approval flows, and bounded multi-agent canvases.",
+      "kind": "interaction architecture workflow",
+      "path": "assistant-generative-ui/SKILL.md",
+      "source": "https://github.com/assistant-ui/assistant-ui",
+      "source_license": "MIT",
+      "audited_at": "2026-09-11",
+      "auto_activate": true,
+      "triggers": [
+        "assistant UI",
+        "chat UI",
+        "generative UI",
+        "agent canvas",
+        "streaming card",
+        "tool card"
+      ]
+    },
+    {
+      "name": "design-md-tokens",
+      "description": "Create a plain-text DESIGN.md and synchronized CSS/JSON design tokens for agent and human use.",
+      "kind": "design-system documentation workflow",
+      "path": "design-md-tokens/SKILL.md",
+      "source": "https://github.com/VoltAgent/awesome-design-md",
+      "source_license": "MIT",
+      "audited_at": "2026-09-11",
+      "auto_activate": true,
+      "triggers": [
+        "design system",
+        "sistem desain",
+        "design token",
+        "token desain",
+        "theme",
+        "tema",
+        "palette",
+        "palet",
+        "typography",
+        "tipografi"
+      ]
+    },
+    {
+      "name": "ui-ux-pro-max",
+      "description": "Build or audit a complete UI/UX system across hierarchy, color, type, spacing, motion, responsiveness, and accessibility.",
+      "kind": "system design workflow",
+      "path": "ui-ux-pro-max/SKILL.md",
+      "source": "https://github.com/heroui-inc/heroui",
+      "source_license": "Apache-2.0",
+      "audited_at": "2026-09-11",
+      "auto_activate": true,
+      "triggers": [
+        "design",
+        "desain",
+        "UI",
+        "UX",
+        "user interface",
+        "tampilan",
+        "layout",
+        "responsive",
+        "mobile"
+      ]
+    },
+    {
+      "name": "taste-skill",
+      "description": "Apply an aesthetic quality gate that removes generic AI-design habits while preserving product identity and usability.",
+      "kind": "aesthetic critique workflow",
+      "path": "taste-skill/SKILL.md",
+      "source": "https://github.com/shadcn-ui/ui",
+      "source_license": "MIT",
+      "audited_at": "2026-09-11",
+      "auto_activate": true,
+      "triggers": [
+        "visual",
+        "aesthetic",
+        "estetika",
+        "polish",
+        "redesign",
+        "make it beautiful",
+        "perindah"
+      ]
+    },
+    {
+      "name": "hallmark",
+      "description": "Perform a professional post-build UI audit and apply evidence-backed structural and visual repairs.",
+      "kind": "quality remediation workflow",
+      "path": "hallmark/SKILL.md",
+      "source": "https://github.com/tailwindlabs/tailwindcss",
+      "source_license": "MIT",
+      "audited_at": "2026-09-11",
+      "auto_activate": true,
+      "triggers": [
+        "design audit",
+        "audit desain",
+        "professional",
+        "profesional",
+        "release-ready",
+        "final polish"
+      ]
+    },
+    {
+      "name": "axe-core-a11y",
+      "description": "Run automated and manual accessibility checks targeting WCAG 2.2 AA behavior.",
+      "kind": "accessibility QA workflow",
+      "path": "axe-core-a11y/SKILL.md",
+      "source": "https://github.com/dequelabs/axe-core",
+      "source_license": "MPL-2.0",
+      "audited_at": "2026-09-11",
+      "auto_activate": true,
+      "triggers": [
+        "accessibility",
+        "aksesibilitas",
+        "a11y",
+        "WCAG",
+        "ARIA",
+        "keyboard",
+        "contrast",
+        "kontras"
+      ]
+    },
+    {
+      "name": "visual-regression-qa",
+      "description": "Create deterministic multi-viewport screenshot baselines and review meaningful visual diffs.",
+      "kind": "browser QA workflow",
+      "path": "visual-regression-qa/SKILL.md",
+      "source": "https://github.com/puppeteer/puppeteer",
+      "source_license": "Apache-2.0",
+      "audited_at": "2026-09-11",
+      "auto_activate": true,
+      "triggers": [
+        "visual regression",
+        "screenshot",
+        "pixel diff",
+        "viewport",
+        "resolution",
+        "resolusi"
+      ]
+    },
+    {
+      "name": "remotion-best-practices",
+      "description": "Plan deterministic React-based video compositions, timelines, assets, captions, audio, and render validation.",
+      "kind": "video production workflow",
+      "path": "remotion-best-practices/SKILL.md",
+      "source": "https://github.com/remotion-dev/remotion",
+      "source_license": "Custom Remotion License",
+      "audited_at": "2026-09-11",
+      "auto_activate": true,
+      "triggers": [
+        "remotion",
+        "programmatic video",
+        "video",
+        "animation",
+        "animasi",
+        "composition"
+      ]
+    },
+    {
+      "name": "understand-figma",
+      "description": "Turn user-authorized Figma exports into a traceable knowledge graph of pages, layers, tokens, components, and assets.",
+      "kind": "design ingestion workflow",
+      "path": "understand-figma/SKILL.md",
+      "source": "https://github.com/figma/plugin-samples",
+      "source_license": "MIT",
+      "audited_at": "2026-09-11",
+      "auto_activate": true,
+      "triggers": [
+        "figma",
+        "figma export",
+        "figma plugin",
+        "design file",
+        "file desain"
+      ]
+    }
+  ]
+}
