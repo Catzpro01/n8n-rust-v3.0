@@ -3511,7 +3511,19 @@ fn start_executor(
                 let merge_configuration_error = merge_configuration
                     .as_ref()
                     .and_then(|configuration| configuration.as_ref().err().cloned());
-                let configuration_error = branch_configuration_error.or(merge_configuration_error);
+                let merge_cleanup_error = merge_node_id.as_ref().and_then(|node_id| {
+                    let prefix = format!("run:{}:merge:{}:", run_id, node_id);
+                    merge_artifacts
+                        .release_reference_prefix(&prefix)
+                        .err()
+                        .map(|error| GenerateFailure {
+                            code: "canopy.merge.spool_cleanup".into(),
+                            message: error.to_string(),
+                        })
+                });
+                let configuration_error = branch_configuration_error
+                    .or(merge_configuration_error)
+                    .or(merge_cleanup_error);
                 let mut merge_progress = None;
                 let mut summary = match configuration_error {
                     Some(error) => Err(error),

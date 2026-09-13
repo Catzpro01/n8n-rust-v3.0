@@ -462,6 +462,30 @@ impl ArtifactService {
         Ok(())
     }
 
+    /// Release all references owned by one runtime attempt. Run/port prefixes
+    /// are intentionally narrower than an Owner-wide cleanup operation.
+    pub fn release_reference_prefix(&self, prefix: &str) -> Result<u64, ArtifactError> {
+        validate_token(prefix, "reference_prefix")?;
+        let reference_ids = {
+            let connection = self.connect().map_err(ArtifactError::Storage)?;
+            let mut statement = connection
+                .prepare("SELECT DISTINCT reference_id FROM artifact_references WHERE owner_id=1 AND reference_id LIKE ?1 || '%' ORDER BY reference_id")
+                .map_err(storage)?;
+            let ids = statement
+                .query_map(params![prefix], |row| row.get::<_, String>(0))
+                .map_err(storage)?
+                .collect::<Result<Vec<_>, _>>()
+                .map_err(storage)?;
+            ids
+        };
+        let mut released = 0_u64;
+        for reference_id in reference_ids {
+            self.release_reference(&reference_id)?;
+            released = released.saturating_add(1);
+        }
+        Ok(released)
+    }
+
     pub fn put(
         &self,
         plaintext: &[u8],
@@ -1583,6 +1607,40 @@ mod tests {
         assert_eq!(state, "quarantined");
         assert!(!service.objects.join(&object_name).exists());
         assert!(service.quarantine.join(object_name).exists());
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn runtime_prefix_release_cleans_each_attempt_reference() {
+        let (root, service) = service("release-prefix");
+        let first = service
+            .put(
+                b"first",
+                "application/x-ndjson",
+                "run:r1:merge:m1:true:segment:0",
+                "run_merge_true_segment",
+                1,
+            )
+            .unwrap();
+        let second = service
+            .put(
+                b"second",
+                "application/x-ndjson",
+                "run:r1:merge:m1:false:segment:0",
+                "run_merge_false_segment",
+                1,
+            )
+            .unwrap();
+        assert_eq!(service.release_reference_prefix("run:r1:merge:m1:").unwrap(), 2);
+        let connection = service.connect().unwrap();
+        let remaining: i64 = connection
+            .query_row(
+                "SELECT COUNT(*) FROM artifact_references WHERE artifact_id IN (?1,?2)",
+                params![first.reference.artifact_id, second.reference.artifact_id],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(remaining, 0);
         fs::remove_dir_all(root).unwrap();
     }
 
