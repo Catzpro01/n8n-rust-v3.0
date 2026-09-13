@@ -1122,22 +1122,21 @@ fn numeric_operation(
     if !matches!(operation, NumericOperation::Divide) {
         if let (Some(left), Some(right)) = (left_number.as_i64(), right_number.as_i64()) {
             let result = match operation {
-            NumericOperation::Add => left.checked_add(right),
-            NumericOperation::Subtract => left.checked_sub(right),
-            NumericOperation::Multiply => left.checked_mul(right),
-            NumericOperation::Remainder => {
-                if right == 0 {
-                    return Err(ExpressionError::overflow("remainder by zero", offset));
+                NumericOperation::Add => left.checked_add(right),
+                NumericOperation::Subtract => left.checked_sub(right),
+                NumericOperation::Multiply => left.checked_mul(right),
+                NumericOperation::Remainder => {
+                    if right == 0 {
+                        return Err(ExpressionError::overflow("remainder by zero", offset));
+                    }
+                    left.checked_rem(right)
                 }
-                left.checked_rem(right)
+                NumericOperation::Divide => unreachable!(),
             }
-            NumericOperation::Divide => unreachable!(),
-        }
-        .ok_or_else(|| {
-            ExpressionError::overflow("checked integer arithmetic overflowed", offset)
-        })?;
+            .ok_or_else(|| {
+                ExpressionError::overflow("checked integer arithmetic overflowed", offset)
+            })?;
             return Ok(Value::Number(Number::from(result)));
-            }
         }
     }
     let left = left_number.as_f64().ok_or_else(|| {
