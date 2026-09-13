@@ -54,7 +54,11 @@ impl ExpressionError {
 
 impl fmt::Display for ExpressionError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(formatter, "{} at {}: {}", self.code, self.offset, self.message)
+        write!(
+            formatter,
+            "{} at {}: {}",
+            self.code, self.offset, self.message
+        )
     }
 }
 
@@ -177,7 +181,10 @@ struct Lexer<'a> {
 
 impl<'a> Lexer<'a> {
     fn new(source: &'a str) -> Self {
-        let mut byte_offsets = source.char_indices().map(|(offset, _)| offset).collect::<Vec<_>>();
+        let mut byte_offsets = source
+            .char_indices()
+            .map(|(offset, _)| offset)
+            .collect::<Vec<_>>();
         byte_offsets.push(source.len());
         Self {
             source,
@@ -396,7 +403,10 @@ impl<'a> Lexer<'a> {
                 return Ok(TokenKind::String(value));
             }
         }
-        Err(ExpressionError::syntax("unterminated string literal", offset))
+        Err(ExpressionError::syntax(
+            "unterminated string literal",
+            offset,
+        ))
     }
 
     fn number_literal(&mut self, offset: usize) -> Result<TokenKind, ExpressionError> {
@@ -415,9 +425,17 @@ impl<'a> Lexer<'a> {
                 self.index += 1;
             }
         }
-        if self.chars.get(self.index).is_some_and(|character| *character == 'e' || *character == 'E') {
+        if self
+            .chars
+            .get(self.index)
+            .is_some_and(|character| *character == 'e' || *character == 'E')
+        {
             self.index += 1;
-            if self.chars.get(self.index).is_some_and(|character| *character == '+' || *character == '-') {
+            if self
+                .chars
+                .get(self.index)
+                .is_some_and(|character| *character == '+' || *character == '-')
+            {
                 self.index += 1;
             }
             if !self.chars.get(self.index).is_some_and(char::is_ascii_digit) {
@@ -535,7 +553,10 @@ impl Parser {
             return Ok(condition);
         }
         let when_true = self.parse_conditional()?;
-        self.expect(|kind| matches!(kind, TokenKind::Colon), "expected : in ternary expression")?;
+        self.expect(
+            |kind| matches!(kind, TokenKind::Colon),
+            "expected : in ternary expression",
+        )?;
         let when_false = self.parse_conditional()?;
         self.node(Expr::Conditional(
             Box::new(condition),
@@ -585,7 +606,10 @@ impl Parser {
                         TokenKind::Identifier(value) => value,
                         other => {
                             return Err(ExpressionError::unsupported(
-                                format!("property name expected after ., found {}", describe_token(&other)),
+                                format!(
+                                    "property name expected after ., found {}",
+                                    describe_token(&other)
+                                ),
                                 offset,
                             ));
                         }
@@ -624,7 +648,10 @@ impl Parser {
         match token {
             TokenKind::Number(raw) => {
                 let value = serde_json::from_str::<Value>(&raw).map_err(|error| {
-                    ExpressionError::syntax(format!("invalid number literal: {error}"), self.current_offset())
+                    ExpressionError::syntax(
+                        format!("invalid number literal: {error}"),
+                        self.current_offset(),
+                    )
                 })?;
                 self.node(Expr::Literal(value))
             }
@@ -633,17 +660,16 @@ impl Parser {
             TokenKind::False => self.node(Expr::Literal(Value::Bool(false))),
             TokenKind::Null => self.node(Expr::Literal(Value::Null)),
             TokenKind::Identifier(identifier) if identifier == "$json" => self.node(Expr::Json),
-            TokenKind::Identifier(identifier) if identifier == "$itemIndex" => self.node(Expr::ItemIndex),
+            TokenKind::Identifier(identifier) if identifier == "$itemIndex" => {
+                self.node(Expr::ItemIndex)
+            }
             TokenKind::Identifier(identifier) => Err(ExpressionError::unsupported(
                 format!("identifier {identifier:?} is not allowed"),
                 self.previous_offset(),
             )),
             TokenKind::LeftParen => {
                 let expression = self.parse_conditional()?;
-                self.expect(
-                    |kind| matches!(kind, TokenKind::RightParen),
-                    "expected )",
-                )?;
+                self.expect(|kind| matches!(kind, TokenKind::RightParen), "expected )")?;
                 Ok(expression)
             }
             TokenKind::LeftBracket => self.parse_array(),
@@ -810,7 +836,10 @@ impl Expr {
             Self::Object(values) => {
                 let mut output = Map::new();
                 for (key, value) in values {
-                    output.insert(key.clone(), require_json(value.eval(input, item_index)?, 0)?);
+                    output.insert(
+                        key.clone(),
+                        require_json(value.eval(input, item_index)?, 0)?,
+                    );
                 }
                 Ok(EvalValue::Json(Value::Object(output)))
             }
@@ -894,7 +923,10 @@ fn access(
                 0,
             )),
             other => Err(ExpressionError::type_error(
-                format!("property access requires an object, got {}", value_type(&other)),
+                format!(
+                    "property access requires an object, got {}",
+                    value_type(&other)
+                ),
                 0,
             )),
         },
@@ -920,7 +952,10 @@ fn access(
                 EvalValue::Missing => return Ok(EvalValue::Missing),
                 EvalValue::Json(other) => {
                     return Err(ExpressionError::type_error(
-                        format!("index must be a number or string, got {}", value_type(&other)),
+                        format!(
+                            "index must be a number or string, got {}",
+                            value_type(&other)
+                        ),
                         0,
                     ));
                 }
@@ -936,12 +971,12 @@ fn access(
                     .cloned()
                     .map(EvalValue::Json)
                     .unwrap_or(EvalValue::Missing)),
-                Value::Null => Err(ExpressionError::type_error(
-                    "cannot index null",
-                    0,
-                )),
+                Value::Null => Err(ExpressionError::type_error("cannot index null", 0)),
                 other => Err(ExpressionError::type_error(
-                    format!("indexing requires an array or object, got {}", value_type(&other)),
+                    format!(
+                        "indexing requires an array or object, got {}",
+                        value_type(&other)
+                    ),
                     0,
                 )),
             }
@@ -968,14 +1003,18 @@ fn evaluate_binary(
         BinaryOp::StrictEqual => Ok(EvalValue::Json(Value::Bool(strict_equal(&left, &right)))),
         BinaryOp::StrictNotEqual => Ok(EvalValue::Json(Value::Bool(!strict_equal(&left, &right)))),
         BinaryOp::Add => numeric_or_string_add(left, right, offset).map(EvalValue::Json),
-        BinaryOp::Subtract => numeric_operation(left, right, NumericOperation::Subtract, offset)
-            .map(EvalValue::Json),
-        BinaryOp::Multiply => numeric_operation(left, right, NumericOperation::Multiply, offset)
-            .map(EvalValue::Json),
-        BinaryOp::Divide => numeric_operation(left, right, NumericOperation::Divide, offset)
-            .map(EvalValue::Json),
-        BinaryOp::Remainder => numeric_operation(left, right, NumericOperation::Remainder, offset)
-            .map(EvalValue::Json),
+        BinaryOp::Subtract => {
+            numeric_operation(left, right, NumericOperation::Subtract, offset).map(EvalValue::Json)
+        }
+        BinaryOp::Multiply => {
+            numeric_operation(left, right, NumericOperation::Multiply, offset).map(EvalValue::Json)
+        }
+        BinaryOp::Divide => {
+            numeric_operation(left, right, NumericOperation::Divide, offset).map(EvalValue::Json)
+        }
+        BinaryOp::Remainder => {
+            numeric_operation(left, right, NumericOperation::Remainder, offset).map(EvalValue::Json)
+        }
         BinaryOp::Less | BinaryOp::LessEqual | BinaryOp::Greater | BinaryOp::GreaterEqual => {
             compare(left, right, operator, offset).map(EvalValue::Json)
         }
@@ -1060,7 +1099,10 @@ fn numeric_operation(
         Value::Number(number) => number,
         _ => {
             return Err(ExpressionError::type_error(
-                format!("numeric operation requires numbers, got {}", value_type(&left)),
+                format!(
+                    "numeric operation requires numbers, got {}",
+                    value_type(&left)
+                ),
                 offset,
             ));
         }
@@ -1069,7 +1111,10 @@ fn numeric_operation(
         Value::Number(number) => number,
         _ => {
             return Err(ExpressionError::type_error(
-                format!("numeric operation requires numbers, got {}", value_type(&right)),
+                format!(
+                    "numeric operation requires numbers, got {}",
+                    value_type(&right)
+                ),
                 offset,
             ));
         }
@@ -1089,7 +1134,9 @@ fn numeric_operation(
             }
             NumericOperation::Divide => unreachable!(),
         }
-        .ok_or_else(|| ExpressionError::overflow("checked integer arithmetic overflowed", offset))?;
+        .ok_or_else(|| {
+            ExpressionError::overflow("checked integer arithmetic overflowed", offset)
+        })?;
         return Ok(Value::Number(Number::from(result)));
     }
     let left = left_number.as_f64().ok_or_else(|| {
@@ -1098,7 +1145,11 @@ fn numeric_operation(
     let right = right_number.as_f64().ok_or_else(|| {
         ExpressionError::overflow("right number cannot be represented safely", offset)
     })?;
-    if matches!(operation, NumericOperation::Divide | NumericOperation::Remainder) && right == 0.0 {
+    if matches!(
+        operation,
+        NumericOperation::Divide | NumericOperation::Remainder
+    ) && right == 0.0
+    {
         return Err(ExpressionError::overflow("division by zero", offset));
     }
     let result = match operation {
@@ -1118,7 +1169,9 @@ fn numeric_unary_minus(number: Number, offset: usize) -> Result<Value, Expressio
         return value
             .checked_neg()
             .map(|value| Value::Number(Number::from(value)))
-            .ok_or_else(|| ExpressionError::overflow("checked integer arithmetic overflowed", offset));
+            .ok_or_else(|| {
+                ExpressionError::overflow("checked integer arithmetic overflowed", offset)
+            });
     }
     let value = number
         .as_f64()
@@ -1142,10 +1195,7 @@ fn compare(
         _ => None,
     }
     .ok_or_else(|| {
-        ExpressionError::type_error(
-            "comparisons require two numbers or two strings",
-            offset,
-        )
+        ExpressionError::type_error("comparisons require two numbers or two strings", offset)
     })?;
     let result = match operator {
         BinaryOp::Less => ordering.is_lt(),
@@ -1193,7 +1243,14 @@ mod tests {
     #[test]
     fn evaluates_the_frozen_eco_expression_set() {
         let input = json!({"value": 7, "nested": {"name": "Ada"}});
-        assert_eq!(evaluate("$json.value % 2 === 0 ? \"even\" : \"odd\"", input.clone(), 0), json!("odd"));
+        assert_eq!(
+            evaluate(
+                "$json.value % 2 === 0 ? \"even\" : \"odd\"",
+                input.clone(),
+                0
+            ),
+            json!("odd")
+        );
         assert_eq!(evaluate("$json.value * 2", input.clone(), 0), json!(14));
         assert_eq!(evaluate("\"eco-\" + $itemIndex", input, 3), json!("eco-3"));
     }
@@ -1202,7 +1259,10 @@ mod tests {
     fn preserves_types_and_handles_literals_and_access() {
         let input = json!({"list": ["a", {"ok": true}], "missing": null});
         assert_eq!(evaluate("$json.list[1].ok", input.clone(), 0), json!(true));
-        assert_eq!(evaluate("$json.nope ?? {\"fallback\": [1, 2]}", input.clone(), 0), json!({"fallback": [1, 2]}));
+        assert_eq!(
+            evaluate("$json.nope ?? {\"fallback\": [1, 2]}", input.clone(), 0),
+            json!({"fallback": [1, 2]})
+        );
         assert_eq!(evaluate("$json.missing ?? false", input, 0), json!(false));
     }
 
@@ -1210,7 +1270,12 @@ mod tests {
     fn missing_is_distinct_and_unsafe_javascript_is_rejected() {
         let program = compile("$json.nope").unwrap();
         assert_eq!(program.evaluate(&json!({}), 0).unwrap(), EvalValue::Missing);
-        for source in ["$json.value.toString()", "eval(\"x\")", "a = 1", "$json.value == 1"] {
+        for source in [
+            "$json.value.toString()",
+            "eval(\"x\")",
+            "a = 1",
+            "$json.value == 1",
+        ] {
             let error = compile(source).unwrap_err();
             assert!(
                 error.code == "canopy.expression.unsupported"

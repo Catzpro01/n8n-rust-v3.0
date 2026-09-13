@@ -161,11 +161,7 @@ impl CompiledConfiguration {
         &self.mode
     }
 
-    pub fn apply(
-        &self,
-        input: &Value,
-        item_index: u64,
-    ) -> Result<TransformResult, TransformError> {
+    pub fn apply(&self, input: &Value, item_index: u64) -> Result<TransformResult, TransformError> {
         let mut output = match self.mode {
             OutputMode::Merge => input
                 .as_object()
@@ -202,9 +198,7 @@ fn validate_path(path: &[PathSegment]) -> Result<(), TransformError> {
     for segment in path {
         if let PathSegment::Key(key) = segment {
             if key.is_empty() {
-                return Err(TransformError::configuration(
-                    "path keys must not be empty",
-                ));
+                return Err(TransformError::configuration("path keys must not be empty"));
             }
         }
     }
@@ -223,11 +217,7 @@ fn container_for(next: &PathSegment) -> Value {
     }
 }
 
-fn set_path(
-    target: &mut Value,
-    path: &[PathSegment],
-    value: Value,
-) -> Result<(), TransformError> {
+fn set_path(target: &mut Value, path: &[PathSegment], value: Value) -> Result<(), TransformError> {
     let Some((head, tail)) = path.split_first() else {
         return Err(TransformError::path("cannot assign an empty path"));
     };
@@ -250,7 +240,9 @@ fn set_path(
                 .as_array_mut()
                 .ok_or_else(|| TransformError::path("an index path requires an array"))?;
             if *index > 16_384 {
-                return Err(TransformError::path("array path index exceeds the safe bound"));
+                return Err(TransformError::path(
+                    "array path index exceeds the safe bound",
+                ));
             }
             if array.len() <= *index {
                 array.resize_with(index + 1, || Value::Null);
