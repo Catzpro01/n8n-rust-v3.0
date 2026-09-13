@@ -1,0 +1,6 @@
+# Python test/runtime artifacts
+__pycache__/
+*.py[cod]
+
+# Atomic cache writes should never be committed if interrupted
+cache.kv.tmp
