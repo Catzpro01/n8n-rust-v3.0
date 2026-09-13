@@ -5757,13 +5757,8 @@ mod tests {
         let request = CancelRunRequest {
             cancellation_request_id: "cancel-if-before-route".into(),
         };
-        let cancelled = cancel_transaction(
-            &mut connection,
-            "run-if-cancel",
-            request.clone(),
-            false,
-        )
-        .unwrap();
+        let cancelled =
+            cancel_transaction(&mut connection, "run-if-cancel", request.clone(), false).unwrap();
         assert!(cancelled.accepted);
         assert!(!cancelled.already_terminal);
         assert_eq!(cancelled.run.durable.state, "cancelled");
