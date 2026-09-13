@@ -3272,6 +3272,8 @@ struct MergeSpool {
     active: Option<crate::artifact::UploadLease>,
     active_count: u64,
     active_bytes: u64,
+    pending: Vec<u8>,
+    pending_records: u64,
     references: Vec<ArtifactReference>,
     physical_bytes: u64,
 }
@@ -3294,6 +3296,8 @@ impl MergeSpool {
             active: None,
             active_count: 0,
             active_bytes: 0,
+            pending: Vec::new(),
+            pending_records: 0,
             references: Vec::new(),
             physical_bytes: 0,
         }
@@ -3314,31 +3318,60 @@ impl MergeSpool {
         if self.active.is_none() {
             self.begin_segment()?;
         }
-        if let Some(lease) = self.active.as_mut() {
-            match self.artifacts.append_upload(lease, &line) {
-                Ok(()) => {
-                    self.active_count += 1;
-                    self.active_bytes = self.active_bytes.saturating_add(line.len() as u64);
-                    self.physical_bytes = self.physical_bytes.saturating_add(line.len() as u64);
-                    return Ok(());
-                }
-                Err(ArtifactError::TooLarge) if self.active_count > 0 => {
-                    self.finish_segment()?;
-                }
-                Err(error) => return Err(merge_artifact_error(error)),
-            }
+        if !self.pending.is_empty()
+            && self.pending.len().saturating_add(line.len()) > generate_engine::MICRO_BATCH_BYTES
+        {
+            self.flush_pending()?;
         }
-        self.begin_segment()?;
-        let lease = self.active.as_mut().ok_or_else(|| merge::MergeError {
-            code: "canopy.merge.spool_storage".into(),
-            message: "Merge spool did not open an Artifact lease".into(),
-        })?;
-        self.artifacts
-            .append_upload(lease, &line)
-            .map_err(merge_artifact_error)?;
-        self.active_count = 1;
-        self.active_bytes = line.len() as u64;
+        self.pending.extend_from_slice(&line);
+        self.pending_records = self.pending_records.saturating_add(1);
         self.physical_bytes = self.physical_bytes.saturating_add(line.len() as u64);
+        if self.pending.len() >= generate_engine::MICRO_BATCH_BYTES {
+            self.flush_pending()?;
+        }
+        Ok(())
+    }
+
+    fn flush_pending(&mut self) -> Result<(), merge::MergeError> {
+        if self.pending.is_empty() {
+            return Ok(());
+        }
+        if self.active.is_none() {
+            self.begin_segment()?;
+        }
+        let chunk = std::mem::take(&mut self.pending);
+        let records = self.pending_records;
+        let bytes = chunk.len() as u64;
+        self.pending_records = 0;
+        let result = self
+            .active
+            .as_mut()
+            .ok_or_else(|| merge::MergeError {
+                code: "canopy.merge.spool_storage".into(),
+                message: "Merge spool did not open an Artifact lease".into(),
+            })
+            .and_then(|lease| {
+                self.artifacts
+                    .append_upload(lease, &chunk)
+                    .map_err(merge_artifact_error)
+            });
+        if let Err(error) = result {
+            if !matches!(error.code.as_str(), "canopy.merge.spool_limit") || self.active_count == 0
+            {
+                return Err(error);
+            }
+            self.finalize_active_segment()?;
+            self.begin_segment()?;
+            let lease = self.active.as_mut().ok_or_else(|| merge::MergeError {
+                code: "canopy.merge.spool_storage".into(),
+                message: "Merge spool did not open an Artifact lease".into(),
+            })?;
+            self.artifacts
+                .append_upload(lease, &chunk)
+                .map_err(merge_artifact_error)?;
+        }
+        self.active_count = self.active_count.saturating_add(records);
+        self.active_bytes = self.active_bytes.saturating_add(bytes);
         Ok(())
     }
 
@@ -3356,7 +3389,7 @@ impl MergeSpool {
         Ok(())
     }
 
-    fn finish_segment(&mut self) -> Result<(), merge::MergeError> {
+    fn finalize_active_segment(&mut self) -> Result<(), merge::MergeError> {
         let Some(lease) = self.active.take() else {
             return Ok(());
         };
@@ -3385,6 +3418,11 @@ impl MergeSpool {
         Ok(())
     }
 
+    fn finish_segment(&mut self) -> Result<(), merge::MergeError> {
+        self.flush_pending()?;
+        self.finalize_active_segment()
+    }
+
     fn finish(&mut self) -> Result<(), merge::MergeError> {
         self.finish_segment()
     }
@@ -3404,6 +3442,8 @@ impl MergeSpool {
         self.next_segment = 0;
         self.active_count = 0;
         self.active_bytes = 0;
+        self.pending.clear();
+        self.pending_records = 0;
     }
 
     fn references(&self) -> Vec<ArtifactReference> {
