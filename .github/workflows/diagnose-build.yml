@@ -35,13 +35,20 @@ jobs:
           cargo build -p workflowd --locked > "$RUNNER_TEMP/workflowd-build.log" 2>&1
           status=$?
           cat "$RUNNER_TEMP/workflowd-build.log"
+          cargo fmt --all -- --check > "$RUNNER_TEMP/workflowd-fmt.log" 2>&1
+          fmt_status=$?
+          cat "$RUNNER_TEMP/workflowd-fmt.log"
           {
             echo '### workflowd build output'
             echo '```text'
             cat "$RUNNER_TEMP/workflowd-build.log"
             echo '```'
+            echo "### cargo fmt check (exit $fmt_status)"
+            echo '```text'
+            cat "$RUNNER_TEMP/workflowd-fmt.log"
+            echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
-          echo "build_status=$status"
+          echo "build_status=$status fmt_status=$fmt_status"
           exit 0
       - name: Publish compiler output to check summary
         uses: actions/github-script@v7
