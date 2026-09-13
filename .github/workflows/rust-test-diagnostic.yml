@@ -1,0 +1,55 @@
+name: Temporary Rust test diagnostic
+
+on:
+  push:
+    branches: ["arena/**"]
+    paths-ignore: [".scratch/**"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install pinned Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.85.1
+
+      - name: Run focused tests and capture diagnostics
+        shell: bash
+        run: |
+          set +e
+          mkdir -p .scratch
+          : > .scratch/rust-test-diagnostic.log
+          overall=0
+          for test_name in \
+            cancellation_before_if_activation_is_terminal_and_idempotent \
+            bounded_queue_send_failure_releases_reserved_bytes \
+            if_runtime_fault_does_not_publish_partial_route_provenance; do
+            echo "===== $test_name =====" | tee -a .scratch/rust-test-diagnostic.log
+            cargo test -p workflowd --locked "$test_name" -- --nocapture --test-threads=1 2>&1 \
+              | tee -a .scratch/rust-test-diagnostic.log
+            status=${PIPESTATUS[0]}
+            if [ "$status" -ne 0 ]; then
+              overall=1
+            fi
+          done
+          echo "diagnostic exit: $overall" | tee -a .scratch/rust-test-diagnostic.log
+          exit 0
+
+      - name: Publish diagnostics
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add .scratch/rust-test-diagnostic.log
+          git commit -m "chore: capture focused Rust test diagnostics" || exit 0
+          git push origin HEAD:${GITHUB_REF_NAME}
