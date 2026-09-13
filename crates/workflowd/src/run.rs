@@ -1649,6 +1649,8 @@ fn complete_generated_transaction(
                     "true_count":completed.branch_true_count,
                     "false_count":completed.branch_false_count,
                     "stream_digest":completed.branch_stream_digest,
+                    "route_chain_schema":"canopy.if-route-chain/v1alpha1",
+                    "exactly_one_output_per_item":true,
                     "item_linking":"one_to_one"
                 }));
             }
@@ -1814,6 +1816,8 @@ fn complete_generated_transaction(
         "true_count":completed.branch_true_count,
         "false_count":completed.branch_false_count,
         "stream_digest":completed.branch_stream_digest,
+        "route_chain_schema":"canopy.if-route-chain/v1alpha1",
+        "exactly_one_output_per_item":true,
         "output_ports":["true","false"],
         "item_linking":"one_to_one"
     });
@@ -1938,6 +1942,8 @@ fn complete_generated_transaction(
                 "true_count":completed.branch_true_count,
                 "false_count":completed.branch_false_count,
                 "stream_digest":completed.branch_stream_digest,
+                "route_chain_schema":"canopy.if-route-chain/v1alpha1",
+                "exactly_one_output_per_item":true,
                 "output_ports":["true","false"],
                 "failure":if branch_failed { failure.clone() } else { None::<Value> },
                 "input_digest":digest(&branch_input).map_err(RunError::Integrity)?,
@@ -3572,6 +3578,10 @@ fn next_candidate(
                 })
             })
             .transpose()?;
+        let stored_generated_count = row
+            .get::<_, Option<i64>>(7)
+            .map_err(storage_error)?
+            .unwrap_or(0) as u64;
         let stored_branch_node_id = row.get::<_, Option<String>>(15).map_err(storage_error)?;
         let branch_true_count = row
             .get::<_, Option<i64>>(16)
@@ -3622,6 +3632,20 @@ fn next_candidate(
                         "durable If node identity changed".into(),
                     ));
                 }
+                if branch_true_count.saturating_add(branch_false_count) != stored_generated_count
+                {
+                    return Err(RunError::Integrity(
+                        "durable If counts do not cover the generated cursor".into(),
+                    ));
+                }
+                if branch_stream_digest != "genesis"
+                    && validate_tagged_digest(&branch_stream_digest, "branch_stream_digest")
+                        .is_err()
+                {
+                    return Err(RunError::Integrity(
+                        "durable If stream digest is invalid".into(),
+                    ));
+                }
                 Some(IfCandidate {
                     node_id,
                     configuration,
@@ -3634,6 +3658,7 @@ fn next_candidate(
                 if stored_branch_node_id.is_some()
                     || branch_true_count != 0
                     || branch_false_count != 0
+                    || branch_stream_digest != "genesis"
                 {
                     return Err(RunError::Integrity(
                         "durable branch progress exists without If".into(),
