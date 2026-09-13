@@ -125,7 +125,7 @@ try {
       { kind: "connect", connection: { id: "edit-to-if", source: { node_id: "edit-fields", port_id: "item" }, target: { node_id: "if", port_id: "input" } } },
       { kind: "connect", connection: { id: "if-true-to-merge", source: { node_id: "if", port_id: "true" }, target: { node_id: "merge", port_id: "true" } } },
       { kind: "connect", connection: { id: "if-false-to-merge", source: { node_id: "if", port_id: "false" }, target: { node_id: "merge", port_id: "false" } } },
-      { kind: "connect", connection: { id: "merge-to-summarize", source: { node_id: "merge", port_id: "items" }, target: { node_id: "summarize", port_id: "input" } } },
+      { kind: "connect", connection: { id: "merge-to-summarize", source: { node_id: "merge", port_id: "items" }, target: { node_id: "summarize", port_id: "items" } } },
     ];
     for (let index = 0; index < operations.length; index += 1) {
       const accepted = await mutate(`/api/v1/workflows/${workflowId}/draft-commands`, {

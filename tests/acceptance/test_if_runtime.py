@@ -255,7 +255,7 @@ class IfRuntimeAcceptance(unittest.TestCase):
                         "connection": {
                             "id": "merge-to-summarize",
                             "source": {"node_id": "merge", "port_id": "items"},
-                            "target": {"node_id": "summarize", "port_id": "input"},
+                            "target": {"node_id": "summarize", "port_id": "items"},
                         },
                     },
                 ]
