@@ -618,8 +618,8 @@ class IfRuntimeAcceptance(unittest.TestCase):
 
         self.assertEqual(terminal["durable"]["state"], "succeeded")
         self.assertEqual(terminal["durable"]["logical_order"], 6)
-        self.assertEqual(terminal["correctness"]["attempted"], 6)
-        self.assertEqual(terminal["correctness"]["succeeded"], 6)
+        self.assertEqual(terminal["correctness"]["attempted"], 100_000)
+        self.assertEqual(terminal["correctness"]["succeeded"], 100_000)
         self.assertEqual(terminal["correctness"]["output_count"], 49_998)
         generation = terminal["generation"]
         self.assertEqual(generation["generated_count"], 49_998)
