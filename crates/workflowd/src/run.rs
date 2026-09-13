@@ -486,13 +486,6 @@ impl RunService {
         };
         if result.accepted {
             if let Some(control) = self
-     024,
-        )?;
-        let WriterReply::Cancellation(mut result) = reply else {
-            return Err(RunError::Storage("writer returned the wrong reply".into()));
-        };
-        if result.accepted {
-            if let Some(control) = self
                 .controls
                 .lock()
                 .map_err(|_| RunError::Storage("run controls are poisoned".into()))?
