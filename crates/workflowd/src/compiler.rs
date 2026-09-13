@@ -955,21 +955,21 @@ fn validate_connections(
                 false,
             )?;
         }
-        if let (Some(source_port), Some(target_port)) = (source_port, target_port)
-            && !schemas_compatible(&source_port["schema"], &target_port["schema"])
-        {
-            push(
-                diagnostics,
-                "E_PORT_SCHEMA",
-                "error",
-                format!("connection:{}", connection.id),
-                "The source output schema is incompatible with the target input schema.",
-                json!({
-                    "source": {"node_id": connection.source.node_id, "port_id": connection.source.port_id, "schema": source_port["schema"]},
-                    "target": {"node_id": connection.target.node_id, "port_id": connection.target.port_id, "schema": target_port["schema"]}
-                }),
-                false,
-            )?;
+        if let (Some(source_port), Some(target_port)) = (source_port, target_port) {
+            if !schemas_compatible(&source_port["schema"], &target_port["schema"]) {
+                push(
+                    diagnostics,
+                    "E_PORT_SCHEMA",
+                    "error",
+                    format!("connection:{}", connection.id),
+                    "The source output schema is incompatible with the target input schema.",
+                    json!({
+                        "source": {"node_id": connection.source.node_id, "port_id": connection.source.port_id, "schema": source_port["schema"]},
+                        "target": {"node_id": connection.target.node_id, "port_id": connection.target.port_id, "schema": target_port["schema"]}
+                    }),
+                    false,
+                )?;
+            }
         }
         if let Some(port) = target_port {
             let key = (

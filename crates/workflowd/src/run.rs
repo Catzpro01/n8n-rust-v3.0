@@ -4179,11 +4179,7 @@ fn start_executor(
                                     code: error.code,
                                     message: error.message,
                                 })?;
-                                let provenance = if_node::RouteProvenance::parse(&record.provenance)
-                                    .map_err(|message| summarize::SummarizeError {
-                                        code: "canopy.summarize.integrity".into(),
-                                        message,
-                                    })?;
+                                let provenance = record.provenance;
                                 Ok(summarize::SummaryRecord {
                                     ordinal: record.ordinal,
                                     input_port: provenance.if_output_port.as_str().into(),
