@@ -1119,10 +1119,9 @@ fn numeric_operation(
             ));
         }
     };
-    if !matches!(operation, NumericOperation::Divide)
-        && let (Some(left), Some(right)) = (left_number.as_i64(), right_number.as_i64())
-    {
-        let result = match operation {
+    if !matches!(operation, NumericOperation::Divide) {
+        if let (Some(left), Some(right)) = (left_number.as_i64(), right_number.as_i64()) {
+            let result = match operation {
             NumericOperation::Add => left.checked_add(right),
             NumericOperation::Subtract => left.checked_sub(right),
             NumericOperation::Multiply => left.checked_mul(right),
@@ -1137,7 +1136,9 @@ fn numeric_operation(
         .ok_or_else(|| {
             ExpressionError::overflow("checked integer arithmetic overflowed", offset)
         })?;
-        return Ok(Value::Number(Number::from(result)));
+            return Ok(Value::Number(Number::from(result)));
+            }
+        }
     }
     let left = left_number.as_f64().ok_or_else(|| {
         ExpressionError::overflow("left number cannot be represented safely", offset)
