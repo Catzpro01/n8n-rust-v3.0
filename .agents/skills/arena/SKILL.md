@@ -46,8 +46,10 @@ skill that matches the task; use `ROUTING.md` when the choice is unclear.
 - behavior change or bug fix: `tdd` (red → green → refactor)
 - module/interface/design decision: `codebase-design`
 - ambiguous plan or requirements: `grill-me` or `grilling`
-- difficult bug/performance issue: `diagnosing-bugs`
+- any bug, test failure, or unexpected behavior: `systematic-debugging`
+- difficult bug/performance issue after initial evidence: `diagnosing-bugs`
 - final diff review: `code-review`
+- before any completion/PR claim: `verification-before-completion`
 - repository skill configuration: `setup-matt-pocock-skills`
 - documentation for agents: `writing-for-agents`
 
@@ -55,6 +57,11 @@ For code changes, consult `codebase-design` before changing a seam, apply
 `tdd` when behavior changes, and run `code-review` before handoff when the diff
 is non-trivial. For a known one-file edit, keep discovery narrow rather than
 running a repository-wide scan.
+
+The two lightweight Superpowers additions are guardrails, not a second full
+workflow: use `systematic-debugging` only when there is a failure or surprise,
+and use `verification-before-completion` once with fresh command output before
+claiming completion, committing, or opening a PR.
 
 ## Token and latency rules
 

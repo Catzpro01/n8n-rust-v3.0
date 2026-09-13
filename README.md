@@ -40,7 +40,9 @@ turn:
 
 - `codebase-memory-mcp` for bounded discovery and impact tracing;
 - the smallest relevant Matt Pocock skill for design, TDD, diagnosis, or
-  review.
+  review;
+- two lean Superpowers guardrails: `systematic-debugging` and
+  `verification-before-completion`.
 
 For a compact task context packet:
 
