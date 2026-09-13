@@ -1,0 +1,20 @@
+
+> @canopy-workbench/editor@0.1.0 test:browser
+> node tests/two-tab.mjs && node tests/publish-rollback.mjs && node tests/run-trace.mjs && node tests/generate-artifact.mjs && node tests/edit-fields-run.mjs
+
+two-tab-browser=passed encrypted-recovery=passed undo-reload-redo=passed
+publication-browser=passed axe-serious=0 visual-reload-diff=0 mobile-overflow=0
+{"timestamp":"2026-09-13T23:21:15.954274Z","level":"INFO","fields":{"event":"server_listening","address":"127.0.0.1:40749","transport":"http","tokio_core_workers":1,"blocking_threads_max":2},"target":"workflowd"}
+{"timestamp":"2026-09-13T23:21:17.319958Z","level":"ERROR","fields":{"event":"run_scheduler_read_failed","reason":"Integrity(\"The pinned plan is missing Generate Items.\")"},"target":"workflowd::run"}
+{"timestamp":"2026-09-13T23:21:32.445811Z","level":"INFO","fields":{"event":"shutdown_requested"},"target":"workflowd"}
+file:///home/runner/work/n8n-rust-v3.0/n8n-rust-v3.0/editor/tests/run-trace.mjs:189
+  throw new Error(`expected ${name}=${value}; got ${await locator.getAttribute(name)}`);
+        ^
+
+Error: expected data-state=succeeded; got queued
+    at waitAttribute (file:///home/runner/work/n8n-rust-v3.0/n8n-rust-v3.0/editor/tests/run-trace.mjs:189:9)
+    at async file:///home/runner/work/n8n-rust-v3.0/n8n-rust-v3.0/editor/tests/run-trace.mjs:66:3
+
+Node.js v22.19.0
+
+browser-test-exit=1
