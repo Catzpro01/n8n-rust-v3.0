@@ -77,9 +77,10 @@ cannot publish a successful run.
 Focused Rust coverage exercises AND/OR and typed diagnostics in the If module,
 atomic batch provenance, replay-stable route digests, and transformed logical
 input. The public seam test `tests/acceptance/test_if_runtime.py` publishes the
-four-node editor topology and verifies terminal branch progress and Causal Trace
-facts. It passed in pinned workflow `34777903085`; repository validation passed
-in `34777903071` (push) and `34777905652` (pull request), covering formatting,
-workspace tests, editor build, and dependency-free repository tests. The
-bounded Ticket 09 If slice is released as verified evidence; downstream
-compatibility beyond this topology remains a later phase.
+four-node editor topology and now verifies both `all` and composed `any` logic,
+terminal branch progress, restart persistence, and Causal Trace facts. The
+hardened acceptance lane passed in pinned workflow `34781046284`; repository
+validation passed in `34781046290`, covering formatting, workspace tests, editor
+build, and dependency-free repository tests. The bounded Ticket 09 If slice is
+released as verified evidence; downstream compatibility beyond this topology
+remains a later phase.
