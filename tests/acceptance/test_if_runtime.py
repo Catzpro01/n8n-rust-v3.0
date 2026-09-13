@@ -44,6 +44,7 @@ class IfRuntimeAcceptance(unittest.TestCase):
         include_merge: bool = False,
         all_false: bool = False,
         any_logic: bool = False,
+        item_count: int = 12,
     ) -> dict:
         origin = self.daemon.origin
         workflow_id = "wf-if-runtime"
@@ -109,7 +110,7 @@ class IfRuntimeAcceptance(unittest.TestCase):
                     "name": "Generate Items",
                     "contract_lock": locks["generate-items"],
                     "configuration": {
-                        "count": 12,
+                        "count": item_count,
                         "start": 0,
                         "step": 1,
                         "data": None,
@@ -364,6 +365,98 @@ class IfRuntimeAcceptance(unittest.TestCase):
         self.assertEqual(branch["true_count"], 7)
         self.assertEqual(branch["false_count"], 5)
         self.assertRegex(branch["stream_digest"], r"^sha256:[0-9a-f]{64}$")
+
+    def test_bounded_queue_preserves_every_if_route_under_backpressure(self):
+        publication = self.publish_workflow(item_count=1024)
+        current = publication["current_published"]
+        event = publication["current_event"]["envelope"]
+        admitted = api(
+            self.daemon.origin,
+            "/api/v1/workflows/wf-if-runtime/runs",
+            "POST",
+            {
+                "run_request_id": "run-if-bounded-queue",
+                "publication_event_id": event["event_id"],
+                "revision_id": current["revision_id"],
+                "plan_digest": current["plan_digest"],
+                "captured_invocation": {"manual": True, "fixture": "if-bounded-queue"},
+            },
+            self.mutation,
+        )
+        self.assertEqual(admitted[0], 201, admitted[2])
+        terminal = self.wait_terminal(admitted[2]["run"]["run_id"])
+
+        self.assertEqual(terminal["durable"]["state"], "succeeded")
+        self.assertEqual(terminal["correctness"]["output_count"], 1024)
+        generation = terminal["generation"]
+        self.assertEqual(generation["generated_count"], 1024)
+        self.assertEqual(generation["transform"]["transformed_count"], 1024)
+        branch = generation["branch"]
+        self.assertEqual(branch["true_count"], 512)
+        self.assertEqual(branch["false_count"], 512)
+        self.assertGreaterEqual(generation["backpressure_events"], 1)
+        self.assertRegex(branch["stream_digest"], r"^sha256:[0-9a-f]{64}$")
+
+    def test_cancellation_closes_if_without_routing_and_does_not_block_next_run(self):
+        publication = self.publish_workflow()
+        current = publication["current_published"]
+        event = publication["current_event"]["envelope"]
+        path = "/api/v1/workflows/wf-if-runtime/runs"
+        request = {
+            "run_request_id": "run-if-cancel-before-route",
+            "publication_event_id": event["event_id"],
+            "revision_id": current["revision_id"],
+            "plan_digest": current["plan_digest"],
+            "captured_invocation": {"manual": True, "fixture": "if-cancel-before-route"},
+        }
+        admitted = api(self.daemon.origin, path, "POST", request, self.mutation)
+        self.assertEqual(admitted[0], 201, admitted[2])
+        run_id = admitted[2]["run"]["run_id"]
+        cancelled = api(
+            self.daemon.origin,
+            f"/api/v1/runs/{run_id}/cancel",
+            "POST",
+            {"cancellation_request_id": "cancel-if-before-route"},
+            self.mutation,
+        )
+        self.assertEqual(cancelled[0], 200, cancelled[2])
+        self.assertTrue(cancelled[2]["accepted"])
+        terminal = self.wait_terminal(run_id)
+        self.assertEqual(terminal["durable"]["state"], "cancelled")
+        self.assertEqual(terminal["correctness"]["output_count"], 0)
+        self.assertFalse(terminal["correctness"]["complete"])
+
+        trace = api(
+            self.daemon.origin,
+            f"/api/v1/runs/{run_id}/trace",
+            headers=self.auth,
+        )
+        self.assertEqual(trace[0], 200, trace[2])
+        evidence = trace[2]
+        self.assertTrue(evidence["integrity_verified"])
+        self.assertEqual(evidence["activations"], [])
+        self.assertIn(
+            "run_cancelled_before_activation",
+            [event["event_type"] for event in evidence["events"]],
+        )
+        self.assertFalse(
+            any(
+                activation["node_instance_id"] == "if"
+                for activation in evidence["activations"]
+            )
+        )
+
+        next_request = {
+            **request,
+            "run_request_id": "run-if-after-cancel",
+            "captured_invocation": {"manual": True, "fixture": "if-after-cancel"},
+        }
+        next_admission = api(self.daemon.origin, path, "POST", next_request, self.mutation)
+        self.assertEqual(next_admission[0], 201, next_admission[2])
+        next_terminal = self.wait_terminal(next_admission[2]["run"]["run_id"])
+        self.assertEqual(next_terminal["durable"]["state"], "succeeded")
+        self.assertEqual(next_terminal["generation"]["branch"]["true_count"], 6)
+        self.assertEqual(next_terminal["generation"]["branch"]["false_count"], 6)
 
     def test_closed_branches_are_reduced_and_persisted(self):
         publication = self.publish_workflow(include_merge=True)

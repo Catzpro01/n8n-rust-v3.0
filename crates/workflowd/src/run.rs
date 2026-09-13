@@ -5718,6 +5718,128 @@ mod tests {
     }
 
     #[test]
+    fn cancellation_before_if_activation_is_terminal_and_idempotent() {
+        let mut connection = Connection::open_in_memory().unwrap();
+        connection
+            .execute_batch(
+                "CREATE TABLE workflow_drafts(workflow_id TEXT PRIMARY KEY);
+             CREATE TABLE publication_events(event_id TEXT PRIMARY KEY);
+             CREATE TABLE workflow_revisions(revision_id TEXT PRIMARY KEY);
+             CREATE TABLE execution_plans(plan_id TEXT PRIMARY KEY);",
+            )
+            .unwrap();
+        initialize_schema(&connection).unwrap();
+        connection
+            .execute_batch(
+                "INSERT INTO workflow_drafts VALUES('workflow-if-cancel');
+             INSERT INTO publication_events VALUES('event-if-cancel');
+             INSERT INTO workflow_revisions VALUES('revision-if-cancel');
+             INSERT INTO execution_plans VALUES('plan-if-cancel');",
+            )
+            .unwrap();
+        connection
+            .execute(
+                "INSERT INTO runs(
+                    run_id,run_request_id,request_digest,workflow_id,publication_event_id,
+                    revision_id,revision_digest,plan_id,plan_digest,captured_invocation_json,
+                    state,checkpoint_sequence,logical_order,attempted,succeeded,cancelled,failed,
+                    output_count,correctness_digest,digest_complete,cancellation_request_id,
+                    cancellation_request_digest,trace_head_hash,admitted_at,started_at,updated_at,terminal_at
+                 ) VALUES(
+                    'run-if-cancel','request-if-cancel','sha256:request','workflow-if-cancel','event-if-cancel',
+                    'revision-if-cancel','sha256:revision','plan-if-cancel','sha256:plan','{}',
+                    'queued',1,0,0,0,0,0,0,NULL,0,NULL,NULL,'genesis',0,NULL,0,NULL
+                 )",
+                [],
+            )
+            .unwrap();
+
+        let request = CancelRunRequest {
+            cancellation_request_id: "cancel-if-before-route".into(),
+        };
+        let cancelled = cancel_transaction(
+            &mut connection,
+            "run-if-cancel",
+            request.clone(),
+            false,
+        )
+        .unwrap();
+        assert!(cancelled.accepted);
+        assert!(!cancelled.already_terminal);
+        assert_eq!(cancelled.run.durable.state, "cancelled");
+        assert!(cancelled.run.durable.terminal);
+        assert_eq!(cancelled.run.correctness.output_count, 0);
+
+        let repeated =
+            cancel_transaction(&mut connection, "run-if-cancel", request, false).unwrap();
+        assert!(repeated.accepted);
+        assert!(repeated.already_terminal);
+        assert_eq!(repeated.run.durable.state, "cancelled");
+        let activation_count: i64 = connection
+            .query_row(
+                "SELECT COUNT(*) FROM run_activations WHERE run_id='run-if-cancel'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(activation_count, 0);
+    }
+
+    #[test]
+    fn bounded_queue_send_failure_releases_reserved_bytes() {
+        let budget = Arc::new(ByteBudget::new(10));
+        let (sender, receiver) = mpsc::sync_channel::<BytePermit>(1);
+        sender.try_send(budget.reserve(6).unwrap()).unwrap();
+        let second = budget.reserve(4).unwrap();
+        match sender.try_send(second) {
+            Err(TrySendError::Full(permit)) => drop(permit),
+            Err(TrySendError::Disconnected(permit)) => {
+                drop(permit);
+                panic!("bounded queue disconnected unexpectedly")
+            }
+            Ok(()) => panic!("bounded queue accepted more than its configured capacity"),
+        }
+        assert!(budget.reserve(1).is_none());
+        drop(receiver.try_recv().unwrap());
+        assert!(budget.reserve(10).is_some());
+    }
+
+    #[test]
+    fn if_runtime_fault_does_not_publish_partial_route_provenance() {
+        let configuration = if_node::compile_configuration(&json!({
+            "logic": "all",
+            "conditions": [{"expression": "$json.value === true"}]
+        }))
+        .unwrap();
+        let mut envelopes = vec![
+            GeneratedEnvelope {
+                ordinal: 0,
+                item: json!({"value": true}),
+                logical_item: json!({"value": true}),
+                logical_bytes: 16,
+                provenance: json!({"ordinal": 0}),
+            },
+            GeneratedEnvelope {
+                ordinal: 1,
+                item: json!({"value": null}),
+                logical_item: json!({"value": null}),
+                logical_bytes: 16,
+                provenance: json!({"ordinal": 1}),
+            },
+        ];
+        let original = envelopes.clone();
+        let error = configuration
+            .route_batch(&mut envelopes, "if", "genesis")
+            .unwrap_err();
+        assert_eq!(error.code, "canopy.if.type");
+        for (actual, expected) in envelopes.iter().zip(original.iter()) {
+            assert_eq!(actual.item, expected.item);
+            assert_eq!(actual.logical_item, expected.logical_item);
+            assert_eq!(actual.provenance, expected.provenance);
+        }
+    }
+
+    #[test]
     fn byte_budget_releases_capacity() {
         let budget = Arc::new(ByteBudget::new(10));
         let first = budget.reserve(8).unwrap();
