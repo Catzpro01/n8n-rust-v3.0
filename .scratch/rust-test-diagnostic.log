@@ -1,0 +1,608 @@
+===== cancellation_before_if_activation_is_terminal_and_idempotent =====
+[1m[32m    Updating[0m crates.io index
+[1m[32m Downloading[0m crates ...
+[1m[32m  Downloaded[0m aead v0.5.2
+[1m[32m  Downloaded[0m sha2 v0.11.0
+[1m[32m  Downloaded[0m shlex v2.0.1
+[1m[32m  Downloaded[0m smallvec v1.16.0
+[1m[32m  Downloaded[0m autocfg v1.5.1
+[1m[32m  Downloaded[0m tower-service v0.3.3
+[1m[32m  Downloaded[0m either v1.18.0
+[1m[32m  Downloaded[0m signal-hook-registry v1.4.8
+[1m[32m  Downloaded[0m digest v0.11.3
+[1m[32m  Downloaded[0m thread_local v1.1.10
+[1m[32m  Downloaded[0m version_check v0.9.5
+[1m[32m  Downloaded[0m tracing-attributes v0.1.31
+[1m[32m  Downloaded[0m universal-hash v0.5.1
+[1m[32m  Downloaded[0m zeroize v1.9.0
+[1m[32m  Downloaded[0m untrusted v0.9.0
+[1m[32m  Downloaded[0m tower-layer v0.3.3
+[1m[32m  Downloaded[0m socket2 v0.6.5
+[1m[32m  Downloaded[0m rustls v0.23.44
+[1m[32m  Downloaded[0m typenum v1.20.1
+[1m[32m  Downloaded[0m curve25519-dalek-derive v0.1.1
+[1m[32m  Downloaded[0m constant_time_eq v0.4.2
+[1m[32m  Downloaded[0m thiserror-impl v2.0.16
+[1m[32m  Downloaded[0m tracing-subscriber v0.3.23
+[1m[32m  Downloaded[0m sync_wrapper v1.0.2
+[1m[32m  Downloaded[0m tokio-util v0.7.19
+[1m[32m  Downloaded[0m opaque-debug v0.3.1
+[1m[32m  Downloaded[0m vcpkg v0.2.15
+[1m[32m  Downloaded[0m inout v0.1.4
+[1m[32m  Downloaded[0m block-buffer v0.10.4
+[1m[32m  Downloaded[0m lazy_static v1.5.0
+[1m[32m  Downloaded[0m fallible-streaming-iterator v0.1.9
+[1m[32m  Downloaded[0m serde_jcs v0.2.0
+[1m[32m  Downloaded[0m sha2 v0.10.9
+[1m[32m  Downloaded[0m syn v2.0.119
+[1m[32m  Downloaded[0m rustc_version v0.4.1
+[1m[32m  Downloaded[0m semver v1.0.28
+[1m[32m  Downloaded[0m rand_core v0.6.4
+[1m[32m  Downloaded[0m syn v3.0.5
+[1m[32m  Downloaded[0m serde_derive v1.0.228
+[1m[32m  Downloaded[0m serde_core v1.0.228
+[1m[32m  Downloaded[0m chacha20poly1305 v0.10.1
+[1m[32m  Downloaded[0m mio v1.2.3
+[1m[32m  Downloaded[0m http v1.5.0
+[1m[32m  Downloaded[0m serde_json v1.0.145
+[1m[32m  Downloaded[0m rusqlite v0.40.2
+[1m[32m  Downloaded[0m futures-util v0.3.34
+[1m[32m  Downloaded[0m axum v0.8.9
+[1m[32m  Downloaded[0m blake3 v1.8.7
+[1m[32m  Downloaded[0m hyper v1.11.1
+[1m[32m  Downloaded[0m hashbrown v0.17.1
+[1m[32m  Downloaded[0m h2 v0.4.19
+[1m[32m  Downloaded[0m curve25519-dalek v5.0.0
+[1m[32m  Downloaded[0m der v0.8.2
+[1m[32m  Downloaded[0m indexmap v2.14.2
+[1m[32m  Downloaded[0m hyper-util v0.1.20
+[1m[32m  Downloaded[0m ed25519-dalek v3.0.0
+[1m[32m  Downloaded[0m bytes v1.12.1
+[1m[32m  Downloaded[0m base64 v0.22.1
+[1m[32m  Downloaded[0m serde v1.0.228
+[1m[32m  Downloaded[0m rustls-webpki v0.103.15
+[1m[32m  Downloaded[0m proc-macro2 v1.0.107
+[1m[32m  Downloaded[0m rustls-pki-types v1.15.1
+[1m[32m  Downloaded[0m getrandom v0.2.17
+[1m[32m  Downloaded[0m futures-channel v0.3.34
+[1m[32m  Downloaded[0m cpufeatures v0.2.17
+[1m[32m  Downloaded[0m pkcs8 v0.11.0
+[1m[32m  Downloaded[0m tokio v1.53.1
+[1m[32m  Downloaded[0m httparse v1.10.1
+[1m[32m  Downloaded[0m fs-err v3.3.1
+[1m[32m  Downloaded[0m blake2 v0.10.6
+[1m[32m  Downloaded[0m axum-server v0.8.0
+[1m[32m  Downloaded[0m libc v0.2.189
+[1m[32m  Downloaded[0m ryu v1.0.23
+[1m[32m  Downloaded[0m ryu-js v0.2.2
+[1m[32m  Downloaded[0m matchit v0.8.4
+[1m[32m  Downloaded[0m hybrid-array v0.4.15
+[1m[32m  Downloaded[0m percent-encoding v2.3.2
+[1m[32m  Downloaded[0m password-hash v0.5.0
+[1m[32m  Downloaded[0m once_cell v1.21.4
+[1m[32m  Downloaded[0m httpdate v1.0.3
+[1m[32m  Downloaded[0m http-body-util v0.1.5
+[1m[32m  Downloaded[0m cpufeatures v0.3.1
+[1m[32m  Downloaded[0m base64ct v1.8.3
+[1m[32m  Downloaded[0m serde_urlencoded v0.7.1
+[1m[32m  Downloaded[0m find-msvc-tools v0.1.12
+[1m[32m  Downloaded[0m errno v0.3.14
+[1m[32m  Downloaded[0m serde_path_to_error v0.1.20
+[1m[32m  Downloaded[0m rustversion v1.0.23
+[1m[32m  Downloaded[0m poly1305 v0.8.0
+[1m[32m  Downloaded[0m pkg-config v0.3.34
+[1m[32m  Downloaded[0m pin-project-lite v0.2.17
+[1m[32m  Downloaded[0m futures-core v0.3.34
+[1m[32m  Downloaded[0m fallible-iterator v0.3.0
+[1m[32m  Downloaded[0m chacha20 v0.9.1
+[1m[32m  Downloaded[0m futures-task v0.3.34
+[1m[32m  Downloaded[0m ed25519 v3.0.0
+[1m[32m  Downloaded[0m digest v0.10.7
+[1m[32m  Downloaded[0m http-body v1.1.0
+[1m[32m  Downloaded[0m fnv v1.0.7
+[1m[32m  Downloaded[0m mime v0.3.17
+[1m[32m  Downloaded[0m itoa v1.0.18
+[1m[32m  Downloaded[0m generic-array v0.14.7
+[1m[32m  Downloaded[0m form_urlencoded v1.2.2
+[1m[32m  Downloaded[0m equivalent v1.0.2
+[1m[32m  Downloaded[0m cfg-if v1.0.4
+[1m[32m  Downloaded[0m thiserror v2.0.16
+[1m[32m  Downloaded[0m crypto-common v0.1.7
+[1m[32m  Downloaded[0m cc v1.4.5
+[1m[32m  Downloaded[0m block-buffer v0.12.1
+[1m[32m  Downloaded[0m ring v0.17.14
+[1m[32m  Downloaded[0m tracing-core v0.1.36
+[1m[32m  Downloaded[0m tracing v0.1.41
+[1m[32m  Downloaded[0m tower v0.5.3
+[1m[32m  Downloaded[0m memchr v2.8.3
+[1m[32m  Downloaded[0m cipher v0.4.4
+[1m[32m  Downloaded[0m bitflags v2.13.2
+[1m[32m  Downloaded[0m tokio-rustls v0.26.5
+[1m[32m  Downloaded[0m const-oid v0.10.2
+[1m[32m  Downloaded[0m axum-core v0.5.6
+[1m[32m  Downloaded[0m crypto-common v0.2.2
+[1m[32m  Downloaded[0m sharded-slab v0.1.7
+[1m[32m  Downloaded[0m spki v0.8.0
+[1m[32m  Downloaded[0m signature v3.0.0
+[1m[32m  Downloaded[0m slab v0.4.12
+[1m[32m  Downloaded[0m tracing-serde v0.2.0
+[1m[32m  Downloaded[0m subtle v2.6.1
+[1m[32m  Downloaded[0m unicode-ident v1.0.24
+[1m[32m  Downloaded[0m tokio-stream v0.1.17
+[1m[32m  Downloaded[0m tokio-macros v2.7.2
+[1m[32m  Downloaded[0m quote v1.0.47
+[1m[32m  Downloaded[0m arrayvec v0.7.8
+[1m[32m  Downloaded[0m arc-swap v1.9.2
+[1m[32m  Downloaded[0m argon2 v0.5.3
+[1m[32m  Downloaded[0m futures-sink v0.3.34
+[1m[32m  Downloaded[0m atomic-waker v1.1.2
+[1m[32m  Downloaded[0m libsqlite3-sys v0.38.2
+[1m[32m   Compiling[0m libc v0.2.189
+[1m[32m   Compiling[0m proc-macro2 v1.0.107
+[1m[32m   Compiling[0m unicode-ident v1.0.24
+[1m[32m   Compiling[0m quote v1.0.47
+[1m[32m   Compiling[0m cfg-if v1.0.4
+[1m[32m   Compiling[0m version_check v0.9.5
+[1m[32m   Compiling[0m typenum v1.20.1
+[1m[32m   Compiling[0m generic-array v0.14.7
+[1m[32m   Compiling[0m shlex v2.0.1
+[1m[32m   Compiling[0m find-msvc-tools v0.1.12
+[1m[32m   Compiling[0m syn v2.0.119
+[1m[32m   Compiling[0m cc v1.4.5
+[1m[32m   Compiling[0m pin-project-lite v0.2.17
+[1m[32m   Compiling[0m bytes v1.12.1
+[1m[32m   Compiling[0m getrandom v0.2.17
+[1m[32m   Compiling[0m itoa v1.0.18
+[1m[32m   Compiling[0m subtle v2.6.1
+[1m[32m   Compiling[0m rand_core v0.6.4
+[1m[32m   Compiling[0m errno v0.3.14
+[1m[32m   Compiling[0m syn v3.0.5
+[1m[32m   Compiling[0m futures-core v0.3.34
+[1m[32m   Compiling[0m crypto-common v0.1.7
+[1m[32m   Compiling[0m signal-hook-registry v1.4.8
+[1m[32m   Compiling[0m mio v1.2.3
+[1m[32m   Compiling[0m socket2 v0.6.5
+[1m[32m   Compiling[0m serde_core v1.0.228
+[1m[32m   Compiling[0m once_cell v1.21.4
+[1m[32m   Compiling[0m zeroize v1.9.0
+[1m[32m   Compiling[0m cpufeatures v0.2.17
+[1m[32m   Compiling[0m tracing-core v0.1.36
+[1m[32m   Compiling[0m http v1.5.0
+[1m[32m   Compiling[0m serde v1.0.228
+[1m[32m   Compiling[0m ring v0.17.14
+[1m[32m   Compiling[0m slab v0.4.12
+[1m[32m   Compiling[0m serde_derive v1.0.228
+[1m[32m   Compiling[0m tokio-macros v2.7.2
+[1m[32m   Compiling[0m tracing-attributes v0.1.31
+[1m[32m   Compiling[0m tokio v1.53.1
+[1m[32m   Compiling[0m http-body v1.1.0
+[1m[32m   Compiling[0m hybrid-array v0.4.15
+[1m[32m   Compiling[0m futures-sink v0.3.34
+[1m[32m   Compiling[0m equivalent v1.0.2
+[1m[32m   Compiling[0m serde_json v1.0.145
+[1m[32m   Compiling[0m httparse v1.10.1
+[1m[32m   Compiling[0m hashbrown v0.17.1
+[1m[32m   Compiling[0m ryu v1.0.23
+[1m[32m   Compiling[0m tracing v0.1.41
+[1m[32m   Compiling[0m block-buffer v0.10.4
+[1m[32m   Compiling[0m indexmap v2.14.2
+[1m[32m   Compiling[0m tower-service v0.3.3
+[1m[32m   Compiling[0m atomic-waker v1.1.2
+[1m[32m   Compiling[0m fnv v1.0.7
+[1m[32m   Compiling[0m memchr v2.8.3
+[1m[32m   Compiling[0m semver v1.0.28
+[1m[32m   Compiling[0m smallvec v1.16.0
+[1m[32m   Compiling[0m untrusted v0.9.0
+[1m[32m   Compiling[0m rustc_version v0.4.1
+[1m[32m   Compiling[0m tokio-util v0.7.19
+[1m[32m   Compiling[0m h2 v0.4.19
+[1m[32m   Compiling[0m digest v0.10.7
+[1m[32m   Compiling[0m crypto-common v0.2.2
+[1m[32m   Compiling[0m block-buffer v0.12.1
+[1m[32m   Compiling[0m rustls-pki-types v1.15.1
+[1m[32m   Compiling[0m futures-channel v0.3.34
+[1m[32m   Compiling[0m autocfg v1.5.1
+[1m[32m   Compiling[0m httpdate v1.0.3
+[1m[32m   Compiling[0m pkg-config v0.3.34
+[1m[32m   Compiling[0m cpufeatures v0.3.1
+[1m[32m   Compiling[0m rustls v0.23.44
+[1m[32m   Compiling[0m vcpkg v0.2.15
+[1m[32m   Compiling[0m rustversion v1.0.23
+[1m[32m   Compiling[0m hyper v1.11.1
+[1m[32m   Compiling[0m fs-err v3.3.1
+[1m[32m   Compiling[0m digest v0.11.3
+[1m[32m   Compiling[0m rustls-webpki v0.103.15
+[1m[32m   Compiling[0m libsqlite3-sys v0.38.2
+[1m[32m   Compiling[0m curve25519-dalek v5.0.0
+[1m[32m   Compiling[0m inout v0.1.4
+[1m[32m   Compiling[0m tower-layer v0.3.3
+[1m[32m   Compiling[0m futures-task v0.3.34
+[1m[32m   Compiling[0m percent-encoding v2.3.2
+[1m[32m   Compiling[0m sync_wrapper v1.0.2
+[1m[32m   Compiling[0m thiserror v2.0.16
+[1m[32m   Compiling[0m form_urlencoded v1.2.2
+[1m[32m   Compiling[0m futures-util v0.3.34
+[1m[32m   Compiling[0m cipher v0.4.4
+[1m[32m   Compiling[0m hyper-util v0.1.20
+[1m[32m   Compiling[0m sha2 v0.10.9
+[1m[32m   Compiling[0m http-body-util v0.1.5
+[1m[32m   Compiling[0m curve25519-dalek-derive v0.1.1
+[1m[32m   Compiling[0m thiserror-impl v2.0.16
+[1m[32m   Compiling[0m blake3 v1.8.7
+[1m[32m   Compiling[0m universal-hash v0.5.1
+[1m[32m   Compiling[0m base64ct v1.8.3
+[1m[32m   Compiling[0m lazy_static v1.5.0
+[1m[32m   Compiling[0m signature v3.0.0
+[1m[32m   Compiling[0m opaque-debug v0.3.1
+[1m[32m   Compiling[0m mime v0.3.17
+[1m[32m   Compiling[0m axum-core v0.5.6
+[1m[32m   Compiling[0m poly1305 v0.8.0
+[1m[32m   Compiling[0m tokio-rustls v0.26.5
+[1m[32m   Compiling[0m ed25519 v3.0.0
+[1m[32m   Compiling[0m sharded-slab v0.1.7
+[1m[32m   Compiling[0m password-hash v0.5.0
+[1m[32m   Compiling[0m tower v0.5.3
+[1m[32m   Compiling[0m arc-swap v1.9.2
+[1m[32m   Compiling[0m workflowd v0.1.0 (/home/runner/work/n8n-rust-v3.0/n8n-rust-v3.0/crates/workflowd)
+[1m[32m   Compiling[0m chacha20 v0.9.1
+[1m[32m   Compiling[0m serde_urlencoded v0.7.1
+[1m[32m   Compiling[0m sha2 v0.11.0
+[1m[32m   Compiling[0m blake2 v0.10.6
+[1m[32m   Compiling[0m tracing-serde v0.2.0
+[1m[32m   Compiling[0m serde_path_to_error v0.1.20
+[1m[32m   Compiling[0m aead v0.5.2
+[1m[32m   Compiling[0m thread_local v1.1.10
+[1m[32m   Compiling[0m matchit v0.8.4
+[1m[32m   Compiling[0m bitflags v2.13.2
+[1m[32m   Compiling[0m arrayvec v0.7.8
+[1m[32m   Compiling[0m ryu-js v0.2.2
+[1m[32m   Compiling[0m fallible-streaming-iterator v0.1.9
+[1m[32m   Compiling[0m constant_time_eq v0.4.2
+[1m[32m   Compiling[0m fallible-iterator v0.3.0
+[1m[32m   Compiling[0m either v1.18.0
+[1m[32m   Compiling[0m axum-server v0.8.0
+[1m[32m   Compiling[0m serde_jcs v0.2.0
+[1m[32m   Compiling[0m axum v0.8.9
+[1m[32m   Compiling[0m tracing-subscriber v0.3.23
+[1m[32m   Compiling[0m chacha20poly1305 v0.10.1
+[1m[32m   Compiling[0m ed25519-dalek v3.0.0
+[1m[32m   Compiling[0m canopy-node-contract v0.1.0-alpha.1 (/home/runner/work/n8n-rust-v3.0/n8n-rust-v3.0/crates/node-contract)
+[1m[32m   Compiling[0m argon2 v0.5.3
+[1m[32m   Compiling[0m rusqlite v0.40.2
+[1m[32m   Compiling[0m tokio-stream v0.1.17
+[1m[32m   Compiling[0m base64 v0.22.1
+[0m[1m[33mwarning[0m[0m[1m: method `mode` is never used[0m
+[0m   [0m[0m[1m[38;5;12m--> [0m[0mcrates/workflowd/src/edit_fields.rs:160:12[0m
+[0m    [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m159[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0mimpl CompiledConfiguration {[0m
+[0m    [0m[0m[1m[38;5;12m|[0m[0m [0m[0m[1m[38;5;12m--------------------------[0m[0m [0m[0m[1m[38;5;12mmethod in this implementation[0m
+[0m[1m[38;5;12m160[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m    pub fn mode(&self) -> &OutputMode {[0m
+[0m    [0m[0m[1m[38;5;12m|[0m[0m            [0m[0m[1m[33m^^^^[0m
+[0m    [0m[0m[1m[38;5;12m|[0m
+[0m    [0m[0m[1m[38;5;12m= [0m[0m[1mnote[0m[0m: `#[warn(dead_code)]` on by default[0m
+
+[0m[1m[33mwarning[0m[0m[1m: field `source` is never read[0m
+[0m  [0m[0m[1m[38;5;12m--> [0m[0mcrates/workflowd/src/expression.rs:84:5[0m
+[0m   [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m83[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0mpub struct Program {[0m
+[0m   [0m[0m[1m[38;5;12m|[0m[0m            [0m[0m[1m[38;5;12m-------[0m[0m [0m[0m[1m[38;5;12mfield in this struct[0m
+[0m[1m[38;5;12m84[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m    source: String,[0m
+[0m   [0m[0m[1m[38;5;12m|[0m[0m     [0m[0m[1m[33m^^^^^^[0m
+[0m   [0m[0m[1m[38;5;12m|[0m
+[0m   [0m[0m[1m[38;5;12m= [0m[0m[1mnote[0m[0m: `Program` has derived impls for the traits `Debug` and `Clone`, but these are intentionally ignored during dead code analysis[0m
+
+[0m[1m[33mwarning[0m[0m[1m: method `source` is never used[0m
+[0m  [0m[0m[1m[38;5;12m--> [0m[0mcrates/workflowd/src/expression.rs:89:12[0m
+[0m   [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m88[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0mimpl Program {[0m
+[0m   [0m[0m[1m[38;5;12m|[0m[0m [0m[0m[1m[38;5;12m------------[0m[0m [0m[0m[1m[38;5;12mmethod in this implementation[0m
+[0m[1m[38;5;12m89[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m    pub fn source(&self) -> &str {[0m
+[0m   [0m[0m[1m[38;5;12m|[0m[0m            [0m[0m[1m[33m^^^^^^[0m
+
+[0m[1m[33mwarning[0m[0m[1m: method `mode` is never used[0m
+[0m  [0m[0m[1m[38;5;12m--> [0m[0mcrates/workflowd/src/merge.rs:89:12[0m
+[0m   [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m88[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0mimpl CompiledConfiguration {[0m
+[0m   [0m[0m[1m[38;5;12m|[0m[0m [0m[0m[1m[38;5;12m--------------------------[0m[0m [0m[0m[1m[38;5;12mmethod in this implementation[0m
+[0m[1m[38;5;12m89[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m    pub fn mode(&self) -> &str {[0m
+[0m   [0m[0m[1m[38;5;12m|[0m[0m            [0m[0m[1m[33m^^^^[0m
+
+[0m[1m[33mwarning[0m[0m[1m: fields `node_id` and `configuration` are never read[0m
+[0m    [0m[0m[1m[38;5;12m--> [0m[0mcrates/workflowd/src/run.rs:2585:5[0m
+[0m     [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m2584[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0mstruct EditFieldsCandidate {[0m
+[0m     [0m[0m[1m[38;5;12m|[0m[0m        [0m[0m[1m[38;5;12m-------------------[0m[0m [0m[0m[1m[38;5;12mfields in this struct[0m
+[0m[1m[38;5;12m2585[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m    node_id: String,[0m
+[0m     [0m[0m[1m[38;5;12m|[0m[0m     [0m[0m[1m[33m^^^^^^^[0m
+[0m[1m[38;5;12m2586[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m    configuration: Value,[0m
+[0m     [0m[0m[1m[38;5;12m|[0m[0m     [0m[0m[1m[33m^^^^^^^^^^^^^[0m
+
+[0m[1m[33mwarning[0m[0m[1m: fields `node_id` and `configuration` are never read[0m
+[0m    [0m[0m[1m[38;5;12m--> [0m[0mcrates/workflowd/src/run.rs:2593:5[0m
+[0m     [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m2592[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0mstruct IfCandidate {[0m
+[0m     [0m[0m[1m[38;5;12m|[0m[0m        [0m[0m[1m[38;5;12m-----------[0m[0m [0m[0m[1m[38;5;12mfields in this struct[0m
+[0m[1m[38;5;12m2593[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m    node_id: String,[0m
+[0m     [0m[0m[1m[38;5;12m|[0m[0m     [0m[0m[1m[33m^^^^^^^[0m
+[0m[1m[38;5;12m2594[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m    configuration: Value,[0m
+[0m     [0m[0m[1m[38;5;12m|[0m[0m     [0m[0m[1m[33m^^^^^^^^^^^^^[0m
+
+[1m[33mwarning[0m[1m:[0m `workflowd` (bin "workflowd" test) generated 6 warnings
+[1m[32m    Finished[0m `test` profile [unoptimized + debuginfo] target(s) in 37.38s
+[1m[32m     Running[0m unittests src/main.rs (target/debug/deps/workflowd-39dee23563c45ec6)
+
+running 1 test
+test run::tests::cancellation_before_if_activation_is_terminal_and_idempotent ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 53 filtered out; finished in 0.00s
+
+===== bounded_queue_send_failure_releases_reserved_bytes =====
+[0m[1m[33mwarning[0m[0m[1m: method `mode` is never used[0m
+[0m   [0m[0m[1m[38;5;12m--> [0m[0mcrates/workflowd/src/edit_fields.rs:160:12[0m
+[0m    [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m159[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0mimpl CompiledConfiguration {[0m
+[0m    [0m[0m[1m[38;5;12m|[0m[0m [0m[0m[1m[38;5;12m--------------------------[0m[0m [0m[0m[1m[38;5;12mmethod in this implementation[0m
+[0m[1m[38;5;12m160[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m    pub fn mode(&self) -> &OutputMode {[0m
+[0m    [0m[0m[1m[38;5;12m|[0m[0m            [0m[0m[1m[33m^^^^[0m
+[0m    [0m[0m[1m[38;5;12m|[0m
+[0m    [0m[0m[1m[38;5;12m= [0m[0m[1mnote[0m[0m: `#[warn(dead_code)]` on by default[0m
+
+[0m[1m[33mwarning[0m[0m[1m: field `source` is never read[0m
+[0m  [0m[0m[1m[38;5;12m--> [0m[0mcrates/workflowd/src/expression.rs:84:5[0m
+[0m   [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m83[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0mpub struct Program {[0m
+[0m   [0m[0m[1m[38;5;12m|[0m[0m            [0m[0m[1m[38;5;12m-------[0m[0m [0m[0m[1m[38;5;12mfield in this struct[0m
+[0m[1m[38;5;12m84[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m    source: String,[0m
+[0m   [0m[0m[1m[38;5;12m|[0m[0m     [0m[0m[1m[33m^^^^^^[0m
+[0m   [0m[0m[1m[38;5;12m|[0m
+[0m   [0m[0m[1m[38;5;12m= [0m[0m[1mnote[0m[0m: `Program` has derived impls for the traits `Debug` and `Clone`, but these are intentionally ignored during dead code analysis[0m
+
+[0m[1m[33mwarning[0m[0m[1m: method `source` is never used[0m
+[0m  [0m[0m[1m[38;5;12m--> [0m[0mcrates/workflowd/src/expression.rs:89:12[0m
+[0m   [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m88[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0mimpl Program {[0m
+[0m   [0m[0m[1m[38;5;12m|[0m[0m [0m[0m[1m[38;5;12m------------[0m[0m [0m[0m[1m[38;5;12mmethod in this implementation[0m
+[0m[1m[38;5;12m89[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m    pub fn source(&self) -> &str {[0m
+[0m   [0m[0m[1m[38;5;12m|[0m[0m            [0m[0m[1m[33m^^^^^^[0m
+
+[0m[1m[33mwarning[0m[0m[1m: method `mode` is never used[0m
+[0m  [0m[0m[1m[38;5;12m--> [0m[0mcrates/workflowd/src/merge.rs:89:12[0m
+[0m   [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m88[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0mimpl CompiledConfiguration {[0m
+[0m   [0m[0m[1m[38;5;12m|[0m[0m [0m[0m[1m[38;5;12m--------------------------[0m[0m [0m[0m[1m[38;5;12mmethod in this implementation[0m
+[0m[1m[38;5;12m89[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m    pub fn mode(&self) -> &str {[0m
+[0m   [0m[0m[1m[38;5;12m|[0m[0m            [0m[0m[1m[33m^^^^[0m
+
+[0m[1m[33mwarning[0m[0m[1m: fields `node_id` and `configuration` are never read[0m
+[0m    [0m[0m[1m[38;5;12m--> [0m[0mcrates/workflowd/src/run.rs:2585:5[0m
+[0m     [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m2584[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0mstruct EditFieldsCandidate {[0m
+[0m     [0m[0m[1m[38;5;12m|[0m[0m        [0m[0m[1m[38;5;12m-------------------[0m[0m [0m[0m[1m[38;5;12mfields in this struct[0m
+[0m[1m[38;5;12m2585[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m    node_id: String,[0m
+[0m     [0m[0m[1m[38;5;12m|[0m[0m     [0m[0m[1m[33m^^^^^^^[0m
+[0m[1m[38;5;12m2586[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m    configuration: Value,[0m
+[0m     [0m[0m[1m[38;5;12m|[0m[0m     [0m[0m[1m[33m^^^^^^^^^^^^^[0m
+
+[0m[1m[33mwarning[0m[0m[1m: fields `node_id` and `configuration` are never read[0m
+[0m    [0m[0m[1m[38;5;12m--> [0m[0mcrates/workflowd/src/run.rs:2593:5[0m
+[0m     [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m2592[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0mstruct IfCandidate {[0m
+[0m     [0m[0m[1m[38;5;12m|[0m[0m        [0m[0m[1m[38;5;12m-----------[0m[0m [0m[0m[1m[38;5;12mfields in this struct[0m
+[0m[1m[38;5;12m2593[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m    node_id: String,[0m
+[0m     [0m[0m[1m[38;5;12m|[0m[0m     [0m[0m[1m[33m^^^^^^^[0m
+[0m[1m[38;5;12m2594[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m    configuration: Value,[0m
+[0m     [0m[0m[1m[38;5;12m|[0m[0m     [0m[0m[1m[33m^^^^^^^^^^^^^[0m
+
+[1m[33mwarning[0m[1m:[0m `workflowd` (bin "workflowd" test) generated 6 warnings
+[1m[32m    Finished[0m `test` profile [unoptimized + debuginfo] target(s) in 0.08s
+[1m[32m     Running[0m unittests src/main.rs (target/debug/deps/workflowd-39dee23563c45ec6)
+
+running 1 test
+test run::tests::bounded_queue_send_failure_releases_reserved_bytes ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 53 filtered out; finished in 0.00s
+
+===== if_runtime_fault_does_not_publish_partial_route_provenance =====
+[0m[1m[33mwarning[0m[0m[1m: method `mode` is never used[0m
+[0m   [0m[0m[1m[38;5;12m--> [0m[0mcrates/workflowd/src/edit_fields.rs:160:12[0m
+[0m    [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m159[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0mimpl CompiledConfiguration {[0m
+[0m    [0m[0m[1m[38;5;12m|[0m[0m [0m[0m[1m[38;5;12m--------------------------[0m[0m [0m[0m[1m[38;5;12mmethod in this implementation[0m
+[0m[1m[38;5;12m160[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m    pub fn mode(&self) -> &OutputMode {[0m
+[0m    [0m[0m[1m[38;5;12m|[0m[0m            [0m[0m[1m[33m^^^^[0m
+[0m    [0m[0m[1m[38;5;12m|[0m
+[0m    [0m[0m[1m[38;5;12m= [0m[0m[1mnote[0m[0m: `#[warn(dead_code)]` on by default[0m
+
+[0m[1m[33mwarning[0m[0m[1m: field `source` is never read[0m
+[0m  [0m[0m[1m[38;5;12m--> [0m[0mcrates/workflowd/src/expression.rs:84:5[0m
+[0m   [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m83[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0mpub struct Program {[0m
+[0m   [0m[0m[1m[38;5;12m|[0m[0m            [0m[0m[1m[38;5;12m-------[0m[0m [0m[0m[1m[38;5;12mfield in this struct[0m
+[0m[1m[38;5;12m84[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m    source: String,[0m
+[0m   [0m[0m[1m[38;5;12m|[0m[0m     [0m[0m[1m[33m^^^^^^[0m
+[0m   [0m[0m[1m[38;5;12m|[0m
+[0m   [0m[0m[1m[38;5;12m= [0m[0m[1mnote[0m[0m: `Program` has derived impls for the traits `Debug` and `Clone`, but these are intentionally ignored during dead code analysis[0m
+
+[0m[1m[33mwarning[0m[0m[1m: method `source` is never used[0m
+[0m  [0m[0m[1m[38;5;12m--> [0m[0mcrates/workflowd/src/expression.rs:89:12[0m
+[0m   [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m88[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0mimpl Program {[0m
+[0m   [0m[0m[1m[38;5;12m|[0m[0m [0m[0m[1m[38;5;12m------------[0m[0m [0m[0m[1m[38;5;12mmethod in this implementation[0m
+[0m[1m[38;5;12m89[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m    pub fn source(&self) -> &str {[0m
+[0m   [0m[0m[1m[38;5;12m|[0m[0m            [0m[0m[1m[33m^^^^^^[0m
+
+[0m[1m[33mwarning[0m[0m[1m: method `mode` is never used[0m
+[0m  [0m[0m[1m[38;5;12m--> [0m[0mcrates/workflowd/src/merge.rs:89:12[0m
+[0m   [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m88[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0mimpl CompiledConfiguration {[0m
+[0m   [0m[0m[1m[38;5;12m|[0m[0m [0m[0m[1m[38;5;12m--------------------------[0m[0m [0m[0m[1m[38;5;12mmethod in this implementation[0m
+[0m[1m[38;5;12m89[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m    pub fn mode(&self) -> &str {[0m
+[0m   [0m[0m[1m[38;5;12m|[0m[0m            [0m[0m[1m[33m^^^^[0m
+
+[0m[1m[33mwarning[0m[0m[1m: fields `node_id` and `configuration` are never read[0m
+[0m    [0m[0m[1m[38;5;12m--> [0m[0mcrates/workflowd/src/run.rs:2585:5[0m
+[0m     [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m2584[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0mstruct EditFieldsCandidate {[0m
+[0m     [0m[0m[1m[38;5;12m|[0m[0m        [0m[0m[1m[38;5;12m-------------------[0m[0m [0m[0m[1m[38;5;12mfields in this struct[0m
+[0m[1m[38;5;12m2585[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m    node_id: String,[0m
+[0m     [0m[0m[1m[38;5;12m|[0m[0m     [0m[0m[1m[33m^^^^^^^[0m
+[0m[1m[38;5;12m2586[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m    configuration: Value,[0m
+[0m     [0m[0m[1m[38;5;12m|[0m[0m     [0m[0m[1m[33m^^^^^^^^^^^^^[0m
+
+[0m[1m[33mwarning[0m[0m[1m: fields `node_id` and `configuration` are never read[0m
+[0m    [0m[0m[1m[38;5;12m--> [0m[0mcrates/workflowd/src/run.rs:2593:5[0m
+[0m     [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m2592[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0mstruct IfCandidate {[0m
+[0m     [0m[0m[1m[38;5;12m|[0m[0m        [0m[0m[1m[38;5;12m-----------[0m[0m [0m[0m[1m[38;5;12mfields in this struct[0m
+[0m[1m[38;5;12m2593[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m    node_id: String,[0m
+[0m     [0m[0m[1m[38;5;12m|[0m[0m     [0m[0m[1m[33m^^^^^^^[0m
+[0m[1m[38;5;12m2594[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m    configuration: Value,[0m
+[0m     [0m[0m[1m[38;5;12m|[0m[0m     [0m[0m[1m[33m^^^^^^^^^^^^^[0m
+
+[1m[33mwarning[0m[1m:[0m `workflowd` (bin "workflowd" test) generated 6 warnings
+[1m[32m    Finished[0m `test` profile [unoptimized + debuginfo] target(s) in 0.08s
+[1m[32m     Running[0m unittests src/main.rs (target/debug/deps/workflowd-39dee23563c45ec6)
+
+running 1 test
+test run::tests::if_runtime_fault_does_not_publish_partial_route_provenance ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 53 filtered out; finished in 0.00s
+
+===== full workspace test suite =====
+[0m[1m[33mwarning[0m[0m[1m: method `mode` is never used[0m
+[0m   [0m[0m[1m[38;5;12m--> [0m[0mcrates/workflowd/src/edit_fields.rs:160:12[0m
+[0m    [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m159[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0mimpl CompiledConfiguration {[0m
+[0m    [0m[0m[1m[38;5;12m|[0m[0m [0m[0m[1m[38;5;12m--------------------------[0m[0m [0m[0m[1m[38;5;12mmethod in this implementation[0m
+[0m[1m[38;5;12m160[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m    pub fn mode(&self) -> &OutputMode {[0m
+[0m    [0m[0m[1m[38;5;12m|[0m[0m            [0m[0m[1m[33m^^^^[0m
+[0m    [0m[0m[1m[38;5;12m|[0m
+[0m    [0m[0m[1m[38;5;12m= [0m[0m[1mnote[0m[0m: `#[warn(dead_code)]` on by default[0m
+
+[0m[1m[33mwarning[0m[0m[1m: field `source` is never read[0m
+[0m  [0m[0m[1m[38;5;12m--> [0m[0mcrates/workflowd/src/expression.rs:84:5[0m
+[0m   [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m83[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0mpub struct Program {[0m
+[0m   [0m[0m[1m[38;5;12m|[0m[0m            [0m[0m[1m[38;5;12m-------[0m[0m [0m[0m[1m[38;5;12mfield in this struct[0m
+[0m[1m[38;5;12m84[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m    source: String,[0m
+[0m   [0m[0m[1m[38;5;12m|[0m[0m     [0m[0m[1m[33m^^^^^^[0m
+[0m   [0m[0m[1m[38;5;12m|[0m
+[0m   [0m[0m[1m[38;5;12m= [0m[0m[1mnote[0m[0m: `Program` has derived impls for the traits `Debug` and `Clone`, but these are intentionally ignored during dead code analysis[0m
+
+[0m[1m[33mwarning[0m[0m[1m: method `source` is never used[0m
+[0m  [0m[0m[1m[38;5;12m--> [0m[0mcrates/workflowd/src/expression.rs:89:12[0m
+[0m   [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m88[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0mimpl Program {[0m
+[0m   [0m[0m[1m[38;5;12m|[0m[0m [0m[0m[1m[38;5;12m------------[0m[0m [0m[0m[1m[38;5;12mmethod in this implementation[0m
+[0m[1m[38;5;12m89[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m    pub fn source(&self) -> &str {[0m
+[0m   [0m[0m[1m[38;5;12m|[0m[0m            [0m[0m[1m[33m^^^^^^[0m
+
+[0m[1m[33mwarning[0m[0m[1m: method `mode` is never used[0m
+[0m  [0m[0m[1m[38;5;12m--> [0m[0mcrates/workflowd/src/merge.rs:89:12[0m
+[0m   [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m88[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0mimpl CompiledConfiguration {[0m
+[0m   [0m[0m[1m[38;5;12m|[0m[0m [0m[0m[1m[38;5;12m--------------------------[0m[0m [0m[0m[1m[38;5;12mmethod in this implementation[0m
+[0m[1m[38;5;12m89[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m    pub fn mode(&self) -> &str {[0m
+[0m   [0m[0m[1m[38;5;12m|[0m[0m            [0m[0m[1m[33m^^^^[0m
+
+[0m[1m[33mwarning[0m[0m[1m: fields `node_id` and `configuration` are never read[0m
+[0m    [0m[0m[1m[38;5;12m--> [0m[0mcrates/workflowd/src/run.rs:2585:5[0m
+[0m     [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m2584[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0mstruct EditFieldsCandidate {[0m
+[0m     [0m[0m[1m[38;5;12m|[0m[0m        [0m[0m[1m[38;5;12m-------------------[0m[0m [0m[0m[1m[38;5;12mfields in this struct[0m
+[0m[1m[38;5;12m2585[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m    node_id: String,[0m
+[0m     [0m[0m[1m[38;5;12m|[0m[0m     [0m[0m[1m[33m^^^^^^^[0m
+[0m[1m[38;5;12m2586[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m    configuration: Value,[0m
+[0m     [0m[0m[1m[38;5;12m|[0m[0m     [0m[0m[1m[33m^^^^^^^^^^^^^[0m
+
+[0m[1m[33mwarning[0m[0m[1m: fields `node_id` and `configuration` are never read[0m
+[0m    [0m[0m[1m[38;5;12m--> [0m[0mcrates/workflowd/src/run.rs:2593:5[0m
+[0m     [0m[0m[1m[38;5;12m|[0m
+[0m[1m[38;5;12m2592[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0mstruct IfCandidate {[0m
+[0m     [0m[0m[1m[38;5;12m|[0m[0m        [0m[0m[1m[38;5;12m-----------[0m[0m [0m[0m[1m[38;5;12mfields in this struct[0m
+[0m[1m[38;5;12m2593[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m    node_id: String,[0m
+[0m     [0m[0m[1m[38;5;12m|[0m[0m     [0m[0m[1m[33m^^^^^^^[0m
+[0m[1m[38;5;12m2594[0m[0m [0m[0m[1m[38;5;12m|[0m[0m [0m[0m    configuration: Value,[0m
+[0m     [0m[0m[1m[38;5;12m|[0m[0m     [0m[0m[1m[33m^^^^^^^^^^^^^[0m
+
+[1m[32m   Compiling[0m canopy-node-contract v0.1.0-alpha.1 (/home/runner/work/n8n-rust-v3.0/n8n-rust-v3.0/crates/node-contract)
+[1m[33mwarning[0m[1m:[0m `workflowd` (bin "workflowd" test) generated 6 warnings
+[1m[32m    Finished[0m `test` profile [unoptimized + debuginfo] target(s) in 0.57s
+[1m[32m     Running[0m unittests src/lib.rs (target/debug/deps/canopy_node_contract-9ea205d2337ba06f)
+
+running 4 tests
+test tests::canonical_digest_ignores_object_key_order ... ok
+test tests::extension_requires_namespace_and_round_trips ... ok
+test tests::normative_fields_are_required_and_strict ... ok
+test tests::published_manual_trigger_matches_its_independent_fixture ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+[1m[32m     Running[0m unittests src/main.rs (target/debug/deps/workflowd-39dee23563c45ec6)
+
+running 54 tests
+test artifact::tests::blake3_owner_keying_is_distinct_and_measured ... ok
+test artifact::tests::ciphertext_damage_is_quarantined_before_plaintext_release ... ok
+test artifact::tests::cleanup_never_removes_a_live_referenced_object ... ok
+test artifact::tests::interrupted_streaming_upload_is_quarantined_for_at_least_a_day ... ok
+test artifact::tests::missing_reference_is_a_non_disclosing_denial ... ok
+test artifact::tests::owner_deduplicates_and_verified_ranges_are_bounded ... ok
+test artifact::tests::reads_and_integrity_quarantine_share_the_mutation_barrier ... ok
+test artifact::tests::runtime_cleanup_quarantines_only_expired_staging_and_removes_it_after_safety_age ... ok
+test artifact::tests::runtime_prefix_release_cleans_each_attempt_reference ... ok
+test artifact::tests::runtime_reference_release_quarantines_only_unprotected_objects ... ok
+test artifact::tests::streaming_finalize_never_needs_the_whole_request_body ... ok
+test canonical::tests::digest_is_tagged ... ok
+test canonical::tests::matches_rfc_8785_serialization_sample ... ok
+test compiler::tests::compile_is_pure_and_deterministic ... ok
+test compiler::tests::invalid_ports_and_graph_identities_are_rejected ... ok
+test compiler::tests::profile_capability_effect_and_budget_checks_are_structured ... ok
+test compiler::tests::validates_each_compiler_boundary_without_io ... ok
+test edit_fields::tests::applies_frozen_eco_assignments_against_immutable_input ... ok
+test edit_fields::tests::merge_requires_an_object_and_expression_errors_are_stable ... ok
+test edit_fields::tests::rejects_duplicate_or_parent_paths_before_execution ... ok
+test edit_fields::tests::supports_replace_nested_paths_and_missing_omission ... ok
+test expression::tests::checked_arithmetic_and_types_are_stable_errors ... ok
+test expression::tests::evaluates_the_frozen_eco_expression_set ... ok
+test expression::tests::large_json_integers_are_not_rounded_by_arithmetic_or_comparison ... ok
+test expression::tests::missing_is_distinct_and_unsafe_javascript_is_rejected ... ok
+test expression::tests::preserves_types_and_handles_literals_and_access ... ok
+test generate_engine::tests::authored_hard_limits_and_signed_overflow_are_permanent_failures ... ok
+test generate_engine::tests::eco_stream_is_exact_ordered_and_micro_bounded ... ok
+test generate_engine::tests::resume_starts_at_the_durable_suffix_and_preserves_digest ... ok
+test generate_engine::tests::spill_changes_only_physical_data_not_logical_digest ... ok
+test if_node::tests::all_and_any_are_deterministic_and_cover_composition ... ok
+test if_node::tests::batch_routing_does_not_publish_partial_provenance_on_error ... ok
+test if_node::tests::batch_routing_is_exactly_one_port_and_replay_stable ... ok
+test if_node::tests::invalid_configuration_is_rejected_before_publication ... ok
+test if_node::tests::missing_null_and_non_boolean_results_are_structured_errors ... ok
+test if_node::tests::routes_each_item_to_exactly_one_named_port ... ok
+test merge::tests::duplicate_provenance_is_rejected_without_silent_loss ... ok
+test merge::tests::true_then_false_is_independent_of_branch_close_interleaving ... ok
+test merge::tests::unsupported_mode_is_typed ... ok
+test run::tests::artifact_preparation_failure_cannot_strand_a_requested_cancellation ... ok
+test run::tests::bounded_queue_send_failure_releases_reserved_bytes ... ok
+test run::tests::byte_budget_releases_capacity ... ok
+test run::tests::cancellation_before_if_activation_is_terminal_and_idempotent ... ok
+test run::tests::cursor_rejects_other_shapes ... ok
+test run::tests::edit_fields_batch_does_not_publish_partial_transform_state_on_error ... ok
+test run::tests::edit_fields_batch_preserves_artifact_data_and_numeric_item_linking ... ok
+test run::tests::edit_fields_replace_preserves_artifact_data ... ok
+test run::tests::if_runtime_fault_does_not_publish_partial_route_provenance ... ok
+test run::tests::rejects_obvious_secret_fields_from_retained_trace ... ok
+test run::tests::replay_larger_than_one_mailbox_becomes_gap_and_resync ... ok
+test run::tests::transformed_logical_items_are_the_if_input ... ok
+test run_engine::tests::cancellation_is_a_pure_input_to_the_transition ... ok
+test run_engine::tests::deterministic_manual_activation_has_one_logical_outcome ... ok
+test run_engine::tests::refuses_to_recompile_or_run_a_mutated_plan ... ok
+
+test result: ok. 54 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 22.22s
+
+[1m[32m   Doc-tests[0m canopy_node_contract
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+full workspace exit: 0
+diagnostic exit: 0
