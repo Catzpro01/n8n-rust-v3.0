@@ -1631,7 +1631,12 @@ mod tests {
                 1,
             )
             .unwrap();
-        assert_eq!(service.release_reference_prefix("run:r1:merge:m1:").unwrap(), 2);
+        assert_eq!(
+            service
+                .release_reference_prefix("run:r1:merge:m1:")
+                .unwrap(),
+            2
+        );
         let connection = service.connect().unwrap();
         let remaining: i64 = connection
             .query_row(
