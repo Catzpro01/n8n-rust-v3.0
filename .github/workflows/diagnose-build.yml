@@ -39,6 +39,11 @@ jobs:
           fmt_status=$?
           cat "$RUNNER_TEMP/workflowd-fmt.log"
           {
+            echo
+            echo '=== cargo fmt check ==='
+            cat "$RUNNER_TEMP/workflowd-fmt.log"
+          } >> "$RUNNER_TEMP/workflowd-build.log"
+          {
             echo '### workflowd build output'
             echo '```text'
             cat "$RUNNER_TEMP/workflowd-build.log"
