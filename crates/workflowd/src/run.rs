@@ -5803,7 +5803,7 @@ mod tests {
     fn if_runtime_fault_does_not_publish_partial_route_provenance() {
         let configuration = if_node::compile_configuration(&json!({
             "logic": "all",
-            "conditions": [{"expression": "$json.value === true"}]
+            "conditions": [{"expression": "$json.value"}]
         }))
         .unwrap();
         let mut envelopes = vec![
