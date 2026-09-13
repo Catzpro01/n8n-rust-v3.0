@@ -25,25 +25,32 @@ with n8n; it is one demonstrable vertical slice.
 
 ## Frontier
 
-1. Run `/setup-matt-pocock-skills` once and configure GitHub Issues plus the
-   domain-document layout.
-2. Use `/wayfinder` to resolve the open decisions in `CONTEXT.md`.
-3. Turn the settled decisions into a spec, then vertical tickets.
-4. Scaffold the smallest Dioxus/Leptos or backend/frontend slice selected by
-   the decision record.
+1. Resolve the product boundary and clean-room compatibility target in
+   [#3](https://github.com/Catzpro01/n8n-rust-v3.0/issues/3), the first
+   decision frontier in the [Wayfinder map #2](https://github.com/Catzpro01/n8n-rust-v3.0/issues/2).
+2. Use the resolved boundary to evaluate the browser/UI architecture (#4) and
+   workflow domain/execution semantics (#5).
+3. Resolve persistence/security (#6) and GitHub validation/delivery (#7) only
+   after their stated blockers are settled.
+4. Turn the settled decisions into an ADR-backed spec and then vertical
+   implementation tickets.
+5. Scaffold the smallest selected Rust slice only after the relevant decision
+   records are green.
 
 ## Active work
 
 - **Owner:** none
-- **Ticket:** none claimed
-- **Blockers:** framework and product-boundary decisions are still open
+- **Ticket:** [#3](https://github.com/Catzpro01/n8n-rust-v3.0/issues/3) is ready for
+  agent work but is not claimed.
+- **Blockers:** product boundary and clean-room acceptance criteria; framework,
+  domain, persistence, and delivery decisions remain downstream.
 
 ## Last verified
 
-- `python3 -m unittest discover -s tests -v` — 3 tests passed before this
-  planning update.
-- `python3 tools/codebase_index.py index` — index refresh is available.
-- `git diff --check` — clean at the last verification boundary.
+- `python3 -m unittest discover -s tests -v` — 3 tests passed.
+- `python3 tools/codebase_index.py index` — 15 files indexed.
+- `git diff --check` — clean before the Wayfinder issue update.
+- Latest pushed commit: `283360b` (`docs: configure GitHub issue workflow`).
 
 ## Resume protocol
 
