@@ -32,6 +32,26 @@ python3 tools/codebase_index.py index --force
 
 The cache is updated atomically, so an interrupted refresh does not leave a partially written index. Run `search --no-index` when a read-only lookup must use exactly the current cache.
 
+### Arena workflow
+
+The project-level skill at `.agents/skills/arena/SKILL.md` combines the two
+installed skill families without loading all of their instructions on every
+turn:
+
+- `codebase-memory-mcp` for bounded discovery and impact tracing;
+- the smallest relevant Matt Pocock skill for design, TDD, diagnosis, or
+  review.
+
+For a compact task context packet:
+
+```bash
+python3 tools/arena_context.py "<what you are changing>"
+```
+
+`AGENTS.md` points agents to this workflow at the start of every task. The
+local index is only a discovery accelerator; checked-out source remains the
+source of truth.
+
 ### Tests
 
 ```bash
