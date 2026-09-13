@@ -75,12 +75,13 @@ The digest operation is `sha256` over those JCS bytes and is serialized with
 the `sha256:` tag. The frozen expected Output Digest is:
 
 ```text
-sha256:1caaeb3901bd0a17d8875a65c3363c8fbbc8c8a6695519ccbad0005e57ae9fdd
+sha256:56193dff07ac42baab1774fc9f25ce52dd527a5c14a59ac083b372b0ff402e55
 ```
 
 The expected counters are `true = 24,999`, `false = 24,999`, and
-`total = 49,998`. The expected transformed logical-byte sum is `3,791,517`
-for the frozen JSON item shape.
+`total = 49,998`. The expected transformed logical-byte sum is `5,135,908`
+for the frozen JSON item shape, including `eco`, `parity`, `doubled`, and
+`label`.
 
 ## Activation accounting
 

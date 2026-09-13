@@ -636,12 +636,12 @@ class IfRuntimeAcceptance(unittest.TestCase):
         self.assertEqual(summary["total_count"], 49_998)
         self.assertEqual(summary["true_count"], 24_999)
         self.assertEqual(summary["false_count"], 24_999)
-        self.assertEqual(summary["logical_bytes"], 3_791_517)
+        self.assertEqual(summary["logical_bytes"], 5_135_908)
         self.assertEqual(summary["first_ordinal"], 0)
         self.assertEqual(summary["last_ordinal"], 49_997)
         self.assertEqual(
             summary["output_digest"],
-            "sha256:1caaeb3901bd0a17d8875a65c3363c8fbbc8c8a6695519ccbad0005e57ae9fdd",
+            "sha256:56193dff07ac42baab1774fc9f25ce52dd527a5c14a59ac083b372b0ff402e55",
         )
 
         trace_response = api(

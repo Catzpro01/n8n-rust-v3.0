@@ -3940,11 +3940,19 @@ fn start_executor(
                                                         "canopy.merge.missing_route_provenance",
                                                         "Merge input item is missing the If output port.",
                                                     ))?;
+                                                let logical_bytes = serde_jcs::to_vec(&envelope.logical_item)
+                                                    .map_err(|error| {
+                                                        generate_failure(
+                                                            "canopy.merge.canonicalization",
+                                                            &error.to_string(),
+                                                        )
+                                                    })?
+                                                    .len() as u64;
                                                 let record = merge::MergeRecord {
                                                     ordinal: envelope.ordinal,
                                                     item: envelope.item.clone(),
                                                     logical_item: envelope.logical_item.clone(),
-                                                    logical_bytes: envelope.logical_bytes,
+                                                    logical_bytes,
                                                     provenance: envelope.provenance.clone(),
                                                 };
                                                 let result = match port {

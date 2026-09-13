@@ -19,7 +19,7 @@ pub const ECO_TRUE_COUNT: u64 = 24_999;
 pub const ECO_FALSE_COUNT: u64 = 24_999;
 pub const ECO_TOTAL_ACTIVATIONS: u64 = 100_000;
 pub const ECO_EXPECTED_OUTPUT_DIGEST: &str =
-    "sha256:1caaeb3901bd0a17d8875a65c3363c8fbbc8c8a6695519ccbad0005e57ae9fdd";
+    "sha256:56193dff07ac42baab1774fc9f25ce52dd527a5c14a59ac083b372b0ff402e55";
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
@@ -298,7 +298,9 @@ mod tests {
                     "index": ordinal,
                     "value": ordinal,
                     "data": null,
+                    "eco": true,
                     "parity": parity,
+                    "doubled": ordinal * 2,
                     "label": format!("eco-{ordinal}"),
                 });
                 let logical_bytes = serde_jcs::to_vec(&logical_item).unwrap().len() as u64;
