@@ -10,7 +10,7 @@ use crate::{
         self, GenerateFailure, GenerateResume, GenerateSession, GenerateStart, GenerateSummary,
         GeneratedEnvelope,
     },
-    if_node, merge,
+    if_node, merge, summarize,
     run_engine::{self, ActivationOutcome, ManualActivationInput, ManualActivationResult},
 };
 use rand_core::{OsRng, RngCore};
@@ -163,6 +163,8 @@ pub struct GenerationProgress {
     pub branch: Option<BranchProgress>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub merge: Option<MergeProgress>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub summary: Option<SummaryProgress>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -478,6 +480,13 @@ impl RunService {
                 active,
             },
             4 * 1024,
+        )?;
+        let WriterReply::Cancellation(mut result) = reply else {
+            return Err(RunError::Storage("writer returned the wrong reply".into()));
+        };
+        if result.accepted {
+            if let Some(control) = self
+     024,
         )?;
         let WriterReply::Cancellation(mut result) = reply else {
             return Err(RunError::Storage("writer returned the wrong reply".into()));
@@ -801,6 +810,7 @@ fn initialize_schema(connection: &Connection) -> Result<(), String> {
                 branch_false_count INTEGER NOT NULL DEFAULT 0,
                 branch_stream_digest TEXT NOT NULL DEFAULT 'genesis',
                 merge_json TEXT,
+                summary_json TEXT,
                 updated_at INTEGER NOT NULL
             ) STRICT;
             CREATE TABLE IF NOT EXISTS run_suspensions(
@@ -863,6 +873,7 @@ fn initialize_schema(connection: &Connection) -> Result<(), String> {
         "TEXT NOT NULL DEFAULT 'genesis'",
     )?;
     ensure_generation_column(connection, "merge_json", "TEXT")?;
+    ensure_generation_column(connection, "summary_json", "TEXT")?;
     Ok(())
 }
 
@@ -1525,7 +1536,7 @@ fn generation_progress_transaction(
     transaction.execute(
         "INSERT INTO run_generation_progress(run_id,state,generated_count,logical_bytes,stream_digest,backpressure_events,backpressure_micros,artifact_json,transform_node_id,transformed_count,transformed_logical_bytes,transformed_stream_digest,branch_node_id,branch_true_count,branch_false_count,branch_stream_digest,merge_json,updated_at)
          VALUES(?1,'running',?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,NULL,?16)
-         ON CONFLICT(run_id) DO UPDATE SET state='running',generated_count=excluded.generated_count,logical_bytes=excluded.logical_bytes,stream_digest=excluded.stream_digest,backpressure_events=excluded.backpressure_events,backpressure_micros=excluded.backpressure_micros,artifact_json=excluded.artifact_json,transform_node_id=excluded.transform_node_id,transformed_count=excluded.transformed_count,transformed_logical_bytes=excluded.transformed_logical_bytes,transformed_stream_digest=excluded.transformed_stream_digest,branch_node_id=excluded.branch_node_id,branch_true_count=excluded.branch_true_count,branch_false_count=excluded.branch_false_count,branch_stream_digest=excluded.branch_stream_digest,merge_json=NULL,updated_at=excluded.updated_at",
+         ON CONFLICT(run_id) DO UPDATE SET state='running',generated_count=excluded.generated_count,logical_bytes=excluded.logical_bytes,stream_digest=excluded.stream_digest,backpressure_events=excluded.backpressure_events,backpressure_micros=excluded.backpressure_micros,artifact_json=excluded.artifact_json,transform_node_id=excluded.transform_node_id,transformed_count=excluded.transformed_count,transformed_logical_bytes=excluded.transformed_logical_bytes,transformed_stream_digest=excluded.transformed_stream_digest,branch_node_id=excluded.branch_node_id,branch_true_count=excluded.branch_true_count,branch_false_count=excluded.branch_false_count,branch_stream_digest=excluded.branch_stream_digest,merge_json=NULL,summary_json=NULL,updated_at=excluded.updated_at",
         params![progress.run_id,progress.generated_count as i64,progress.logical_bytes as i64,progress.stream_digest,progress.backpressure_events as i64,progress.backpressure_micros as i64,artifact_json,progress.transform_node_id,progress.transformed_count as i64,progress.transformed_logical_bytes as i64,progress.transformed_stream_digest,progress.branch_node_id,progress.branch_true_count as i64,progress.branch_false_count as i64,progress.branch_stream_digest,committed_at]
     ).map_err(storage_error)?;
     transaction.execute(
@@ -1584,9 +1595,20 @@ fn complete_generated_transaction(
                 .find(|node| node.contract_lock.name == "merge")
                 .map(|node| node.node_instance_id.clone())
         });
+    let summary_node = completed
+        .summary_progress
+        .as_ref()
+        .map(|summary| summary.node_instance_id.clone())
+        .or_else(|| {
+            plan.nodes
+                .iter()
+                .find(|node| node.contract_lock.name == "summarize")
+                .map(|node| node.node_instance_id.clone())
+        });
     let has_transform = transform_node.is_some();
     let has_branch = branch_node.is_some();
     let has_merge = merge_node.is_some();
+    let has_summary = summary_node.is_some();
     let cancel_won = current.durable.state == "cancel_requested" || completed.cancelled;
     let state = if cancel_won {
         "cancelled"
@@ -1619,12 +1641,18 @@ fn complete_generated_transaction(
         .as_ref()
         .and_then(|failure| failure["code"].as_str())
         .is_some_and(|code| code.starts_with("canopy.merge"));
+    let summary_failed = failure
+        .as_ref()
+        .and_then(|failure| failure["code"].as_str())
+        .is_some_and(|code| code.starts_with("canopy.summarize"));
     let transform_should_commit =
         has_transform && (state == "succeeded" || state == "cancelled" || transform_failed);
     let branch_should_commit =
         has_branch && (state == "succeeded" || state == "cancelled" || branch_failed);
     let merge_should_commit =
         has_merge && (state == "succeeded" || state == "cancelled" || merge_failed);
+    let summary_should_commit =
+        has_summary && (state == "succeeded" || state == "cancelled" || summary_failed);
     if state == "succeeded" && has_branch {
         if completed.branch_node_id.as_deref() != branch_node.as_deref()
             || completed
@@ -1652,13 +1680,33 @@ fn complete_generated_transaction(
             ));
         }
     }
+    if state == "succeeded" && has_summary {
+        let Some(summary) = completed.summary_progress.as_ref() else {
+            return Err(RunError::Integrity(
+                "successful Summarize execution has no reducer evidence".into(),
+            ));
+        };
+        if summary.node_instance_id != summary_node.as_deref().unwrap_or_default()
+            || summary.total_count != completed.generated_count
+            || summary.true_count != completed.branch_true_count
+            || summary.false_count != completed.branch_false_count
+            || summary.true_count.saturating_add(summary.false_count) != summary.total_count
+        {
+            return Err(RunError::Integrity(
+                "successful Summarize execution does not cover every merged item".into(),
+            ));
+        }
+    }
     let branch_order = if transform_should_commit {
         4_u64
     } else {
         3_u64
     };
     let merge_order = branch_order + 1;
-    let final_order = if merge_should_commit {
+    let summary_order = merge_order + u64::from(has_merge);
+    let final_order = if summary_should_commit {
+        summary_order
+    } else if merge_should_commit {
         merge_order
     } else if branch_should_commit {
         branch_order
@@ -1667,8 +1715,25 @@ fn complete_generated_transaction(
     } else {
         2_u64
     };
+    let logical_activation_count = if state == "succeeded" && has_summary {
+        2_u64
+            .saturating_add(if has_transform {
+                completed.transformed_count
+            } else {
+                0
+            })
+            .saturating_add(if has_branch {
+                completed.generated_count
+            } else {
+                0
+            })
+            .saturating_add(u64::from(has_merge))
+            .saturating_add(1)
+    } else {
+        final_order
+    };
     let correctness_digest = if state == "succeeded" {
-        if has_transform || has_branch || has_merge {
+        if has_transform || has_branch || has_merge || has_summary {
             let mut logical_outcomes = vec![
                 json!({
                     "logical_order":1,
@@ -1731,6 +1796,25 @@ fn complete_generated_transaction(
                     "item_linking":"one_to_one"
                 }));
             }
+            if let (Some(summary_node), Some(reduced)) =
+                (summary_node.as_ref(), completed.summary_progress.as_ref())
+            {
+                logical_outcomes.push(json!({
+                    "logical_order":summary_order,
+                    "node_instance_id":summary_node,
+                    "outcome":"success",
+                    "activation_shape":"barrier_reducer",
+                    "operation":reduced.operation,
+                    "total_count":reduced.total_count,
+                    "true_count":reduced.true_count,
+                    "false_count":reduced.false_count,
+                    "logical_bytes":reduced.logical_bytes,
+                    "output_digest_schema":summarize::OUTPUT_DIGEST_SCHEMA,
+                    "output_digest_algorithm":summarize::OUTPUT_DIGEST_ALGORITHM,
+                    "output_digest":reduced.output_digest,
+                    "item_linking":"one_to_one"
+                }));
+            }
             digest(&json!({
                 "schema":"canopy.correctness-digest/v1alpha2",
                 "revision_digest":current.revision_digest,
@@ -1775,6 +1859,9 @@ fn complete_generated_transaction(
     let merge_activation = merge_node
         .as_ref()
         .map(|node| generated_activation_id(&completed.run_id, node, merge_order));
+    let summary_activation = summary_node
+        .as_ref()
+        .map(|node| generated_activation_id(&completed.run_id, node, summary_order));
     let manual_committed = current.durable.logical_order >= 1;
     if !manual_committed {
         insert_activation_row(
@@ -1930,6 +2017,34 @@ fn complete_generated_transaction(
             "item_linking":"one_to_one"
         })
     });
+    let summary_outcome = if state == "succeeded" {
+        "success"
+    } else if state == "cancelled" {
+        "cancelled"
+    } else {
+        "permanent_failure"
+    };
+    let summary_input = json!({
+        "source_node_instance_id": merge_node,
+        "source_output_port":"items",
+        "closed_before_reduce":true,
+        "output_count":completed.merge.as_ref().map_or(0, |merge| merge.output_count),
+        "stream_digest":completed.merge.as_ref().map_or_else(|| "genesis".into(), |merge| merge.stream_digest.clone())
+    });
+    let summary_output = completed.summary_progress.as_ref().map(|reduced| {
+        json!({
+            "operation":reduced.operation,
+            "total_count":reduced.total_count,
+            "true_count":reduced.true_count,
+            "false_count":reduced.false_count,
+            "logical_bytes":reduced.logical_bytes,
+            "output_digest_schema":summarize::OUTPUT_DIGEST_SCHEMA,
+            "output_digest_algorithm":summarize::OUTPUT_DIGEST_ALGORITHM,
+            "output_digest":reduced.output_digest,
+            "first_ordinal":reduced.first_ordinal,
+            "last_ordinal":reduced.last_ordinal
+        })
+    });
     if branch_should_commit {
         let branch_node = branch_node
             .as_ref()
@@ -1995,6 +2110,45 @@ fn complete_generated_transaction(
                     "output_port":"items",
                     "spooling":"artifact-backed-segments",
                     "item_linking":"one_to_one"
+                }),
+            },
+        )?;
+    }
+    if summary_should_commit {
+        let summary_node = summary_node
+            .as_ref()
+            .ok_or_else(|| RunError::Integrity("Summarize activation has no node".into()))?;
+        let summary_activation = summary_activation
+            .as_ref()
+            .ok_or_else(|| RunError::Integrity("Summarize activation has no identity".into()))?;
+        insert_activation_row(
+            &transaction,
+            ActivationInsert {
+                activation_id: summary_activation,
+                run_id: &completed.run_id,
+                node_id: summary_node,
+                logical_order: summary_order,
+                outcome: summary_outcome,
+                input: &summary_input,
+                output: if state == "succeeded" {
+                    summary_output.as_ref()
+                } else {
+                    None
+                },
+                failure: if summary_failed { failure.as_ref() } else { None },
+                checkpoint,
+                started_at: completed.started_at,
+                completed_at: completed.completed_at,
+                elapsed_micros: completed.elapsed_micros,
+                provenance: json!({
+                    "engine_abi":summarize::SUMMARIZE_ABI,
+                    "lane":"native-cpu",
+                    "effect_class":"pure",
+                    "activation_shape":"barrier_reducer",
+                    "input_port":"items",
+                    "output_port":"summary",
+                    "bounded_state":"counters-and-digest-only",
+                    "output_digest_algorithm":summarize::OUTPUT_DIGEST_ALGORITHM
                 }),
             },
         )?;
@@ -2144,6 +2298,53 @@ fn complete_generated_transaction(
         previous = merge_event.event_hash;
         sequence += 1;
     }
+    if summary_should_commit {
+        let summary_node = summary_node
+            .as_ref()
+            .ok_or_else(|| RunError::Integrity("Summarize trace has no node".into()))?;
+        let summary_activation = summary_activation
+            .as_ref()
+            .ok_or_else(|| RunError::Integrity("Summarize trace has no identity".into()))?;
+        let summary_event = make_trace_event(
+            &completed.run_id,
+            sequence,
+            Some(summary_order),
+            checkpoint,
+            "logical",
+            "activation_outcome",
+            json!({
+                "activation_id":summary_activation,
+                "node_instance_id":summary_node,
+                "attempt":1,
+                "outcome":summary_outcome,
+                "activation_shape":"barrier_reducer",
+                "input_port":"items",
+                "output_port":"summary",
+                "operation":completed.summary_progress.as_ref().map_or_else(|| "output_digest".into(), |summary| summary.operation.clone()),
+                "total_count":completed.summary_progress.as_ref().map_or(0, |summary| summary.total_count),
+                "true_count":completed.summary_progress.as_ref().map_or(0, |summary| summary.true_count),
+                "false_count":completed.summary_progress.as_ref().map_or(0, |summary| summary.false_count),
+                "logical_bytes":completed.summary_progress.as_ref().map_or(0, |summary| summary.logical_bytes),
+                "output_digest_schema":summarize::OUTPUT_DIGEST_SCHEMA,
+                "output_digest_algorithm":summarize::OUTPUT_DIGEST_ALGORITHM,
+                "output_digest":completed.summary_progress.as_ref().map(|summary| summary.output_digest.clone()),
+                "bounded_state":"counters-and-digest-only",
+                "causal_trace_links":{
+                    "source_merge_output_digest":completed.merge.as_ref().map(|merge| merge.stream_digest.clone()),
+                    "retained_ordinal_range":[completed.summary_progress.as_ref().and_then(|summary| summary.first_ordinal),completed.summary_progress.as_ref().and_then(|summary| summary.last_ordinal)],
+                    "retained_item_provenance":"artifact-backed-merge-spool"
+                },
+                "failure":if summary_failed { failure.clone() } else { None::<Value> },
+                "input_digest":digest(&summary_input).map_err(RunError::Integrity)?,
+                "output_digest_value":summary_output.as_ref().map(digest).transpose().map_err(RunError::Integrity)?
+            }),
+            &previous,
+            committed_at,
+        )?;
+        insert_trace_event(&transaction, &summary_event)?;
+        previous = summary_event.event_hash;
+        sequence += 1;
+    }
     let checkpoint_event = make_trace_event(
         &completed.run_id,
         sequence,
@@ -2152,12 +2353,13 @@ fn complete_generated_transaction(
         "physical",
         "checkpoint_committed",
         json!({
-            "state":state,"logical_order":final_order,"generated_count":completed.generated_count,"logical_bytes":completed.logical_bytes,
+            "state":state,"logical_order":final_order,"logical_activation_count":logical_activation_count,"generated_count":completed.generated_count,"logical_bytes":completed.logical_bytes,
             "stream_digest":completed.stream_digest,"transform_node_id":transform_node,"transformed_count":completed.transformed_count,
             "transformed_logical_bytes":completed.transformed_logical_bytes,"transformed_stream_digest":completed.transformed_stream_digest,
             "branch_node_id":branch_node,"branch_true_count":completed.branch_true_count,"branch_false_count":completed.branch_false_count,
             "branch_stream_digest":completed.branch_stream_digest,
             "merge_node_id":merge_node,"merge":completed.merge,
+            "summary_node_id":summary_node,"summary":completed.summary_progress,
             "correctness_digest":correctness_digest,"backpressure_micros":completed.backpressure_micros,
             "safe_resources":safe_resource_facts()
         }),
@@ -2165,7 +2367,7 @@ fn complete_generated_transaction(
         committed_at,
     )?;
     insert_trace_event(&transaction, &checkpoint_event)?;
-    let attempted = final_order as i64;
+    let attempted = logical_activation_count as i64;
     let (succeeded, cancelled, failed) = match state {
         "succeeded" => (attempted, 0, 0),
         "cancelled" => (1, attempted.saturating_sub(1), 0),
@@ -2185,7 +2387,7 @@ fn complete_generated_transaction(
         completed.generated_count
     };
     let snapshot = json!({
-        "resume":{"generate_next_ordinal":completed.generated_count},"logical_order":final_order,"state":state,
+        "resume":{"generate_next_ordinal":completed.generated_count},"logical_order":final_order,"logical_activation_count":logical_activation_count,"state":state,
         "generated_count":completed.generated_count,"logical_bytes":completed.logical_bytes,"stream_digest":completed.stream_digest,
         "transform_node_id":transform_node,"transformed_count":completed.transformed_count,
         "transformed_logical_bytes":completed.transformed_logical_bytes,"transformed_stream_digest":completed.transformed_stream_digest,
@@ -2210,11 +2412,16 @@ fn complete_generated_transaction(
         .map(canonical_text)
         .transpose()?;
     let merge_json = completed.merge.as_ref().map(canonical_text).transpose()?;
+    let summary_json = completed
+        .summary_progress
+        .as_ref()
+        .map(canonical_text)
+        .transpose()?;
     transaction.execute(
-        "INSERT INTO run_generation_progress(run_id,state,generated_count,logical_bytes,stream_digest,backpressure_events,backpressure_micros,artifact_json,transform_node_id,transformed_count,transformed_logical_bytes,transformed_stream_digest,branch_node_id,branch_true_count,branch_false_count,branch_stream_digest,merge_json,updated_at)
-         VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18)
-         ON CONFLICT(run_id) DO UPDATE SET state=excluded.state,generated_count=excluded.generated_count,logical_bytes=excluded.logical_bytes,stream_digest=excluded.stream_digest,backpressure_events=excluded.backpressure_events,backpressure_micros=excluded.backpressure_micros,artifact_json=excluded.artifact_json,transform_node_id=excluded.transform_node_id,transformed_count=excluded.transformed_count,transformed_logical_bytes=excluded.transformed_logical_bytes,transformed_stream_digest=excluded.transformed_stream_digest,branch_node_id=excluded.branch_node_id,branch_true_count=excluded.branch_true_count,branch_false_count=excluded.branch_false_count,branch_stream_digest=excluded.branch_stream_digest,merge_json=excluded.merge_json,updated_at=excluded.updated_at",
-        params![completed.run_id,state,completed.generated_count as i64,completed.logical_bytes as i64,completed.stream_digest,completed.backpressure_events as i64,completed.backpressure_micros as i64,artifact_json,transform_node,completed.transformed_count as i64,completed.transformed_logical_bytes as i64,completed.transformed_stream_digest,completed.branch_node_id,completed.branch_true_count as i64,completed.branch_false_count as i64,completed.branch_stream_digest,merge_json,committed_at]
+        "INSERT INTO run_generation_progress(run_id,state,generated_count,logical_bytes,stream_digest,backpressure_events,backpressure_micros,artifact_json,transform_node_id,transformed_count,transformed_logical_bytes,transformed_stream_digest,branch_node_id,branch_true_count,branch_false_count,branch_stream_digest,merge_json,summary_json,updated_at)
+         VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19)
+         ON CONFLICT(run_id) DO UPDATE SET state=excluded.state,generated_count=excluded.generated_count,logical_bytes=excluded.logical_bytes,stream_digest=excluded.stream_digest,backpressure_events=excluded.backpressure_events,backpressure_micros=excluded.backpressure_micros,artifact_json=excluded.artifact_json,transform_node_id=excluded.transform_node_id,transformed_count=excluded.transformed_count,transformed_logical_bytes=excluded.transformed_logical_bytes,transformed_stream_digest=excluded.transformed_stream_digest,branch_node_id=excluded.branch_node_id,branch_true_count=excluded.branch_true_count,branch_false_count=excluded.branch_false_count,branch_stream_digest=excluded.branch_stream_digest,merge_json=excluded.merge_json,summary_json=excluded.summary_json,updated_at=excluded.updated_at",
+        params![completed.run_id,state,completed.generated_count as i64,completed.logical_bytes as i64,completed.stream_digest,completed.backpressure_events as i64,completed.backpressure_micros as i64,artifact_json,transform_node,completed.transformed_count as i64,completed.transformed_logical_bytes as i64,completed.transformed_stream_digest,completed.branch_node_id,completed.branch_true_count as i64,completed.branch_false_count as i64,completed.branch_stream_digest,merge_json,summary_json,committed_at]
     ).map_err(storage_error)?;
     transaction.execute(
         "UPDATE runs SET state=?2,checkpoint_sequence=?3,logical_order=?4,attempted=?5,succeeded=?6,cancelled=?7,failed=?8,output_count=?9,correctness_digest=?10,digest_complete=?11,trace_head_hash=?12,started_at=COALESCE(started_at,?13),updated_at=?14,terminal_at=?14 WHERE run_id=?1 AND state IN ('queued','cancel_requested')",
@@ -2577,6 +2784,7 @@ struct Candidate {
     edit_fields: Option<EditFieldsCandidate>,
     if_node: Option<IfCandidate>,
     merge: Option<MergeCandidate>,
+    summarize: Option<SummarizeCandidate>,
     logical_data_override: Option<Value>,
     artifact: Option<ArtifactReference>,
 }
@@ -2598,6 +2806,11 @@ struct IfCandidate {
 }
 
 struct MergeCandidate {
+    node_id: String,
+    configuration: Value,
+}
+
+struct SummarizeCandidate {
     node_id: String,
     configuration: Value,
 }
@@ -2695,6 +2908,7 @@ struct CompletedGeneratedWork {
     branch_false_count: u64,
     branch_stream_digest: String,
     merge: Option<MergeProgress>,
+    summary_progress: Option<SummaryProgress>,
     artifact: Option<ArtifactReference>,
     cancelled: bool,
     started_at: i64,
@@ -2737,6 +2951,7 @@ fn generation_plan_and_transform(
         Option<(String, Value)>,
         Option<(String, Value)>,
         Option<(String, Value)>,
+        Option<(String, Value)>,
     ),
     GenerateFailure,
 > {
@@ -2764,6 +2979,11 @@ fn generation_plan_and_transform(
         .nodes
         .iter()
         .find(|node| node.contract_lock.name == "merge")
+        .cloned();
+    let summarize_node = plan
+        .nodes
+        .iter()
+        .find(|node| node.contract_lock.name == "summarize")
         .cloned();
     let Some(manual) = manual else {
         return Err(generate_failure(
@@ -2844,19 +3064,42 @@ fn generation_plan_and_transform(
             })
         })
     });
+    let summarize_is_valid = summarize_node.as_ref().is_none_or(|node| {
+        node.contract_lock.namespace == "canopy.native"
+            && node.contract_lock.api_version == "v1alpha1"
+            && node.contract_lock.name == "summarize"
+            && node.activation["shape"] == "barrier_reducer"
+            && node.capabilities.is_empty()
+            && node.effects["class"] == "pure"
+            && node.effects["deterministic"] == true
+    });
+    let has_merge_to_summarize = summarize_node.as_ref().is_none_or(|summarize| {
+        let Some(merge) = merge_node.as_ref() else {
+            return false;
+        };
+        plan.scheduling_dependencies.iter().any(|dependency| {
+            dependency.source_node_id == merge.node_instance_id
+                && dependency.source_port_id == "items"
+                && dependency.target_node_id == summarize.node_instance_id
+                && dependency.target_port_id == "items"
+        })
+    });
     let expected_nodes = 2
         + usize::from(edit.is_some())
         + usize::from(if_node.is_some())
-        + usize::from(merge_node.is_some());
+        + usize::from(merge_node.is_some())
+        + usize::from(summarize_node.is_some());
     let expected_edges = expected_nodes - 1 + usize::from(merge_node.is_some());
     if plan.nodes.len() != expected_nodes
         || plan.scheduling_dependencies.len() != expected_edges
         || !edit_is_valid
         || !if_is_valid
         || !merge_is_valid
+        || !summarize_is_valid
         || !has_generate_to_edit
         || !has_generate_to_if
         || !has_if_to_merge
+        || !has_merge_to_summarize
     {
         return Err(generate_failure(
             "canopy.generate-items.invalid_pinned_plan",
@@ -2884,6 +3127,7 @@ fn generation_plan_and_transform(
         edit.map(|node| (node.node_instance_id, node.configuration)),
         if_node.map(|node| (node.node_instance_id, node.configuration)),
         merge_node.map(|node| (node.node_instance_id, node.configuration)),
+        summarize_node.map(|node| (node.node_instance_id, node.configuration)),
     ))
 }
 
@@ -3285,6 +3529,20 @@ fn build_merge_progress(
     }
 }
 
+fn build_summary_progress(node_id: &str, summary: &summarize::Summary) -> SummaryProgress {
+    SummaryProgress {
+        node_instance_id: node_id.into(),
+        operation: summary.operation.clone(),
+        total_count: summary.total_count,
+        true_count: summary.true_count,
+        false_count: summary.false_count,
+        logical_bytes: summary.logical_bytes,
+        output_digest: summary.output_digest.clone(),
+        first_ordinal: summary.first_ordinal,
+        last_ordinal: summary.last_ordinal,
+    }
+}
+
 fn start_executor(
     ready: Receiver<QueuedWork>,
     results: SyncSender<ExecutorTerminal>,
@@ -3337,8 +3595,14 @@ fn start_executor(
                 let edit_fields_candidate = candidate.edit_fields;
                 let if_candidate = candidate.if_node;
                 let merge_candidate = candidate.merge;
-                let (generation_plan, edit_fields_definition, if_definition, plan_merge_definition) =
-                    match generation_plan_and_transform(&candidate.plan) {
+                let summarize_candidate = candidate.summarize;
+                let (
+                    generation_plan,
+                    edit_fields_definition,
+                    if_definition,
+                    plan_merge_definition,
+                    plan_summarize_definition,
+                ) = match generation_plan_and_transform(&candidate.plan) {
                         Ok(value) => value,
                         Err(error) => {
                             let completed_at = now_millis();
@@ -3361,6 +3625,7 @@ fn start_executor(
                                     branch_false_count: 0,
                                     branch_stream_digest: "genesis".into(),
                                     merge: None,
+                                    summary_progress: None,
                                     artifact,
                                     cancelled: false,
                                     started_at,
@@ -3380,6 +3645,9 @@ fn start_executor(
                 let merge_definition = merge_candidate
                     .map(|candidate| (candidate.node_id, candidate.configuration))
                     .or(plan_merge_definition);
+                let summarize_definition = summarize_candidate
+                    .map(|candidate| (candidate.node_id, candidate.configuration))
+                    .or(plan_summarize_definition);
                 let (transform_node_id, transform_configuration) = match edit_fields_definition {
                     Some((node_id, configuration)) => {
                         let compiled = match edit_fields::compile_configuration(&configuration) {
@@ -3408,6 +3676,7 @@ fn start_executor(
                                         branch_false_count: 0,
                                         branch_stream_digest: "genesis".into(),
                                         merge: None,
+                                        summary_progress: None,
                                         artifact,
                                         cancelled: false,
                                         started_at,
@@ -3443,6 +3712,16 @@ fn start_executor(
                         Some(node_id),
                         Some(
                             merge::compile_configuration(&configuration)
+                                .map_err(|error| generate_failure(&error.code, &error.message)),
+                        ),
+                    ),
+                    None => (None, None),
+                };
+                let (summarize_node_id, summarize_configuration) = match summarize_definition {
+                    Some((node_id, configuration)) => (
+                        Some(node_id),
+                        Some(
+                            summarize::compile_configuration(&configuration)
                                 .map_err(|error| generate_failure(&error.code, &error.message)),
                         ),
                     ),
@@ -3511,6 +3790,9 @@ fn start_executor(
                 let merge_configuration_error = merge_configuration
                     .as_ref()
                     .and_then(|configuration| configuration.as_ref().err().cloned());
+                let summarize_configuration_error = summarize_configuration
+                    .as_ref()
+                    .and_then(|configuration| configuration.as_ref().err().cloned());
                 let merge_cleanup_error = merge_node_id.as_ref().and_then(|node_id| {
                     let prefix = format!("run:{}:merge:{}:", run_id, node_id);
                     merge_artifacts
@@ -3523,8 +3805,10 @@ fn start_executor(
                 });
                 let configuration_error = branch_configuration_error
                     .or(merge_configuration_error)
+                    .or(summarize_configuration_error)
                     .or(merge_cleanup_error);
                 let mut merge_progress = None;
+                let mut summary_progress = None;
                 let mut summary = match configuration_error {
                     Some(error) => Err(error),
                     None => match GenerateSession::start(GenerateStart {
@@ -3734,6 +4018,7 @@ fn start_executor(
                         output_spool.finish().map_err(|error| {
                             generate_failure(&error.code, &error.message)
                         })?;
+                        let output_segments = output_spool.references();
                         Ok(Some(build_merge_progress(
                             node_id,
                             &summary,
@@ -3743,12 +4028,55 @@ fn start_executor(
                                 .saturating_add(output_spool.physical_bytes),
                             true_segments,
                             false_segments,
-                            output_spool.references(),
+                            output_segments,
                         )))
                     })();
                     match merge_result {
                         Ok(progress) => merge_progress = progress,
                         Err(error) => summary = Err(error),
+                    }
+                    if summary.is_ok() {
+                        if let (
+                            Some(node_id),
+                            Some(Ok(configuration)),
+                            Some(merge_progress),
+                        ) = (
+                            summarize_node_id.as_deref(),
+                            summarize_configuration.as_ref(),
+                            merge_progress.as_ref(),
+                        ) {
+                            let records = MergeArtifactIterator::new(
+                                merge_artifacts.clone(),
+                                merge_progress.output_segments.clone(),
+                            )
+                            .map(|record| {
+                                record
+                                    .map(|record| summarize::SummaryRecord {
+                                        ordinal: record.ordinal,
+                                        input_port: record
+                                            .provenance
+                                            .get("if_output_port")
+                                            .and_then(Value::as_str)
+                                            .unwrap_or("unknown")
+                                            .into(),
+                                        logical_item: record.logical_item,
+                                        logical_bytes: record.logical_bytes,
+                                        provenance: record.provenance,
+                                    })
+                                    .map_err(|error| summarize::SummarizeError {
+                                        code: error.code,
+                                        message: error.message,
+                                    })
+                            });
+                            match configuration.summarize(records) {
+                                Ok(reduced) => {
+                                    summary_progress = Some(build_summary_progress(node_id, &reduced));
+                                }
+                                Err(error) => {
+                                    summary = Err(generate_failure(&error.code, &error.message));
+                                }
+                            }
+                        }
                     }
                 }
                 if summary.is_err() {
@@ -3781,6 +4109,7 @@ fn start_executor(
                         branch_false_count,
                         branch_stream_digest,
                         merge: merge_progress,
+                        summary_progress,
                         artifact,
                         cancelled,
                         started_at,
@@ -4244,7 +4573,7 @@ fn next_candidate(
         let plan: ExecutionPlan = serde_json::from_str(&plan_json).map_err(|error| {
             RunError::Integrity(format!("queued pinned plan is invalid: {error}"))
         })?;
-        let (_, edit_fields_definition, if_definition, merge_definition) =
+        let (_, edit_fields_definition, if_definition, merge_definition, summarize_definition) =
             generation_plan_and_transform(&plan)
                 .map_err(|error| RunError::Integrity(error.message))?;
         let stored_transform_node_id = row.get::<_, Option<String>>(10).map_err(storage_error)?;
@@ -4404,6 +4733,10 @@ fn next_candidate(
             node_id,
             configuration,
         });
+        let summarize = summarize_definition.map(|(node_id, configuration)| SummarizeCandidate {
+            node_id,
+            configuration,
+        });
         return Ok(Some(Candidate {
             run_id,
             revision_id: row.get(1).map_err(storage_error)?,
@@ -4431,6 +4764,7 @@ fn next_candidate(
             edit_fields,
             if_node,
             merge,
+            summarize,
             logical_data_override: None,
             artifact,
         }));
@@ -4521,7 +4855,7 @@ fn load_generation_progress(
 ) -> Result<Option<GenerationProgress>, RunError> {
     connection
         .query_row(
-            "SELECT state,generated_count,logical_bytes,stream_digest,backpressure_events,artifact_json,transform_node_id,transformed_count,transformed_logical_bytes,transformed_stream_digest,branch_node_id,branch_true_count,branch_false_count,branch_stream_digest,merge_json FROM run_generation_progress WHERE run_id=?1",
+            "SELECT state,generated_count,logical_bytes,stream_digest,backpressure_events,artifact_json,transform_node_id,transformed_count,transformed_logical_bytes,transformed_stream_digest,branch_node_id,branch_true_count,branch_false_count,branch_stream_digest,merge_json,summary_json FROM run_generation_progress WHERE run_id=?1",
             params![run_id],
             |row| {
                 let artifact: Option<String> = row.get(5)?;
@@ -4534,6 +4868,7 @@ fn load_generation_progress(
                 let branch_false_count: u64 = row.get::<_, i64>(12)? as u64;
                 let branch_stream_digest: String = row.get(13)?;
                 let merge: Option<String> = row.get(14)?;
+                let summary: Option<String> = row.get(15)?;
                 Ok(GenerationProgress {
                     state: row.get(0)?,
                     generated_count: row.get::<_, i64>(1)? as u64,
@@ -4563,6 +4898,20 @@ fn load_generation_progress(
                             serde_json::from_value(value).map_err(|error| {
                                 rusqlite::Error::FromSqlConversionFailure(
                                     14,
+                                    rusqlite::types::Type::Text,
+                                    Box::new(error),
+                                )
+                            })
+                        })
+                        .transpose()?,
+                    summary: summary
+                        .as_deref()
+                        .map(parse_sql_json)
+                        .transpose()?
+                        .map(|value| {
+                            serde_json::from_value(value).map_err(|error| {
+                                rusqlite::Error::FromSqlConversionFailure(
+                                    15,
                                     rusqlite::types::Type::Text,
                                     Box::new(error),
                                 )
@@ -6091,5 +6440,33 @@ mod tests {
         assert_eq!(envelopes[0].provenance, original[0].provenance);
         assert_eq!(envelopes[1].item, original[1].item);
         assert_eq!(envelopes[1].provenance, original[1].provenance);
+    }
+}
+      assert_eq!(envelopes[1].provenance, original[1].provenance);
+    }
+}
+ior-digest",
+        )
+        .unwrap_err();
+        assert_eq!(error.code, "canopy.expression.type");
+        assert_eq!(envelopes[0].item, original[0].item);
+        assert_eq!(envelopes[0].provenance, original[0].provenance);
+        assert_eq!(envelopes[1].item, original[1].item);
+        assert_eq!(envelopes[1].provenance, original[1].provenance);
+    }
+}
+eq!(envelopes[1].provenance, original[1].provenance);
+    }
+}
+ce);
+    }
+}
+ance, original[1].provenance);
+    }
+}
+eq!(envelopes[1].provenance, original[1].provenance);
+    }
+}
+ce);
     }
 }

@@ -1,0 +1,124 @@
+{
+  "activation": {
+    "bounded_batch": null,
+    "ordering": "merged_input_then_summary",
+    "shape": "barrier_reducer"
+  },
+  "capabilities": [],
+  "compatibility": {
+    "aliases": [],
+    "profile": "native",
+    "safe_opaque_fields": {}
+  },
+  "configuration": {
+    "defaults": {
+      "operation": "output_digest"
+    },
+    "editor_hints": {
+      "operation": {
+        "control": "select",
+        "label": "Summary operation"
+      }
+    },
+    "schema": {
+      "additionalProperties": false,
+      "properties": {
+        "operation": {
+          "enum": [
+            "output_digest"
+          ],
+          "type": "string"
+        }
+      },
+      "required": [
+        "operation"
+      ],
+      "type": "object"
+    }
+  },
+  "effects": {
+    "approval_required": false,
+    "class": "pure",
+    "deterministic": true,
+    "idempotent": true,
+    "reconciliation": "not_required",
+    "retry": "safe"
+  },
+  "extensions": {
+    "canopy.workbench/display": {
+      "accent": "violet",
+      "description": "Reduce the closed merged stream into bounded counters and an algorithm-tagged Output Digest.",
+      "display_name": "Summarize"
+    },
+    "canopy.workbench/summarize-profile": {
+      "operation": "output_digest",
+      "state": "bounded-counters-and-digest",
+      "version": "canopy.summarize/v1alpha1"
+    }
+  },
+  "identity": {
+    "api_version": "v1alpha1",
+    "license": "Apache-2.0",
+    "name": "summarize",
+    "namespace": "canopy.native",
+    "publisher": "Canopy Workbench",
+    "version": "0.1.0"
+  },
+  "outcomes": {
+    "allowed": [
+      "success",
+      "permanent_failure",
+      "durable_suspension",
+      "cancelled"
+    ],
+    "error_namespace": "canopy.summarize"
+  },
+  "ports": {
+    "inputs": [
+      {
+        "cardinality": "many",
+        "id": "items",
+        "multiplicity": "many",
+        "required": true,
+        "schema": {
+          "type": "dynamic-item"
+        }
+      }
+    ],
+    "outputs": [
+      {
+        "cardinality": "one",
+        "id": "summary",
+        "multiplicity": "one",
+        "required": true,
+        "schema": {
+          "type": "object"
+        }
+      }
+    ]
+  },
+  "resources": {
+    "default": {
+      "artifact_bytes": 0,
+      "concurrency": 1,
+      "cpu_millis": 5000,
+      "input_bytes": 67108864,
+      "input_count": 50000,
+      "memory_bytes": 4194304,
+      "output_bytes": 65536,
+      "output_count": 1,
+      "wall_millis": 300000
+    },
+    "hard": {
+      "artifact_bytes": 0,
+      "concurrency": 1,
+      "cpu_millis": 300000,
+      "input_bytes": 67108864,
+      "input_count": 50000,
+      "memory_bytes": 16777216,
+      "output_bytes": 1048576,
+      "output_count": 1,
+      "wall_millis": 900000
+    }
+  }
+}

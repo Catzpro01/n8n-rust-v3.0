@@ -25,6 +25,9 @@ install -D -m 0644 contracts/manual-trigger.v1alpha1.json "$bundle/usr/share/wor
 install -D -m 0644 contracts/generate-items.v1alpha1.json "$bundle/usr/share/workflowd/contracts/generate-items.v1alpha1.json"
 install -D -m 0644 contracts/edit-fields.v1alpha1.json "$bundle/usr/share/workflowd/contracts/edit-fields.v1alpha1.json"
 install -D -m 0644 contracts/edit-fields.v1alpha2.json "$bundle/usr/share/workflowd/contracts/edit-fields.v1alpha2.json"
+install -D -m 0644 contracts/if.v1alpha1.json "$bundle/usr/share/workflowd/contracts/if.v1alpha1.json"
+install -D -m 0644 contracts/merge.v1alpha1.json "$bundle/usr/share/workflowd/contracts/merge.v1alpha1.json"
+install -D -m 0644 contracts/summarize.v1alpha1.json "$bundle/usr/share/workflowd/contracts/summarize.v1alpha1.json"
 mkdir -p "$bundle/usr/share/workflowd/sdk"
 cp -a sdk/node-contract "$bundle/usr/share/workflowd/sdk/"
 

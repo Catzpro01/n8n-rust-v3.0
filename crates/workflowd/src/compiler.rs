@@ -3,7 +3,7 @@
 use crate::canonical::{digest, CANONICALIZATION, DIGEST_ALGORITHM};
 use crate::draft::WorkflowDraft;
 use crate::edit_fields;
-use crate::{if_node, merge};
+use crate::{if_node, merge, summarize};
 use canopy_node_contract::{lock, validate, NodeContractLock};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -173,6 +173,10 @@ fn native_contracts() -> Result<Vec<Value>, String> {
         (
             "Merge",
             include_str!("../../../contracts/merge.v1alpha1.json"),
+        ),
+        (
+            "Summarize",
+            include_str!("../../../contracts/summarize.v1alpha1.json"),
         ),
     ]
     .into_iter()
@@ -404,6 +408,96 @@ fn validate_all(
     }
     validate_connections(draft, &contracts_by_digest, diagnostics)?;
     validate_unused_outputs(draft, &contracts_by_digest, policy, diagnostics)?;
+    validate_eco_fixture(draft, diagnostics)?;
+    Ok(())
+}
+
+fn validate_eco_fixture(
+    draft: &WorkflowDraft,
+    diagnostics: &mut Vec<Diagnostic>,
+) -> Result<(), String> {
+    let Some(summarize_node) = draft
+        .nodes
+        .iter()
+        .find(|node| node.contract_lock.name == "summarize")
+    else {
+        return Ok(());
+    };
+    let mut names: Vec<&str> = draft
+        .nodes
+        .iter()
+        .map(|node| node.contract_lock.name.as_str())
+        .collect();
+    names.sort_unstable();
+    let mut expected = vec![
+        "edit-fields",
+        "generate-items",
+        "if",
+        "manual-trigger",
+        "merge",
+        "summarize",
+    ];
+    expected.sort_unstable();
+    let generate = draft
+        .nodes
+        .iter()
+        .find(|node| node.contract_lock.name == "generate-items");
+    let edit = draft
+        .nodes
+        .iter()
+        .find(|node| node.contract_lock.name == "edit-fields");
+    let branch = draft.nodes.iter().find(|node| node.contract_lock.name == "if");
+    let merge = draft
+        .nodes
+        .iter()
+        .find(|node| node.contract_lock.name == "merge");
+    let range_ok = generate.is_some_and(|node| {
+        node.configuration["count"] == json!(summarize::ECO_GENERATED_COUNT)
+            && node.configuration["start"] == json!(0)
+            && node.configuration["step"] == json!(1)
+            && node.configuration["data"] == Value::Null
+    });
+    let transform_ok = edit.is_some_and(|node| {
+        node.configuration
+            == json!({
+                "mode":"merge",
+                "assignments":[
+                    {"path":["eco"],"kind":"fixed","value":true},
+                    {"path":["parity"],"kind":"expression","source":r#"$json.value % 2 === 0 ? "even" : "odd""#},
+                    {"path":["doubled"],"kind":"expression","source":"$json.value * 2"},
+                    {"path":["label"],"kind":"expression","source":r#""eco-" + $json.index"#}
+                ]
+            })
+    });
+    let branch_ok = branch.is_some_and(|node| {
+        node.configuration
+            == json!({
+                "logic":"all",
+                "conditions":[{"expression":r#"$json.parity === "even""#}]
+            })
+    });
+    let merge_ok = merge.is_some_and(|node| {
+        node.configuration == json!({"mode":"true_then_false"})
+    });
+    let summary_ok = summarize_node.configuration == json!({"operation":"output_digest"});
+    if names != expected || !range_ok || !transform_ok || !branch_ok || !merge_ok || !summary_ok {
+        push(
+            diagnostics,
+            "E_ECO_FIXTURE_MISMATCH",
+            "error",
+            format!("workflow:{}", draft.workflow_id),
+            "Summarize is reserved for the frozen Eco 100K fixture in this release.",
+            json!({
+                "required_activations": summarize::ECO_TOTAL_ACTIVATIONS,
+                "generate_count": summarize::ECO_GENERATED_COUNT,
+                "true_count": summarize::ECO_TRUE_COUNT,
+                "false_count": summarize::ECO_FALSE_COUNT,
+                "expected_nodes": expected,
+                "actual_nodes": names
+            }),
+            false,
+        )?;
+    }
     Ok(())
 }
 
@@ -491,6 +585,21 @@ fn validate_configuration(
                     "error",
                     format!("node:{}", node.id),
                     "The Merge configuration is outside the approved native contract.",
+                    json!({"detail": error.message, "native_code": error.code}),
+                    false,
+                )?;
+                false
+            }
+        },
+        "summarize" => match summarize::validate_configuration(&node.configuration) {
+            Ok(()) => true,
+            Err(error) => {
+                push(
+                    diagnostics,
+                    "E_CONFIGURATION_INVALID",
+                    "error",
+                    format!("node:{}", node.id),
+                    "The Summarize configuration is outside the approved native contract.",
                     json!({"detail": error.message, "native_code": error.code}),
                     false,
                 )?;

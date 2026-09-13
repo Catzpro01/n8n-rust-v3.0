@@ -25,6 +25,7 @@ mod run;
 mod run_engine;
 mod run_http;
 mod security;
+mod summarize;
 
 use crate::app::AppState;
 use crate::config::{ServeConfig, BLOCKING_THREADS_MAX, TOKIO_CORE_WORKERS};

@@ -47,6 +47,16 @@ class ReleaseBundleAcceptanceTest(unittest.TestCase):
         self.assertIn(
             "usr/share/workflowd/contracts/edit-fields.v1alpha2.json", relative
         )
+        self.assertIn("usr/share/workflowd/contracts/if.v1alpha1.json", relative)
+        self.assertIn("usr/share/workflowd/contracts/merge.v1alpha1.json", relative)
+        self.assertIn("usr/share/workflowd/contracts/summarize.v1alpha1.json", relative)
+        summarize_contract = json.loads(
+            (BUNDLE / "usr/share/workflowd/contracts/summarize.v1alpha1.json").read_text()
+        )
+        self.assertEqual(summarize_contract["identity"]["name"], "summarize")
+        self.assertEqual(summarize_contract["activation"]["shape"], "barrier_reducer")
+        self.assertEqual(summarize_contract["effects"]["class"], "pure")
+        self.assertEqual(summarize_contract["ports"]["outputs"][0]["id"], "summary")
         edit_fields_contract = json.loads(
             (BUNDLE / "usr/share/workflowd/contracts/edit-fields.v1alpha1.json").read_text()
         )
