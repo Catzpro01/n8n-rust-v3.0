@@ -15,6 +15,22 @@ For the coding loop, use the two lean guardrails from Superpowers when they
 apply: `systematic-debugging` for failures/surprises and
 `verification-before-completion` before completion, commits, or PRs.
 
+## Agent skills
+
+### Issue tracker
+
+GitHub Issues through `gh` CLI. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Use `needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, and
+`wontfix`. See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context layout: `CONTEXT.md` plus `docs/adr/`. See
+`docs/agents/domain.md`.
+
 Keep context efficient: search first, read only candidate files, use focused
 limits, and verify important graph/index findings against checked-out source.
 Run focused checks and refresh the index after source changes.
