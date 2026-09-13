@@ -26,16 +26,16 @@ Implement every explicitly recorded product design in the current workspace as a
 - Existing accepted decisions include the Rust deterministic engine, immutable revisions/pinned plans, bounded Envelopes/Artifacts, clean-room compatibility, Agent Engine subports, package trust, and signed release slots.
 - [Decide the Node Form and Execution Lane extension contract](https://github.com/Catzpro01/n8n-rust-v3.0/issues/9) resolved as ADR 0059: Contract, Implementation, Form, and Lane remain separate; Rust is the in-process promotion path; C++/other languages use the versioned External Process/WASM boundary; plans pin exact identities and budgets.
 - [Decide the Workflow and Skill Package lifecycle](https://github.com/Catzpro01/n8n-rust-v3.0/issues/10) resolved as ADR 0060: separate immutable package types, verified Draft/sandbox flow, explicit Skill scope, evidence-based trust labels, side-by-side updates, and reference-safe retirement.
+- [Research external agent and package adapter boundaries](https://github.com/Catzpro01/n8n-rust-v3.0/issues/14) resolved in `docs/research/external-agent-package-adapters-2026-09.md`: MCP/A2A/provider facts, optional adapter boundaries, and unresolved MiroFish identity were recorded without importing code.
 
 ## Current frontier
 
-- [Decide the AI Agent Node and Agent Engine contract](https://github.com/Catzpro01/n8n-rust-v3.0/issues/11) — unblocked after #9.
-- [Research external agent and package adapter boundaries](https://github.com/Catzpro01/n8n-rust-v3.0/issues/14) — unblocked; research may run in parallel.
+- [Decide the AI Agent Node and Agent Engine contract](https://github.com/Catzpro01/n8n-rust-v3.0/issues/11) — unblocked; primary HITL decision.
 
 ## Later tickets
 
-- [Decide upgrade and recovery for Hub and Agent state](https://github.com/Catzpro01/n8n-rust-v3.0/issues/12) — blocked by #11; #10 is resolved.
-- [Define the integrated expansion acceptance and release gate](https://github.com/Catzpro01/n8n-rust-v3.0/issues/13) — blocked by #11 and #12; #10 is resolved.
+- [Decide upgrade and recovery for Hub and Agent state](https://github.com/Catzpro01/n8n-rust-v3.0/issues/12) — blocked by #11; #10 and #14 are resolved.
+- [Define the integrated expansion acceptance and release gate](https://github.com/Catzpro01/n8n-rust-v3.0/issues/13) — blocked by #11 and #12; #10 and #14 are resolved.
 
 ## Core implementation dependency
 

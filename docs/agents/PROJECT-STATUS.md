@@ -45,7 +45,8 @@ within ADRs 0057 and 0058, including the bounded v1alpha2 integer-label rule.
   issue [#8](https://github.com/Catzpro01/n8n-rust-v3.0/issues/8)
 - **Resolved expansion decisions:** issue #9 is recorded as ADR 0059 for the
   language-neutral contract/lane boundary; issue #10 is recorded as ADR 0060
-  for Workflow/Skill Package lifecycle and safe retirement.
+  for Workflow/Skill Package lifecycle and safe retirement; research issue #14
+  is recorded in `docs/research/external-agent-package-adapters-2026-09.md`.
 - **Next action:** Resolve the remaining expansion decision frontier before
   creating implementation tickets; future expansion requires explicit ADRs
   beyond ADRs 0057–0060.
@@ -59,8 +60,7 @@ starting a new frontend framework from scratch.
 
 - **Owner:** none
 - **Map:** Canopy Workbench full platform expansion, GitHub issue #8.
-- **Frontier:** decision issue #11 (AI Agent/Agent Engine contract) and
-  research issue #14 (external agent/package boundaries).
+- **Frontier:** decision issue #11 (AI Agent/Agent Engine contract).
 - **Blockers:** the expansion is decision-gated; local Cargo remains
   unavailable, so pinned GitHub CI is the Rust verification environment.
 

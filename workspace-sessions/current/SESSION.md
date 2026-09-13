@@ -27,8 +27,9 @@
 - Issue #10 is resolved as ADR 0060: Workflow/Skill and Skill Package lifecycle
   uses immutable locks, verified Draft/sandbox flow, explicit scope, reviewed
   side-by-side updates, and reference-safe retirement.
-- Frontier decision tickets are #11 (AI Agent/Agent Engine) and #14 (external
-  adapter research). No production code for Hub, Skill Hub, or AI Agent has
+- The remaining frontier decision ticket is #11 (AI Agent/Agent Engine).
+  Research issue #14 is resolved in `docs/research/external-agent-package-
+  adapters-2026-09.md`; no production code for Hub, Skill Hub, or AI Agent has
   been started.
 
 ## Next action
