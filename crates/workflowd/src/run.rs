@@ -1501,7 +1501,11 @@ fn complete_generated_transaction(
         .is_some_and(|code| code.starts_with("canopy.edit-fields"));
     let transform_should_commit =
         has_transform && (state == "succeeded" || state == "cancelled" || transform_failed);
-    let final_order = if transform_should_commit { 3_u64 } else { 2_u64 };
+    let final_order = if transform_should_commit {
+        3_u64
+    } else {
+        2_u64
+    };
     let correctness_digest = if state == "succeeded" {
         if let Some(transform_node) = transform_node.as_ref() {
             digest(&json!({
@@ -3955,17 +3959,18 @@ fn load_artifact_data(
     artifacts: &ArtifactService,
     artifact_id: &str,
 ) -> Result<(ArtifactReference, Value), RunError> {
-    let (view, bytes, _, _, _) = artifacts
-        .content(artifact_id, None)
-        .map_err(|error| match error {
-            ArtifactError::Storage(message) => RunError::Storage(message),
-            ArtifactError::NotAuthorized => {
-                RunError::Integrity("Generate Items Artifact reference was denied".into())
-            }
-            other => RunError::Integrity(format!(
-                "Generate Items Artifact could not be verified: {other}"
-            )),
-        })?;
+    let (view, bytes, _, _, _) =
+        artifacts
+            .content(artifact_id, None)
+            .map_err(|error| match error {
+                ArtifactError::Storage(message) => RunError::Storage(message),
+                ArtifactError::NotAuthorized => {
+                    RunError::Integrity("Generate Items Artifact reference was denied".into())
+                }
+                other => RunError::Integrity(format!(
+                    "Generate Items Artifact could not be verified: {other}"
+                )),
+            })?;
     let logical_data: Value = serde_json::from_slice(&bytes)
         .map_err(|_| RunError::Integrity("Generate Items Artifact is not valid JSON".into()))?;
     reject_sensitive_keys(&logical_data)?;
@@ -4580,8 +4585,14 @@ mod tests {
         assert!(stream_digest.starts_with("sha256:"));
         assert_eq!(envelopes[0].item["eco"], true);
         assert_eq!(envelopes[0].item["label"], "eco-12");
-        assert_eq!(envelopes[0].item["data"]["$artifact"]["artifact_id"], "artifact-test");
-        assert_eq!(envelopes[0].provenance["edit_fields_node_instance_id"], "edit-fields");
+        assert_eq!(
+            envelopes[0].item["data"]["$artifact"]["artifact_id"],
+            "artifact-test"
+        );
+        assert_eq!(
+            envelopes[0].provenance["edit_fields_node_instance_id"],
+            "edit-fields"
+        );
         assert_eq!(envelopes[0].provenance["input_ordinal"], 12);
     }
 }
