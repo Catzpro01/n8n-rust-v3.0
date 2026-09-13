@@ -2159,7 +2159,12 @@ fn complete_generated_transaction(
                     "input_port":"items",
                     "output_port":"summary",
                     "bounded_state":"counters-and-digest-only",
-                    "output_digest_algorithm":summarize::OUTPUT_DIGEST_ALGORITHM
+                    "output_digest_algorithm":summarize::OUTPUT_DIGEST_ALGORITHM,
+                    "causal_trace_links":{
+                        "source_merge_output_digest":completed.merge.as_ref().map(|merge| merge.stream_digest.clone()),
+                        "retained_ordinal_range":[completed.summary_progress.as_ref().and_then(|summary| summary.first_ordinal),completed.summary_progress.as_ref().and_then(|summary| summary.last_ordinal)],
+                        "retained_item_provenance":"artifact-backed-merge-spool"
+                    }
                 }),
             },
         )?;
