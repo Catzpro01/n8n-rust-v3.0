@@ -54,10 +54,11 @@ Frozen: preserve an internal Missing value distinct from JSON null. Missing path
       spill, item linking, and replay invariants.
 - [ ] Add public-seam and browser configuration/diagnostic acceptance coverage.
 
-The local sandbox has no Cargo toolchain, so the new Rust unit tests still need
-fresh verification in the pinned GitHub/Rust-enabled environment. The
-repository validation workflow is `.github/workflows/validate.yml`; the current
-GitHub integration did not permit manual workflow dispatch.
+The local sandbox still has no Cargo toolchain, but the new Rust unit tests
+have fresh verification in pinned GitHub workflow run `34758186650`. The
+repository validation workflow is `.github/workflows/validate.yml`; automatic
+push validation is available even though manual dispatch is not permitted by
+the current GitHub integration.
 
 ## Verification finding — 2026-09-13
 
@@ -78,3 +79,12 @@ other JavaScript coercions remain rejected. Generate Items' numeric `index`
 shape is unchanged. The active catalog/release path now uses
 `canopy.native/edit-fields/v1alpha2`; the v1alpha1 contract bytes remain
 immutable and packaged as historical compatibility evidence.
+
+## Fresh verification — 2026-09-13
+
+Pinned GitHub workflow run `34758186650` passed the editor typecheck/build,
+Rust formatting, `cargo test --workspace --locked`, and the dependency-free
+repository tests. The Rust workspace now verifies the v1alpha2 bounded
+right-hand integer conversion and the exact Eco label over the unchanged
+numeric Generate Items index. Durable Run integration and public-seam/browser
+configuration coverage remain open.

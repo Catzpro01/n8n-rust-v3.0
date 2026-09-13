@@ -28,8 +28,8 @@ profile.
   `docs/legacy/session-archive/`. They are evidence, not freshly rerun checks.
 - Historical `.ssh` material and other recovery-only secrets were intentionally
   not imported.
-- The local sandbox has Node/npm/Python but no `cargo`; Rust and browser gates
-  have not been rerun in this checkout.
+- The local sandbox has Node/npm/Python but no `cargo`; the pinned GitHub
+  workflow is the Rust/editor verification environment.
 - The current context preserves both the earlier Arena decisions and the
   recovered project's canonical glossary and ADR decisions.
 
@@ -41,9 +41,9 @@ ADR 0058 records the follow-up v1alpha2 contract revision for its Eco label.
 
 - **Ticket 08:** `08-transform-items-with-edit-fields-and-the-safe-expression-vm.md`
 - **Status:** `approved-for-implementation`
-- **Next action:** verify the v1alpha2 bounded integer-label revision in the
-  pinned CI workflow, then wire transformed Envelopes into the durable Run
-  scheduler.
+- **Next action:** wire transformed Envelopes into the durable Run scheduler
+  while preserving Ticket 07's checkpoints, backpressure, cancellation,
+  Artifact spill, item linking, and replay invariants.
 
 The earlier Wayfinder selection of “architecture spike first” now means a
 reversible audit/reconciliation of the recovered Rust + connected Preact
@@ -55,8 +55,8 @@ starting a new frontend framework from scratch.
 - **Owner:** none
 - **Ticket:** Ticket 08 is the current frontier and is authorized for
   implementation within ADRs 0057 and 0058.
-- **Blockers:** the v1alpha2 revision is implemented but needs a fresh pinned
-  CI run; durable Run integration and public-seam tests remain afterward.
+- **Blockers:** durable Run integration and public-seam/browser configuration
+  tests remain; the pure v1alpha2 seam now passes the pinned CI gate.
 
 ## Last verified in this checkout
 
@@ -67,9 +67,10 @@ starting a new frontend framework from scratch.
 - `node --check` passed for the changed editor build script and browser test.
 - JSON/Python metadata checks passed for the changed contract/release paths.
 - Pinned GitHub workflow run `34757520909` passed editor build and Rust
-  formatting/compilation, then failed two focused Eco label tests because of
-  the now-recorded mixed string/number conflict; ADR 0058 and the v1alpha2
-  revision are the follow-up pending fresh verification.
+  formatting/compilation, then exposed the 08-A/08-C label conflict.
+- Pinned GitHub workflow run `34758186650` passed editor typecheck/build, Rust
+  formatting, `cargo test --workspace --locked`, and the dependency-free
+  repository tests after ADR 0058's v1alpha2 revision.
 - `git diff --check` — clean before the current Ticket 08 progress update.
 - The historical Ticket 07 full gate is recorded in
   `docs/legacy/session-archive/VERIFICATION.md`; it has not been re-claimed as

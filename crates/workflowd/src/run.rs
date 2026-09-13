@@ -5,6 +5,7 @@ use crate::{
     canonical::{bytes as canonical_bytes, digest, CANONICALIZATION, DIGEST_ALGORITHM},
     compiler::ExecutionPlan,
     config::ServeConfig,
+    edit_fields::{self, CompiledConfiguration},
     generate_engine::{
         self, GenerateFailure, GenerateResume, GenerateSession, GenerateStart, GenerateSummary,
         GeneratedEnvelope,
@@ -155,6 +156,16 @@ pub struct GenerationProgress {
     pub backpressure_events: u64,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub artifact: Option<ArtifactReference>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub transform: Option<TransformProgress>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct TransformProgress {
+    pub node_instance_id: String,
+    pub transformed_count: u64,
+    pub logical_bytes: u64,
+    pub stream_digest: String,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -748,6 +759,10 @@ fn initialize_schema(connection: &Connection) -> Result<(), String> {
                 backpressure_events INTEGER NOT NULL,
                 backpressure_micros INTEGER NOT NULL,
                 artifact_json TEXT,
+                transform_node_id TEXT,
+                transformed_count INTEGER NOT NULL DEFAULT 0,
+                transformed_logical_bytes INTEGER NOT NULL DEFAULT 0,
+                transformed_stream_digest TEXT NOT NULL DEFAULT 'genesis',
                 updated_at INTEGER NOT NULL
             ) STRICT;
             CREATE TABLE IF NOT EXISTS run_suspensions(
@@ -776,7 +791,47 @@ fn initialize_schema(connection: &Connection) -> Result<(), String> {
                 SELECT RAISE(ABORT,'Durable Checkpoints are immutable'); END;
             "#,
         )
-        .map_err(|error| error.to_string())
+        .map_err(|error| error.to_string())?;
+    ensure_generation_column(connection, "transform_node_id", "TEXT")?;
+    ensure_generation_column(
+        connection,
+        "transformed_count",
+        "INTEGER NOT NULL DEFAULT 0",
+    )?;
+    ensure_generation_column(
+        connection,
+        "transformed_logical_bytes",
+        "INTEGER NOT NULL DEFAULT 0",
+    )?;
+    ensure_generation_column(
+        connection,
+        "transformed_stream_digest",
+        "TEXT NOT NULL DEFAULT 'genesis'",
+    )?;
+    Ok(())
+}
+
+fn ensure_generation_column(
+    connection: &Connection,
+    name: &str,
+    definition: &str,
+) -> Result<(), String> {
+    let exists: bool = connection
+        .query_row(
+            "SELECT EXISTS(SELECT 1 FROM pragma_table_info('run_generation_progress') WHERE name=?1)",
+            params![name],
+            |row| row.get::<_, i64>(0),
+        )
+        .map_err(|error| error.to_string())?
+        == 1;
+    if !exists {
+        connection
+            .execute_batch(&format!(
+                "ALTER TABLE run_generation_progress ADD COLUMN {name} {definition};"
+            ))
+            .map_err(|error| error.to_string())?;
+    }
+    Ok(())
 }
 
 fn admit_transaction(
@@ -1217,6 +1272,20 @@ fn generation_progress_transaction(
             "Generate checkpoint ordinal range is inconsistent".into(),
         ));
     }
+    if progress.transform_node_id.is_some()
+        && progress.transformed_count != progress.generated_count
+    {
+        return Err(RunError::Integrity(
+            "Edit Fields checkpoint count is not one-to-one with generated items".into(),
+        ));
+    }
+    if progress.transform_node_id.is_none()
+        && (progress.transformed_count != 0 || progress.transformed_logical_bytes != 0)
+    {
+        return Err(RunError::Integrity(
+            "Transform checkpoint exists without an Edit Fields node".into(),
+        ));
+    }
     let durable_count = current
         .generation
         .as_ref()
@@ -1235,6 +1304,15 @@ fn generation_progress_transaction(
             return Err(RunError::Integrity(
                 "Generate checkpoint logical bytes regressed".into(),
             ));
+        }
+        if let Some(transform) = &durable.transform {
+            if progress.transformed_logical_bytes < transform.logical_bytes
+                || progress.transformed_count < transform.transformed_count
+            {
+                return Err(RunError::Integrity(
+                    "Edit Fields checkpoint progress regressed".into(),
+                ));
+            }
         }
     }
     let checkpoint = current.durable.checkpoint_sequence + 1;
@@ -1309,6 +1387,12 @@ fn generation_progress_transaction(
             "generated_count":progress.generated_count,
             "logical_bytes":progress.logical_bytes,
             "stream_digest":progress.stream_digest,
+            "transform": progress.transform_node_id.as_ref().map(|node_id| json!({
+                "node_instance_id": node_id,
+                "transformed_count": progress.transformed_count,
+                "logical_bytes": progress.transformed_logical_bytes,
+                "stream_digest": progress.transformed_stream_digest
+            })),
             "contiguous_ordinal_range":[progress.first_ordinal,progress.last_ordinal],
             "backpressure_events":progress.backpressure_events,
             "backpressure_micros":progress.backpressure_micros,
@@ -1324,6 +1408,12 @@ fn generation_progress_transaction(
         "generated_count":progress.generated_count,
         "logical_bytes":progress.logical_bytes,
         "stream_digest":progress.stream_digest,
+        "transform": progress.transform_node_id.as_ref().map(|node_id| json!({
+            "node_instance_id": node_id,
+            "transformed_count": progress.transformed_count,
+            "logical_bytes": progress.transformed_logical_bytes,
+            "stream_digest": progress.transformed_stream_digest
+        })),
         "artifact":progress.artifact,
         "complete":false
     });
@@ -1339,10 +1429,10 @@ fn generation_progress_transaction(
     )?;
     let artifact_json = progress.artifact.as_ref().map(canonical_text).transpose()?;
     transaction.execute(
-        "INSERT INTO run_generation_progress(run_id,state,generated_count,logical_bytes,stream_digest,backpressure_events,backpressure_micros,artifact_json,updated_at)
-         VALUES(?1,'running',?2,?3,?4,?5,?6,?7,?8)
-         ON CONFLICT(run_id) DO UPDATE SET state='running',generated_count=excluded.generated_count,logical_bytes=excluded.logical_bytes,stream_digest=excluded.stream_digest,backpressure_events=excluded.backpressure_events,backpressure_micros=excluded.backpressure_micros,artifact_json=excluded.artifact_json,updated_at=excluded.updated_at",
-        params![progress.run_id,progress.generated_count as i64,progress.logical_bytes as i64,progress.stream_digest,progress.backpressure_events as i64,progress.backpressure_micros as i64,artifact_json,committed_at]
+        "INSERT INTO run_generation_progress(run_id,state,generated_count,logical_bytes,stream_digest,backpressure_events,backpressure_micros,artifact_json,transform_node_id,transformed_count,transformed_logical_bytes,transformed_stream_digest,updated_at)
+         VALUES(?1,'running',?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12)
+         ON CONFLICT(run_id) DO UPDATE SET state='running',generated_count=excluded.generated_count,logical_bytes=excluded.logical_bytes,stream_digest=excluded.stream_digest,backpressure_events=excluded.backpressure_events,backpressure_micros=excluded.backpressure_micros,artifact_json=excluded.artifact_json,transform_node_id=excluded.transform_node_id,transformed_count=excluded.transformed_count,transformed_logical_bytes=excluded.transformed_logical_bytes,transformed_stream_digest=excluded.transformed_stream_digest,updated_at=excluded.updated_at",
+        params![progress.run_id,progress.generated_count as i64,progress.logical_bytes as i64,progress.stream_digest,progress.backpressure_events as i64,progress.backpressure_micros as i64,artifact_json,progress.transform_node_id,progress.transformed_count as i64,progress.transformed_logical_bytes as i64,progress.transformed_stream_digest,committed_at]
     ).map_err(storage_error)?;
     transaction.execute(
         "UPDATE runs SET checkpoint_sequence=?2,logical_order=1,attempted=1,succeeded=1,output_count=?3,trace_head_hash=?4,started_at=COALESCE(started_at,?5),updated_at=?6 WHERE run_id=?1 AND state='queued'",
@@ -1365,25 +1455,6 @@ fn complete_generated_transaction(
         transaction.commit().map_err(storage_error)?;
         return Ok(current);
     }
-    let cancel_won = current.durable.state == "cancel_requested" || completed.cancelled;
-    let (state, generate_outcome, failure, correctness_digest) = if cancel_won {
-        ("cancelled","cancelled",None,digest(&json!({
-            "schema":"canopy.correctness-digest/v1alpha1","revision_digest":current.revision_digest,
-            "plan_digest":current.plan_digest,"complete":false,"generated_count":completed.generated_count,
-            "stream_digest":completed.stream_digest,"cancelled":true
-        })).map_err(RunError::Integrity)?)
-    } else {
-        match &completed.summary {
-            Ok(summary)=>("succeeded","success",None,summary.correctness_digest.clone()),
-            Err(reason)=>("failed","permanent_failure",Some(json!({"code":reason.code,"message":reason.message})),digest(&json!({
-                "schema":"canopy.correctness-digest/v1alpha1","revision_digest":current.revision_digest,
-                "plan_digest":current.plan_digest,"complete":false,"generated_count":completed.generated_count,
-                "stream_digest":completed.stream_digest,"failure":reason
-            })).map_err(RunError::Integrity)?)
-        }
-    };
-    let checkpoint = current.durable.checkpoint_sequence + 1;
-    let committed_at = now_millis();
     let plan = load_execution_plan(&transaction, &completed.run_id)?;
     let manual_node = plan
         .nodes
@@ -1397,8 +1468,79 @@ fn complete_generated_transaction(
         .find(|node| node.contract_lock.name == "generate-items")
         .map(|node| node.node_instance_id.clone())
         .unwrap_or_else(|| "invalid-generate".into());
+    let transform_node = completed.transform_node_id.clone().or_else(|| {
+        plan.nodes
+            .iter()
+            .find(|node| node.contract_lock.name == "edit-fields")
+            .map(|node| node.node_instance_id.clone())
+    });
+    let has_transform = transform_node.is_some();
+    let final_order = if has_transform { 3_u64 } else { 2_u64 };
+    let cancel_won = current.durable.state == "cancel_requested" || completed.cancelled;
+    let state = if cancel_won {
+        "cancelled"
+    } else if completed.summary.is_ok() {
+        "succeeded"
+    } else {
+        "failed"
+    };
+    let generate_outcome = if state == "succeeded" {
+        "success"
+    } else if state == "cancelled" {
+        "cancelled"
+    } else {
+        "permanent_failure"
+    };
+    let failure = completed.summary.as_ref().err().map(|reason| {
+        json!({"code":reason.code,"message":reason.message})
+    });
+    let transform_failed = failure
+        .as_ref()
+        .and_then(|failure| failure["code"].as_str())
+        .is_some_and(|code| code.starts_with("canopy.edit-fields"));
+    let correctness_digest = if state == "succeeded" {
+        if let Some(transform_node) = transform_node.as_ref() {
+            digest(&json!({
+                "schema":"canopy.correctness-digest/v1alpha2",
+                "revision_digest":current.revision_digest,
+                "plan_digest":current.plan_digest,
+                "logical_outcomes":[
+                    {"logical_order":1,"node_instance_id":manual_node,"outcome":"success","port":"invocation","output":completed.input},
+                    {"logical_order":2,"node_instance_id":generate_node,"outcome":"success","port":"items","generated_count":completed.generated_count,"logical_bytes":completed.logical_bytes,"stream_digest":completed.stream_digest},
+                    {"logical_order":3,"node_instance_id":transform_node,"outcome":"success","port":"item","transformed_count":completed.transformed_count,"logical_bytes":completed.transformed_logical_bytes,"stream_digest":completed.transformed_stream_digest,"item_linking":"one_to_one"}
+                ]
+            })).map_err(RunError::Integrity)?
+        } else {
+            completed
+                .summary
+                .as_ref()
+                .map(|summary| summary.correctness_digest.clone())
+                .ok_or_else(|| RunError::Integrity("successful generation has no summary".into()))?
+        }
+    } else {
+        digest(&json!({
+            "schema":"canopy.correctness-digest/v1alpha2",
+            "revision_digest":current.revision_digest,
+            "plan_digest":current.plan_digest,
+            "complete":false,
+            "generated_count":completed.generated_count,
+            "stream_digest":completed.stream_digest,
+            "transform_node_id":transform_node,
+            "transformed_count":completed.transformed_count,
+            "transformed_logical_bytes":completed.transformed_logical_bytes,
+            "transformed_stream_digest":completed.transformed_stream_digest,
+            "cancelled":cancel_won,
+            "failure":failure
+        }))
+        .map_err(RunError::Integrity)?
+    };
+    let checkpoint = current.durable.checkpoint_sequence + 1;
+    let committed_at = now_millis();
     let manual_activation = generated_activation_id(&completed.run_id, &manual_node, 1);
     let generate_activation = generated_activation_id(&completed.run_id, &generate_node, 2);
+    let transform_activation = transform_node
+        .as_ref()
+        .map(|node| generated_activation_id(&completed.run_id, node, 3));
     let manual_committed = current.durable.logical_order >= 1;
     if !manual_committed {
         insert_activation_row(
@@ -1446,6 +1588,52 @@ fn complete_generated_transaction(
             provenance: json!({"engine_abi":generate_engine::GENERATE_ENGINE_ABI,"lane":"native-cpu","effect_class":"pure","output_port":"items","backpressure_micros":completed.backpressure_micros}),
         },
     )?;
+    let transform_should_commit = has_transform && (state == "succeeded" || state == "cancelled" || transform_failed);
+    let transform_outcome = if state == "succeeded" {
+        "success"
+    } else if state == "cancelled" {
+        "cancelled"
+    } else {
+        "permanent_failure"
+    };
+    let transform_input = json!({
+        "source_node_instance_id":generate_node,
+        "source_output_port":"items",
+        "generated_count":completed.generated_count,
+        "stream_digest":completed.stream_digest
+    });
+    let transform_output = json!({
+        "transformed_count":completed.transformed_count,
+        "logical_bytes":completed.transformed_logical_bytes,
+        "stream_digest":completed.transformed_stream_digest,
+        "item_linking":"one_to_one"
+    });
+    if transform_should_commit {
+        let transform_node = transform_node
+            .as_ref()
+            .ok_or_else(|| RunError::Integrity("transform activation has no node".into()))?;
+        let transform_activation = transform_activation
+            .as_ref()
+            .ok_or_else(|| RunError::Integrity("transform activation has no identity".into()))?;
+        insert_activation_row(
+            &transaction,
+            ActivationInsert {
+                activation_id: transform_activation,
+                run_id: &completed.run_id,
+                node_id: transform_node,
+                logical_order: 3,
+                outcome: transform_outcome,
+                input: &transform_input,
+                output: (state == "succeeded").then_some(&transform_output),
+                failure: if transform_failed { failure.as_ref() } else { None },
+                checkpoint,
+                started_at: completed.started_at,
+                completed_at: completed.completed_at,
+                elapsed_micros: completed.elapsed_micros,
+                provenance: json!({"engine_abi":edit_fields::EDIT_FIELDS_ABI,"lane":"native-cpu","effect_class":"pure","input_link":"generate.items","output_port":"item","item_linking":"one_to_one"}),
+            },
+        )?;
+    }
     let mut previous = current_trace_head(&transaction, &completed.run_id)?;
     let mut sequence = next_trace_sequence(&transaction, &completed.run_id)?;
     if !manual_committed {
@@ -1484,40 +1672,81 @@ fn complete_generated_transaction(
         committed_at,
     )?;
     insert_trace_event(&transaction, &generate_event)?;
+    previous = generate_event.event_hash.clone();
+    sequence += 1;
+    if transform_should_commit {
+        let transform_node = transform_node
+            .as_ref()
+            .ok_or_else(|| RunError::Integrity("transform trace has no node".into()))?;
+        let transform_activation = transform_activation
+            .as_ref()
+            .ok_or_else(|| RunError::Integrity("transform trace has no identity".into()))?;
+        let transform_event = make_trace_event(
+            &completed.run_id,
+            sequence,
+            Some(3),
+            checkpoint,
+            "logical",
+            "activation_outcome",
+            json!({
+                "activation_id":transform_activation,"node_instance_id":transform_node,"attempt":1,"outcome":transform_outcome,
+                "generated_count":completed.generated_count,"transformed_count":completed.transformed_count,
+                "logical_bytes":completed.transformed_logical_bytes,"stream_digest":completed.transformed_stream_digest,
+                "item_linking":"one_to_one","failure":if transform_failed { failure.clone() } else { None::<Value> },
+                "input_digest":digest(&transform_input).map_err(RunError::Integrity)?,
+                "output_digest":if state == "succeeded" { Some(digest(&transform_output).map_err(RunError::Integrity)?) } else { None }
+            }),
+            &previous,
+            committed_at,
+        )?;
+        insert_trace_event(&transaction, &transform_event)?;
+        previous = transform_event.event_hash;
+        sequence += 1;
+    }
     let checkpoint_event = make_trace_event(
         &completed.run_id,
-        sequence + 1,
-        Some(2),
+        sequence,
+        Some(final_order),
         checkpoint,
         "physical",
         "checkpoint_committed",
         json!({
-            "state":state,"logical_order":2,"generated_count":completed.generated_count,"logical_bytes":completed.logical_bytes,
-            "stream_digest":completed.stream_digest,"correctness_digest":correctness_digest,"backpressure_micros":completed.backpressure_micros,
+            "state":state,"logical_order":final_order,"generated_count":completed.generated_count,"logical_bytes":completed.logical_bytes,
+            "stream_digest":completed.stream_digest,"transform_node_id":transform_node,"transformed_count":completed.transformed_count,
+            "transformed_logical_bytes":completed.transformed_logical_bytes,"transformed_stream_digest":completed.transformed_stream_digest,
+            "correctness_digest":correctness_digest,"backpressure_micros":completed.backpressure_micros,
             "safe_resources":safe_resource_facts()
         }),
-        &generate_event.event_hash,
+        &previous,
         committed_at,
     )?;
     insert_trace_event(&transaction, &checkpoint_event)?;
-    let attempted = 2_i64;
+    let attempted = final_order as i64;
     let (succeeded, cancelled, failed) = match state {
-        "succeeded" => (2, 0, 0),
-        "cancelled" => (1, 1, 0),
+        "succeeded" => (attempted, 0, 0),
+        "cancelled" => (1, attempted.saturating_sub(1), 0),
+        _ if transform_failed => (attempted.saturating_sub(1), 0, 1),
         _ => (1, 0, 1),
     };
+    let output_count = if has_transform {
+        completed.transformed_count
+    } else {
+        completed.generated_count
+    };
     let snapshot = json!({
-        "resume":{"generate_next_ordinal":completed.generated_count},"logical_order":2,"state":state,
+        "resume":{"generate_next_ordinal":completed.generated_count},"logical_order":final_order,"state":state,
         "generated_count":completed.generated_count,"logical_bytes":completed.logical_bytes,"stream_digest":completed.stream_digest,
+        "transform_node_id":transform_node,"transformed_count":completed.transformed_count,
+        "transformed_logical_bytes":completed.transformed_logical_bytes,"transformed_stream_digest":completed.transformed_stream_digest,
         "correctness_digest":correctness_digest,"complete":state=="succeeded","artifact":completed.artifact,
-        "counters":{"attempted":attempted,"succeeded":succeeded,"cancelled":cancelled,"failed":failed,"output_count":completed.generated_count}
+        "counters":{"attempted":attempted,"succeeded":succeeded,"cancelled":cancelled,"failed":failed,"output_count":output_count}
     });
     insert_checkpoint(
         &transaction,
         &completed.run_id,
         checkpoint,
         state,
-        2,
+        final_order,
         &snapshot,
         &checkpoint_event.event_hash,
         committed_at,
@@ -1528,14 +1757,14 @@ fn complete_generated_transaction(
         .map(canonical_text)
         .transpose()?;
     transaction.execute(
-        "INSERT INTO run_generation_progress(run_id,state,generated_count,logical_bytes,stream_digest,backpressure_events,backpressure_micros,artifact_json,updated_at)
-         VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9)
-         ON CONFLICT(run_id) DO UPDATE SET state=excluded.state,generated_count=excluded.generated_count,logical_bytes=excluded.logical_bytes,stream_digest=excluded.stream_digest,backpressure_events=excluded.backpressure_events,backpressure_micros=excluded.backpressure_micros,artifact_json=excluded.artifact_json,updated_at=excluded.updated_at",
-        params![completed.run_id,state,completed.generated_count as i64,completed.logical_bytes as i64,completed.stream_digest,completed.backpressure_events as i64,completed.backpressure_micros as i64,artifact_json,committed_at]
+        "INSERT INTO run_generation_progress(run_id,state,generated_count,logical_bytes,stream_digest,backpressure_events,backpressure_micros,artifact_json,transform_node_id,transformed_count,transformed_logical_bytes,transformed_stream_digest,updated_at)
+         VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13)
+         ON CONFLICT(run_id) DO UPDATE SET state=excluded.state,generated_count=excluded.generated_count,logical_bytes=excluded.logical_bytes,stream_digest=excluded.stream_digest,backpressure_events=excluded.backpressure_events,backpressure_micros=excluded.backpressure_micros,artifact_json=excluded.artifact_json,transform_node_id=excluded.transform_node_id,transformed_count=excluded.transformed_count,transformed_logical_bytes=excluded.transformed_logical_bytes,transformed_stream_digest=excluded.transformed_stream_digest,updated_at=excluded.updated_at",
+        params![completed.run_id,state,completed.generated_count as i64,completed.logical_bytes as i64,completed.stream_digest,completed.backpressure_events as i64,completed.backpressure_micros as i64,artifact_json,transform_node,completed.transformed_count as i64,completed.transformed_logical_bytes as i64,completed.transformed_stream_digest,committed_at]
     ).map_err(storage_error)?;
     transaction.execute(
-        "UPDATE runs SET state=?2,checkpoint_sequence=?3,logical_order=2,attempted=?4,succeeded=?5,cancelled=?6,failed=?7,output_count=?8,correctness_digest=?9,digest_complete=?10,trace_head_hash=?11,started_at=COALESCE(started_at,?12),updated_at=?13,terminal_at=?13 WHERE run_id=?1 AND state IN ('queued','cancel_requested')",
-        params![completed.run_id,state,checkpoint as i64,attempted,succeeded,cancelled,failed,completed.generated_count as i64,correctness_digest,if state=="succeeded"{1}else{0},checkpoint_event.event_hash,completed.started_at,committed_at]
+        "UPDATE runs SET state=?2,checkpoint_sequence=?3,logical_order=?4,attempted=?5,succeeded=?6,cancelled=?7,failed=?8,output_count=?9,correctness_digest=?10,digest_complete=?11,trace_head_hash=?12,started_at=COALESCE(started_at,?13),updated_at=?14,terminal_at=?14 WHERE run_id=?1 AND state IN ('queued','cancel_requested')",
+        params![completed.run_id,state,checkpoint as i64,final_order as i64,attempted,succeeded,cancelled,failed,output_count as i64,correctness_digest,if state=="succeeded"{1}else{0},checkpoint_event.event_hash,completed.started_at,committed_at]
     ).map_err(storage_error)?;
     let run = load_run(&transaction, &completed.run_id)?;
     transaction.commit().map_err(storage_error)?;
@@ -1891,8 +2120,17 @@ struct Candidate {
     captured_invocation: Value,
     checkpoint_sequence: u64,
     generate_resume: Option<GenerateResume>,
+    edit_fields: Option<EditFieldsCandidate>,
     logical_data_override: Option<Value>,
     artifact: Option<ArtifactReference>,
+}
+
+struct EditFieldsCandidate {
+    node_id: String,
+    configuration: Value,
+    transformed_count: u64,
+    transformed_logical_bytes: u64,
+    transformed_stream_digest: String,
 }
 
 struct QueuedWork {
@@ -1926,6 +2164,11 @@ struct GeneratedBatchEvent {
     generated_count: u64,
     logical_bytes: u64,
     stream_digest: String,
+    transform_node_id: Option<String>,
+    transformed_count: u64,
+    transformed_logical_bytes: u64,
+    transformed_batch_logical_bytes: u64,
+    transformed_stream_digest: String,
     backpressure_micros: u64,
     artifact: Option<ArtifactReference>,
     started_at: i64,
@@ -1936,6 +2179,10 @@ struct GeneratedProgressCommit {
     generated_count: u64,
     logical_bytes: u64,
     stream_digest: String,
+    transform_node_id: Option<String>,
+    transformed_count: u64,
+    transformed_logical_bytes: u64,
+    transformed_stream_digest: String,
     backpressure_events: u64,
     backpressure_micros: u64,
     first_ordinal: u64,
@@ -1951,6 +2198,10 @@ struct CompletedGeneratedWork {
     generated_count: u64,
     logical_bytes: u64,
     stream_digest: String,
+    transform_node_id: Option<String>,
+    transformed_count: u64,
+    transformed_logical_bytes: u64,
+    transformed_stream_digest: String,
     artifact: Option<ArtifactReference>,
     cancelled: bool,
     started_at: i64,
@@ -1965,6 +2216,10 @@ struct CompletedGeneratedWork {
 struct GenerationCheckpointState {
     generated_count: u64,
     logical_bytes: u64,
+    transform_node_id: Option<String>,
+    transformed_count: u64,
+    transformed_logical_bytes: u64,
+    transformed_stream_digest: String,
     backpressure_events: u64,
     backpressure_micros: u64,
     checkpointed_at: Instant,
@@ -1975,6 +2230,200 @@ fn start_scheduler(context: SchedulerContext) -> Result<JoinHandle<()>, String> 
         .name("workflowd-run-scheduler".into())
         .spawn(move || scheduler_loop(context))
         .map_err(|error| format!("cannot start governed Run scheduler: {error}"))
+}
+
+fn generation_plan_and_transform(
+    plan: &ExecutionPlan,
+) -> Result<(ExecutionPlan, Option<(String, Value)>), GenerateFailure> {
+    let manual = plan
+        .nodes
+        .iter()
+        .find(|node| node.contract_lock.name == "manual-trigger")
+        .cloned();
+    let generate = plan
+        .nodes
+        .iter()
+        .find(|node| node.contract_lock.name == "generate-items")
+        .cloned();
+    let edit = plan
+        .nodes
+        .iter()
+        .find(|node| node.contract_lock.name == "edit-fields")
+        .cloned();
+    let Some(manual) = manual else {
+        return Err(generate_failure(
+            "canopy.generate-items.invalid_pinned_plan",
+            "The pinned plan is missing Manual Trigger.",
+        ));
+    };
+    let Some(generate) = generate else {
+        return Err(generate_failure(
+            "canopy.generate-items.invalid_pinned_plan",
+            "The pinned plan is missing Generate Items.",
+        ));
+    };
+    let has_manual_to_generate = plan.scheduling_dependencies.iter().any(|dependency| {
+        dependency.source_node_id == manual.node_instance_id
+            && dependency.source_port_id == "invocation"
+            && dependency.target_node_id == generate.node_instance_id
+            && dependency.target_port_id == "input"
+    });
+    if !has_manual_to_generate {
+        return Err(generate_failure(
+            "canopy.generate-items.invalid_pinned_plan",
+            "The pinned plan is missing Manual Trigger to Generate Items.",
+        ));
+    }
+    if edit.is_none() {
+        if plan.nodes.len() != 2 || plan.scheduling_dependencies.len() != 1 {
+            return Err(generate_failure(
+                "canopy.generate-items.invalid_pinned_plan",
+                "The pinned plan has unsupported native topology.",
+            ));
+        }
+        return Ok((plan.clone(), None));
+    }
+    let edit = edit.expect("checked above");
+    let has_generate_to_edit = plan.scheduling_dependencies.iter().any(|dependency| {
+        dependency.source_node_id == generate.node_instance_id
+            && dependency.source_port_id == "items"
+            && dependency.target_node_id == edit.node_instance_id
+            && dependency.target_port_id == "input"
+    });
+    if plan.nodes.len() != 3
+        || plan.scheduling_dependencies.len() != 2
+        || !has_generate_to_edit
+    {
+        return Err(generate_failure(
+            "canopy.generate-items.invalid_pinned_plan",
+            "The pinned plan has unsupported Edit Fields topology.",
+        ));
+    }
+    let mut generation_plan = plan.clone();
+    generation_plan.nodes = vec![manual.clone(), generate.clone()];
+    generation_plan.scheduling_dependencies = plan
+        .scheduling_dependencies
+        .iter()
+        .filter(|dependency| {
+            dependency.source_node_id == manual.node_instance_id
+                && dependency.target_node_id == generate.node_instance_id
+        })
+        .cloned()
+        .collect();
+    generation_plan.contract_locks = generation_plan
+        .contract_locks
+        .iter()
+        .filter(|lock| lock.name != "edit-fields")
+        .cloned()
+        .collect();
+    generation_plan.segment_candidates = vec![vec![
+        manual.node_instance_id,
+        generate.node_instance_id,
+    ]];
+    Ok((
+        generation_plan,
+        Some((edit.node_instance_id, edit.configuration)),
+    ))
+}
+
+fn generate_failure(code: &str, message: &str) -> GenerateFailure {
+    GenerateFailure {
+        code: code.into(),
+        message: message.into(),
+    }
+}
+
+fn apply_edit_fields_batch(
+    envelopes: &mut [GeneratedEnvelope],
+    configuration: Option<&CompiledConfiguration>,
+    node_id: Option<&str>,
+    artifact: Option<&ArtifactReference>,
+    transformed_count: &mut u64,
+    transformed_logical_bytes: &mut u64,
+    transformed_stream_digest: &mut String,
+) -> Result<(), GenerateFailure> {
+    let Some(configuration) = configuration else {
+        return Ok(());
+    };
+    let node_id = node_id.ok_or_else(|| {
+        generate_failure(
+            "canopy.edit-fields.invalid_runtime_topology",
+            "Edit Fields configuration has no node identity.",
+        )
+    })?;
+    for envelope in envelopes {
+        let transformed = configuration.apply(&envelope.logical_item, envelope.ordinal).map_err(
+            |error| GenerateFailure {
+                code: error.code,
+                message: error.message,
+            },
+        )?;
+        let logical_output = transformed.item;
+        let logical_bytes = serde_jcs::to_vec(&logical_output).map_err(|error| GenerateFailure {
+            code: "canopy.edit-fields.canonicalization_failed".into(),
+            message: error.to_string(),
+        })?;
+        let next_bytes = transformed_logical_bytes
+            .checked_add(logical_bytes.len() as u64)
+            .ok_or_else(|| {
+                generate_failure(
+                    "canopy.edit-fields.output_bytes_exceeded",
+                    "Edit Fields logical output exceeded its bounded byte budget.",
+                )
+            })?;
+        if next_bytes > generate_engine::MAX_LOGICAL_OUTPUT_BYTES {
+            return Err(generate_failure(
+                "canopy.edit-fields.output_bytes_exceeded",
+                "Edit Fields logical output exceeded its bounded byte budget.",
+            ));
+        }
+        *transformed_stream_digest = digest(&json!({
+            "schema":"canopy.edit-fields-chain/v1alpha2",
+            "previous":transformed_stream_digest.clone(),
+            "ordinal":envelope.ordinal,
+            "item":logical_output.clone()
+        }))
+        .map_err(|message| GenerateFailure {
+            code: "canopy.edit-fields.digest_failed".into(),
+            message,
+        })?;
+        let mut physical_output = logical_output;
+        if artifact.is_some() {
+            if let (Some(Value::Object(output)), Some(data)) = (
+                physical_output.as_object_mut(),
+                envelope.item.get("data").cloned(),
+            ) {
+                if output.contains_key("data") {
+                    output.insert("data".into(), data);
+                }
+            }
+        }
+        envelope.item = physical_output;
+        if let Some(provenance) = envelope.provenance.as_object_mut() {
+            provenance.insert("edit_fields_node_instance_id".into(), json!(node_id));
+            provenance.insert("input_ordinal".into(), json!(envelope.ordinal));
+            provenance.insert(
+                "input_digest".into(),
+                json!(digest(&envelope.logical_item).map_err(|message| GenerateFailure {
+                    code: "canopy.edit-fields.digest_failed".into(),
+                    message,
+                })?),
+            );
+        }
+        let physical_bytes = serde_jcs::to_vec(envelope).map_err(|error| GenerateFailure {
+            code: "canopy.edit-fields.canonicalization_failed".into(),
+            message: error.to_string(),
+        })?;
+        if physical_bytes.len() > generate_engine::MICRO_BATCH_BYTES {
+            return Err(generate_failure(
+                "canopy.edit-fields.item_bytes_exceeded",
+                "One transformed physical Envelope exceeds the micro-batch byte limit.",
+            ));
+        }
+        *transformed_count = transformed_count.saturating_add(1);
+        *transformed_logical_bytes = next_bytes;
+    }
+    Ok(())
 }
 
 fn start_executor(
@@ -2024,9 +2473,97 @@ fn start_executor(
                 let run_id = candidate.run_id.clone();
                 let input = candidate.captured_invocation.clone();
                 let artifact = candidate.artifact.clone();
+                let edit_fields_candidate = candidate.edit_fields;
+                let (generation_plan, edit_fields_definition) =
+                    match generation_plan_and_transform(&candidate.plan) {
+                        Ok(value) => value,
+                        Err(error) => {
+                            let completed_at = now_millis();
+                            let elapsed_micros =
+                                started.elapsed().as_micros().min(i64::MAX as u128) as u64;
+                            if results
+                                .send(ExecutorTerminal::Generated(CompletedGeneratedWork {
+                                    run_id,
+                                    input,
+                                    summary: Err(error),
+                                    generated_count: 0,
+                                    logical_bytes: 0,
+                                    stream_digest: "genesis".into(),
+                                    transform_node_id: None,
+                                    transformed_count: 0,
+                                    transformed_logical_bytes: 0,
+                                    transformed_stream_digest: "genesis".into(),
+                                    artifact,
+                                    cancelled: false,
+                                    started_at,
+                                    completed_at,
+                                    elapsed_micros,
+                                    backpressure_micros: 0,
+                                    backpressure_events: 0,
+                                    _result_bytes,
+                                }))
+                                .is_err()
+                            {
+                                break;
+                            }
+                            continue;
+                        }
+                    };
+                let (transform_node_id, transform_configuration) = match edit_fields_definition {
+                    Some((node_id, configuration)) => {
+                        let compiled = match edit_fields::compile_configuration(&configuration) {
+                            Ok(compiled) => compiled,
+                            Err(error) => {
+                                let completed_at = now_millis();
+                                let elapsed_micros =
+                                    started.elapsed().as_micros().min(i64::MAX as u128) as u64;
+                                if results
+                                    .send(ExecutorTerminal::Generated(CompletedGeneratedWork {
+                                        run_id,
+                                        input,
+                                        summary: Err(GenerateFailure {
+                                            code: error.code,
+                                            message: error.message,
+                                        }),
+                                        generated_count: 0,
+                                        logical_bytes: 0,
+                                        stream_digest: "genesis".into(),
+                                        transform_node_id: Some(node_id),
+                                        transformed_count: 0,
+                                        transformed_logical_bytes: 0,
+                                        transformed_stream_digest: "genesis".into(),
+                                        artifact,
+                                        cancelled: false,
+                                        started_at,
+                                        completed_at,
+                                        elapsed_micros,
+                                        backpressure_micros: 0,
+                                        backpressure_events: 0,
+                                        _result_bytes,
+                                    }))
+                                    .is_err()
+                                {
+                                    break;
+                                }
+                                continue;
+                            }
+                        };
+                        (Some(node_id), Some(compiled))
+                    }
+                    None => (None, None),
+                };
                 let mut generated_count = 0_u64;
                 let mut logical_bytes = 0_u64;
                 let mut stream_digest = "genesis".to_owned();
+                let mut transformed_count = edit_fields_candidate
+                    .as_ref()
+                    .map_or(0, |candidate| candidate.transformed_count);
+                let mut transformed_logical_bytes = edit_fields_candidate
+                    .as_ref()
+                    .map_or(0, |candidate| candidate.transformed_logical_bytes);
+                let mut transformed_stream_digest = edit_fields_candidate
+                    .as_ref()
+                    .map_or_else(|| "genesis".into(), |candidate| candidate.transformed_stream_digest.clone());
                 let mut backpressure_micros = 0_u64;
                 let mut backpressure_events = 0_u64;
                 let mut cancelled = false;
@@ -2038,7 +2575,7 @@ fn start_executor(
                     run_id: candidate.run_id,
                     revision_digest: candidate.revision_digest,
                     plan_digest: candidate.plan_digest,
-                    plan: &candidate.plan,
+                    plan: &generation_plan,
                     input: candidate.captured_invocation,
                     logical_data_override: candidate.logical_data_override,
                     physical_data,
@@ -2053,11 +2590,25 @@ fn start_executor(
                             });
                         }
                         match session.next_batch() {
-                            Ok(Some(batch)) => {
+                            Ok(Some(mut batch)) => {
                                 let progress = session.progress();
                                 generated_count = progress.0;
                                 logical_bytes = progress.1;
                                 stream_digest = progress.2.to_owned();
+                                let transformed_batch_start = transformed_logical_bytes;
+                                if let Err(error) = apply_edit_fields_batch(
+                                    &mut batch,
+                                    transform_configuration.as_ref(),
+                                    transform_node_id.as_deref(),
+                                    artifact.as_ref(),
+                                    &mut transformed_count,
+                                    &mut transformed_logical_bytes,
+                                    &mut transformed_stream_digest,
+                                ) {
+                                    break Err(error);
+                                }
+                                let transformed_batch_logical_bytes =
+                                    transformed_logical_bytes.saturating_sub(transformed_batch_start);
                                 let sent = Instant::now();
                                 if envelopes
                                     .send(GeneratedBatchEvent {
@@ -2066,6 +2617,11 @@ fn start_executor(
                                         generated_count,
                                         logical_bytes,
                                         stream_digest: stream_digest.clone(),
+                                        transform_node_id: transform_node_id.clone(),
+                                        transformed_count,
+                                        transformed_logical_bytes,
+                                        transformed_batch_logical_bytes,
+                                        transformed_stream_digest: transformed_stream_digest.clone(),
                                         backpressure_micros,
                                         artifact: artifact.clone(),
                                         started_at,
@@ -2098,6 +2654,10 @@ fn start_executor(
                         generated_count,
                         logical_bytes,
                         stream_digest,
+                        transform_node_id,
+                        transformed_count,
+                        transformed_logical_bytes,
+                        transformed_stream_digest,
                         artifact,
                         cancelled,
                         started_at,
@@ -2359,6 +2919,20 @@ fn handle_generated_batch(
         GenerationCheckpointState {
             generated_count: first_ordinal,
             logical_bytes: batch.logical_bytes.saturating_sub(batch_logical_bytes),
+            transform_node_id: batch.transform_node_id.clone(),
+            transformed_count: batch
+                .transformed_count
+                .saturating_sub(batch.envelopes.len() as u64),
+            transformed_logical_bytes: batch
+                .transformed_logical_bytes
+                .saturating_sub(batch.transformed_batch_logical_bytes),
+            transformed_stream_digest: if batch.transformed_count == 0 {
+                "genesis".into()
+            } else {
+                // The durable transformed cursor is restored from SQLite before the
+                // next checkpoint. This value is only a conservative live baseline.
+                "genesis".into()
+            },
             backpressure_events: 0,
             backpressure_micros: 0,
             checkpointed_at: Instant::now(),
@@ -2386,6 +2960,12 @@ fn handle_generated_batch(
             "generated_count": batch.generated_count,
             "logical_bytes": batch.logical_bytes,
             "stream_digest": batch.stream_digest,
+            "transform": batch.transform_node_id.as_ref().map(|node_id| json!({
+                "node_instance_id": node_id,
+                "transformed_count": batch.transformed_count,
+                "logical_bytes": batch.transformed_logical_bytes,
+                "stream_digest": batch.transformed_stream_digest
+            })),
             "first_ordinal": first_ordinal,
             "last_ordinal": last_ordinal,
             "batch_count": batch.envelopes.len(),
@@ -2406,6 +2986,10 @@ fn handle_generated_batch(
         generated_count: batch.generated_count,
         logical_bytes: batch.logical_bytes,
         stream_digest: batch.stream_digest,
+        transform_node_id: batch.transform_node_id.clone(),
+        transformed_count: batch.transformed_count,
+        transformed_logical_bytes: batch.transformed_logical_bytes,
+        transformed_stream_digest: batch.transformed_stream_digest.clone(),
         backpressure_events: state.backpressure_events,
         backpressure_micros: batch.backpressure_micros,
         first_ordinal: state.generated_count,
@@ -2421,6 +3005,10 @@ fn handle_generated_batch(
         Ok(WriterReply::Run(run)) => {
             state.generated_count = batch.generated_count;
             state.logical_bytes = batch.logical_bytes;
+            state.transform_node_id = batch.transform_node_id.clone();
+            state.transformed_count = batch.transformed_count;
+            state.transformed_logical_bytes = batch.transformed_logical_bytes;
+            state.transformed_stream_digest = batch.transformed_stream_digest.clone();
             state.checkpointed_at = Instant::now();
             context.live.emit(
                 &run.run_id,
@@ -2493,7 +3081,7 @@ fn next_candidate(
 ) -> Result<Option<Candidate>, RunError> {
     let mut statement = connection
         .prepare(
-            "SELECT r.run_id,r.revision_id,r.revision_digest,r.plan_digest,p.payload_json,r.captured_invocation_json,r.checkpoint_sequence,g.generated_count,g.logical_bytes,g.stream_digest
+            "SELECT r.run_id,r.revision_id,r.revision_digest,r.plan_digest,p.payload_json,r.captured_invocation_json,r.checkpoint_sequence,g.generated_count,g.logical_bytes,g.stream_digest,g.transform_node_id,g.transformed_count,g.transformed_logical_bytes,g.transformed_stream_digest
              FROM runs r JOIN execution_plans p ON p.plan_id=r.plan_id
              LEFT JOIN run_generation_progress g ON g.run_id=r.run_id
              WHERE r.state='queued' AND NOT EXISTS(SELECT 1 FROM run_suspensions s WHERE s.run_id=r.run_id)
@@ -2508,14 +3096,59 @@ fn next_candidate(
         }
         let plan_json: String = row.get(4).map_err(storage_error)?;
         let invocation_json: String = row.get(5).map_err(storage_error)?;
+        let plan: ExecutionPlan = serde_json::from_str(&plan_json).map_err(|error| {
+            RunError::Integrity(format!("queued pinned plan is invalid: {error}"))
+        })?;
+        let (_, edit_fields_definition) = generation_plan_and_transform(&plan)
+            .map_err(|error| RunError::Integrity(error.message))?;
+        let stored_transform_node_id = row
+            .get::<_, Option<String>>(10)
+            .map_err(storage_error)?;
+        let transformed_count = row
+            .get::<_, Option<i64>>(11)
+            .map_err(storage_error)?
+            .unwrap_or(0) as u64;
+        let transformed_logical_bytes = row
+            .get::<_, Option<i64>>(12)
+            .map_err(storage_error)?
+            .unwrap_or(0) as u64;
+        let transformed_stream_digest = row
+            .get::<_, Option<String>>(13)
+            .map_err(storage_error)?
+            .unwrap_or_else(|| "genesis".into());
+        let edit_fields = match edit_fields_definition {
+            Some((node_id, configuration)) => {
+                if stored_transform_node_id
+                    .as_deref()
+                    .is_some_and(|stored| stored != node_id.as_str())
+                {
+                    return Err(RunError::Integrity(
+                        "durable Edit Fields node identity changed".into(),
+                    ));
+                }
+                Some(EditFieldsCandidate {
+                    node_id,
+                    configuration,
+                    transformed_count,
+                    transformed_logical_bytes,
+                    transformed_stream_digest,
+                })
+            }
+            None => {
+                if stored_transform_node_id.is_some() || transformed_count != 0 {
+                    return Err(RunError::Integrity(
+                        "durable transform progress exists without Edit Fields".into(),
+                    ));
+                }
+                None
+            }
+        };
         return Ok(Some(Candidate {
             run_id,
             revision_id: row.get(1).map_err(storage_error)?,
             revision_digest: row.get(2).map_err(storage_error)?,
             plan_digest: row.get(3).map_err(storage_error)?,
-            plan: serde_json::from_str(&plan_json).map_err(|error| {
-                RunError::Integrity(format!("queued pinned plan is invalid: {error}"))
-            })?,
+            plan,
             captured_invocation: serde_json::from_str(&invocation_json).map_err(|error| {
                 RunError::Integrity(format!("queued invocation is invalid: {error}"))
             })?,
@@ -2531,6 +3164,7 @@ fn next_candidate(
                     })
                 })
                 .transpose()?,
+            edit_fields,
             logical_data_override: None,
             artifact: None,
         }));
@@ -2621,10 +3255,14 @@ fn load_generation_progress(
 ) -> Result<Option<GenerationProgress>, RunError> {
     connection
         .query_row(
-            "SELECT state,generated_count,logical_bytes,stream_digest,backpressure_events,artifact_json FROM run_generation_progress WHERE run_id=?1",
+            "SELECT state,generated_count,logical_bytes,stream_digest,backpressure_events,artifact_json,transform_node_id,transformed_count,transformed_logical_bytes,transformed_stream_digest FROM run_generation_progress WHERE run_id=?1",
             params![run_id],
             |row| {
                 let artifact: Option<String> = row.get(5)?;
+                let transform_node_id: Option<String> = row.get(6)?;
+                let transformed_count: u64 = row.get::<_, i64>(7)? as u64;
+                let transformed_logical_bytes: u64 = row.get::<_, i64>(8)? as u64;
+                let transformed_stream_digest: String = row.get(9)?;
                 Ok(GenerationProgress {
                     state: row.get(0)?,
                     generated_count: row.get::<_, i64>(1)? as u64,
@@ -2634,6 +3272,12 @@ fn load_generation_progress(
                     artifact: artifact.as_deref().map(parse_sql_json).transpose()?.map(|value| {
                         serde_json::from_value(value).map_err(|error| rusqlite::Error::FromSqlConversionFailure(0, rusqlite::types::Type::Text, Box::new(error)))
                     }).transpose()?,
+                    transform: transform_node_id.map(|node_instance_id| TransformProgress {
+                        node_instance_id,
+                        transformed_count,
+                        logical_bytes: transformed_logical_bytes,
+                        stream_digest: transformed_stream_digest,
+                    }),
                 })
             },
         )

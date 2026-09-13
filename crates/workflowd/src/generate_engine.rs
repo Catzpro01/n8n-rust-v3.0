@@ -18,6 +18,8 @@ pub const MICRO_BATCH_BYTES: usize = 256 * 1024;
 pub struct GeneratedEnvelope {
     pub ordinal: u64,
     pub item: Value,
+    #[serde(skip)]
+    pub logical_item: Value,
     pub logical_bytes: u64,
     pub provenance: Value,
 }
@@ -207,6 +209,7 @@ impl GenerateSession {
             let envelope = GeneratedEnvelope {
                 ordinal: self.next,
                 item,
+                logical_item: logical_item.clone(),
                 logical_bytes: logical_item_bytes.len() as u64,
                 provenance: json!({
                     "run_id":self.run_id,
