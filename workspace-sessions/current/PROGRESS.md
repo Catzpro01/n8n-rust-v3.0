@@ -33,3 +33,4 @@
 - Owner accepted issue #13 through HITL: a private-first integrated journey, deterministic contract evidence plus separately pinned external conformance evidence, the Rust default/optional-worker trust envelope, and production completion only with code, versioned seams, tests, docs, and release evidence.
 - Recorded ADR 0063 and `docs/spec/release/integrated-expansion-gate.md`, resolved local issue #13, and moved from decision work to phase-1 core implementation. No Hub, Skill Hub, or AI production code has started.
 - Reconciled the first-runnable map and Ticket 08 evidence: Tickets 01–08 are complete, and Ticket 09 (deterministic If routing) is the current core implementation frontier.
+- The accepted decision/spec/map update is commit `09dfe25`, pushed to `arena/01a09a2a-n8n-rust-v3-0`; push CI `34772081997` and pull-request CI `34772084635` passed. Node.js 20 deprecation annotations remain non-blocking.
