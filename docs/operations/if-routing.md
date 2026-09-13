@@ -75,12 +75,15 @@ cannot publish a successful run.
 ## Evidence boundary
 
 Focused Rust coverage exercises AND/OR and typed diagnostics in the If module,
-atomic batch provenance, replay-stable route digests, and transformed logical
-input. The public seam test `tests/acceptance/test_if_runtime.py` publishes the
-four-node editor topology and now verifies both `all` and composed `any` logic,
-terminal branch progress, restart persistence, and Causal Trace facts. The
-hardened acceptance lane passed in pinned workflow `34781046284`; repository
-validation passed in `34781046290`, covering formatting, workspace tests, editor
-build, and dependency-free repository tests. The bounded Ticket 09 If slice is
-released as verified evidence; downstream compatibility beyond this topology
-remains a later phase.
+atomic batch provenance, replay-stable route digests, transformed logical input,
+cooperative cancellation, bounded queue permit release, and fault-injected batch
+atomicity. The public seam test `tests/acceptance/test_if_runtime.py` publishes
+the four-node editor topology and verifies both `all` and composed `any` logic,
+terminal branch progress, 1,024-item envelope backpressure with exact counts,
+pre-activation cancellation without an If activation, a follow-on successful
+Run, restart persistence, and Causal Trace facts. The hardened acceptance lane
+passed in pinned workflow `34782134925`; repository validation passed in
+`34782134893`, covering formatting, workspace tests, editor build, and
+dependency-free repository tests. The bounded Ticket 09 If slice is released as
+verified evidence; downstream compatibility beyond this topology remains a later
+phase.

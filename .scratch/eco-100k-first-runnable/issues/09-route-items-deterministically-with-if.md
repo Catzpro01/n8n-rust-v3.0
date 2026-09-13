@@ -36,11 +36,14 @@ The native runtime implementation is in `crates/workflowd/src/if_node.rs` and
 `crates/workflowd/src/run.rs`; its operational contract is documented in
 `docs/operations/if-routing.md`. The hardened public seam acceptance in
 `tests/acceptance/test_if_runtime.py` publishes the four-node editor topology,
-runs transformed items through If with both `all` and composed `any` logic, and
-verifies durable branch counts, trace activation order, route evidence, and
-integrity. It passed in pinned workflow `34781046284`; companion validation
-workflow `34781046290` also passed formatting, workspace tests, editor build,
-and dependency-free repository tests on 2026-09-14. The contract/catalog work
-remains committed as `71e8c6a` plus formatting fix `292e3ca`; earlier push CI
-`34775814353` and pull-request CI `34775816647` passed the initial contract and
-editor checks.
+runs transformed items through If with both `all` and composed `any` logic,
+exercises 1,024-item bounded envelope backpressure, verifies cancellation
+before activation plus a follow-on Run, and checks durable branch counts, trace
+activation order, route evidence, and integrity. It passed in pinned workflow
+`34782134925`; companion validation workflow `34782134893` also passed
+formatting, workspace tests, editor build, and dependency-free repository tests
+on 2026-09-14. Focused Rust tests additionally cover idempotent cancellation,
+permit release after a full queue send, and no partial If provenance after an
+injected typed fault. The contract/catalog work remains committed as `71e8c6a`
+plus formatting fix `292e3ca`; earlier push CI `34775814353` and pull-request
+CI `34775816647` passed the initial contract and editor checks.
