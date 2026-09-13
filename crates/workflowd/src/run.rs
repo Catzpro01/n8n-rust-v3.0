@@ -6,6 +6,7 @@ use crate::{
     compiler::ExecutionPlan,
     config::ServeConfig,
     edit_fields::{self, CompiledConfiguration},
+    if_node,
     generate_engine::{
         self, GenerateFailure, GenerateResume, GenerateSession, GenerateStart, GenerateSummary,
         GeneratedEnvelope,
@@ -158,6 +159,8 @@ pub struct GenerationProgress {
     pub artifact: Option<ArtifactReference>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub transform: Option<TransformProgress>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub branch: Option<BranchProgress>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -165,6 +168,14 @@ pub struct TransformProgress {
     pub node_instance_id: String,
     pub transformed_count: u64,
     pub logical_bytes: u64,
+    pub stream_digest: String,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct BranchProgress {
+    pub node_instance_id: String,
+    pub true_count: u64,
+    pub false_count: u64,
     pub stream_digest: String,
 }
 
@@ -763,6 +774,10 @@ fn initialize_schema(connection: &Connection) -> Result<(), String> {
                 transformed_count INTEGER NOT NULL DEFAULT 0,
                 transformed_logical_bytes INTEGER NOT NULL DEFAULT 0,
                 transformed_stream_digest TEXT NOT NULL DEFAULT 'genesis',
+                branch_node_id TEXT,
+                branch_true_count INTEGER NOT NULL DEFAULT 0,
+                branch_false_count INTEGER NOT NULL DEFAULT 0,
+                branch_stream_digest TEXT NOT NULL DEFAULT 'genesis',
                 updated_at INTEGER NOT NULL
             ) STRICT;
             CREATE TABLE IF NOT EXISTS run_suspensions(
@@ -806,6 +821,22 @@ fn initialize_schema(connection: &Connection) -> Result<(), String> {
     ensure_generation_column(
         connection,
         "transformed_stream_digest",
+        "TEXT NOT NULL DEFAULT 'genesis'",
+    )?;
+    ensure_generation_column(connection, "branch_node_id", "TEXT")?;
+    ensure_generation_column(
+        connection,
+        "branch_true_count",
+        "INTEGER NOT NULL DEFAULT 0",
+    )?;
+    ensure_generation_column(
+        connection,
+        "branch_false_count",
+        "INTEGER NOT NULL DEFAULT 0",
+    )?;
+    ensure_generation_column(
+        connection,
+        "branch_stream_digest",
         "TEXT NOT NULL DEFAULT 'genesis'",
     )?;
     Ok(())
@@ -1286,6 +1317,22 @@ fn generation_progress_transaction(
             "Transform checkpoint exists without an Edit Fields node".into(),
         ));
     }
+    if let Some(branch_node_id) = progress.branch_node_id.as_ref() {
+        if progress.branch_true_count.saturating_add(progress.branch_false_count)
+            != progress.generated_count
+        {
+            return Err(RunError::Integrity(format!(
+                "If checkpoint counts do not cover generated items for {branch_node_id}"
+            )));
+        }
+    } else if progress.branch_true_count != 0
+        || progress.branch_false_count != 0
+        || progress.branch_stream_digest != "genesis"
+    {
+        return Err(RunError::Integrity(
+            "Branch checkpoint exists without an If node".into(),
+        ));
+    }
     let durable_count = current
         .generation
         .as_ref()
@@ -1311,6 +1358,15 @@ fn generation_progress_transaction(
             {
                 return Err(RunError::Integrity(
                     "Edit Fields checkpoint progress regressed".into(),
+                ));
+            }
+        }
+        if let Some(branch) = &durable.branch {
+            if progress.branch_true_count < branch.true_count
+                || progress.branch_false_count < branch.false_count
+            {
+                return Err(RunError::Integrity(
+                    "If checkpoint progress regressed".into(),
                 ));
             }
         }
@@ -1393,6 +1449,12 @@ fn generation_progress_transaction(
                 "logical_bytes": progress.transformed_logical_bytes,
                 "stream_digest": progress.transformed_stream_digest
             })),
+            "branch": progress.branch_node_id.as_ref().map(|node_id| json!({
+                "node_instance_id": node_id,
+                "true_count": progress.branch_true_count,
+                "false_count": progress.branch_false_count,
+                "stream_digest": progress.branch_stream_digest
+            })),
             "contiguous_ordinal_range":[progress.first_ordinal,progress.last_ordinal],
             "backpressure_events":progress.backpressure_events,
             "backpressure_micros":progress.backpressure_micros,
@@ -1414,6 +1476,12 @@ fn generation_progress_transaction(
             "logical_bytes": progress.transformed_logical_bytes,
             "stream_digest": progress.transformed_stream_digest
         })),
+        "branch": progress.branch_node_id.as_ref().map(|node_id| json!({
+            "node_instance_id": node_id,
+            "true_count": progress.branch_true_count,
+            "false_count": progress.branch_false_count,
+            "stream_digest": progress.branch_stream_digest
+        })),
         "artifact":progress.artifact,
         "complete":false
     });
@@ -1429,10 +1497,10 @@ fn generation_progress_transaction(
     )?;
     let artifact_json = progress.artifact.as_ref().map(canonical_text).transpose()?;
     transaction.execute(
-        "INSERT INTO run_generation_progress(run_id,state,generated_count,logical_bytes,stream_digest,backpressure_events,backpressure_micros,artifact_json,transform_node_id,transformed_count,transformed_logical_bytes,transformed_stream_digest,updated_at)
-         VALUES(?1,'running',?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12)
-         ON CONFLICT(run_id) DO UPDATE SET state='running',generated_count=excluded.generated_count,logical_bytes=excluded.logical_bytes,stream_digest=excluded.stream_digest,backpressure_events=excluded.backpressure_events,backpressure_micros=excluded.backpressure_micros,artifact_json=excluded.artifact_json,transform_node_id=excluded.transform_node_id,transformed_count=excluded.transformed_count,transformed_logical_bytes=excluded.transformed_logical_bytes,transformed_stream_digest=excluded.transformed_stream_digest,updated_at=excluded.updated_at",
-        params![progress.run_id,progress.generated_count as i64,progress.logical_bytes as i64,progress.stream_digest,progress.backpressure_events as i64,progress.backpressure_micros as i64,artifact_json,progress.transform_node_id,progress.transformed_count as i64,progress.transformed_logical_bytes as i64,progress.transformed_stream_digest,committed_at]
+        "INSERT INTO run_generation_progress(run_id,state,generated_count,logical_bytes,stream_digest,backpressure_events,backpressure_micros,artifact_json,transform_node_id,transformed_count,transformed_logical_bytes,transformed_stream_digest,branch_node_id,branch_true_count,branch_false_count,branch_stream_digest,updated_at)
+         VALUES(?1,'running',?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16)
+         ON CONFLICT(run_id) DO UPDATE SET state='running',generated_count=excluded.generated_count,logical_bytes=excluded.logical_bytes,stream_digest=excluded.stream_digest,backpressure_events=excluded.backpressure_events,backpressure_micros=excluded.backpressure_micros,artifact_json=excluded.artifact_json,transform_node_id=excluded.transform_node_id,transformed_count=excluded.transformed_count,transformed_logical_bytes=excluded.transformed_logical_bytes,transformed_stream_digest=excluded.transformed_stream_digest,branch_node_id=excluded.branch_node_id,branch_true_count=excluded.branch_true_count,branch_false_count=excluded.branch_false_count,branch_stream_digest=excluded.branch_stream_digest,updated_at=excluded.updated_at",
+        params![progress.run_id,progress.generated_count as i64,progress.logical_bytes as i64,progress.stream_digest,progress.backpressure_events as i64,progress.backpressure_micros as i64,artifact_json,progress.transform_node_id,progress.transformed_count as i64,progress.transformed_logical_bytes as i64,progress.transformed_stream_digest,progress.branch_node_id,progress.branch_true_count as i64,progress.branch_false_count as i64,progress.branch_stream_digest,committed_at]
     ).map_err(storage_error)?;
     transaction.execute(
         "UPDATE runs SET checkpoint_sequence=?2,logical_order=1,attempted=1,succeeded=1,output_count=?3,trace_head_hash=?4,started_at=COALESCE(started_at,?5),updated_at=?6 WHERE run_id=?1 AND state='queued'",
@@ -1474,7 +1542,14 @@ fn complete_generated_transaction(
             .find(|node| node.contract_lock.name == "edit-fields")
             .map(|node| node.node_instance_id.clone())
     });
+    let branch_node = completed.branch_node_id.clone().or_else(|| {
+        plan.nodes
+            .iter()
+            .find(|node| node.contract_lock.name == "if")
+            .map(|node| node.node_instance_id.clone())
+    });
     let has_transform = transform_node.is_some();
+    let has_branch = branch_node.is_some();
     let cancel_won = current.durable.state == "cancel_requested" || completed.cancelled;
     let state = if cancel_won {
         "cancelled"
@@ -1499,24 +1574,83 @@ fn complete_generated_transaction(
         .as_ref()
         .and_then(|failure| failure["code"].as_str())
         .is_some_and(|code| code.starts_with("canopy.edit-fields"));
+    let branch_failed = failure
+        .as_ref()
+        .and_then(|failure| failure["code"].as_str())
+        .is_some_and(|code| code.starts_with("canopy.if"));
     let transform_should_commit =
         has_transform && (state == "succeeded" || state == "cancelled" || transform_failed);
-    let final_order = if transform_should_commit {
+    let branch_should_commit =
+        has_branch && (state == "succeeded" || state == "cancelled" || branch_failed);
+    if state == "succeeded" && has_branch {
+        if completed.branch_node_id.as_deref() != branch_node.as_deref()
+            || completed
+                .branch_true_count
+                .saturating_add(completed.branch_false_count)
+                != completed.generated_count
+        {
+            return Err(RunError::Integrity(
+                "successful If execution does not cover every generated item".into(),
+            ));
+        }
+    }
+    let branch_order = if transform_should_commit { 4_u64 } else { 3_u64 };
+    let final_order = if branch_should_commit {
+        branch_order
+    } else if transform_should_commit {
         3_u64
     } else {
         2_u64
     };
     let correctness_digest = if state == "succeeded" {
-        if let Some(transform_node) = transform_node.as_ref() {
+        if has_transform || has_branch {
+            let mut logical_outcomes = vec![
+                json!({
+                    "logical_order":1,
+                    "node_instance_id":manual_node,
+                    "outcome":"success",
+                    "port":"invocation",
+                    "output":completed.input
+                }),
+                json!({
+                    "logical_order":2,
+                    "node_instance_id":generate_node,
+                    "outcome":"success",
+                    "port":"items",
+                    "generated_count":completed.generated_count,
+                    "logical_bytes":completed.logical_bytes,
+                    "stream_digest":completed.stream_digest
+                }),
+            ];
+            if let Some(transform_node) = transform_node.as_ref() {
+                logical_outcomes.push(json!({
+                    "logical_order":3,
+                    "node_instance_id":transform_node,
+                    "outcome":"success",
+                    "port":"item",
+                    "transformed_count":completed.transformed_count,
+                    "logical_bytes":completed.transformed_logical_bytes,
+                    "stream_digest":completed.transformed_stream_digest,
+                    "item_linking":"one_to_one"
+                }));
+            }
+            if let Some(branch_node) = branch_node.as_ref() {
+                logical_outcomes.push(json!({
+                    "logical_order":if has_transform { 4 } else { 3 },
+                    "node_instance_id":branch_node,
+                    "outcome":"success",
+                    "output_ports":["true","false"],
+                    "true_count":completed.branch_true_count,
+                    "false_count":completed.branch_false_count,
+                    "stream_digest":completed.branch_stream_digest,
+                    "item_linking":"one_to_one"
+                }));
+            }
             digest(&json!({
                 "schema":"canopy.correctness-digest/v1alpha2",
                 "revision_digest":current.revision_digest,
                 "plan_digest":current.plan_digest,
-                "logical_outcomes":[
-                    {"logical_order":1,"node_instance_id":manual_node,"outcome":"success","port":"invocation","output":completed.input},
-                    {"logical_order":2,"node_instance_id":generate_node,"outcome":"success","port":"items","generated_count":completed.generated_count,"logical_bytes":completed.logical_bytes,"stream_digest":completed.stream_digest},
-                    {"logical_order":3,"node_instance_id":transform_node,"outcome":"success","port":"item","transformed_count":completed.transformed_count,"logical_bytes":completed.transformed_logical_bytes,"stream_digest":completed.transformed_stream_digest,"item_linking":"one_to_one"}
-                ]
+                "logical_outcomes":logical_outcomes
             })).map_err(RunError::Integrity)?
         } else {
             completed
@@ -1549,6 +1683,9 @@ fn complete_generated_transaction(
     let transform_activation = transform_node
         .as_ref()
         .map(|node| generated_activation_id(&completed.run_id, node, 3));
+    let branch_activation = branch_node
+        .as_ref()
+        .map(|node| generated_activation_id(&completed.run_id, node, branch_order));
     let manual_committed = current.durable.logical_order >= 1;
     if !manual_committed {
         insert_activation_row(
@@ -1645,6 +1782,60 @@ fn complete_generated_transaction(
             },
         )?;
     }
+    let branch_outcome = if state == "succeeded" {
+        "success"
+    } else if state == "cancelled" {
+        "cancelled"
+    } else {
+        "permanent_failure"
+    };
+    let branch_input = json!({
+        "source_node_instance_id":if transform_should_commit {
+            transform_node.as_ref().unwrap_or(&generate_node)
+        } else {
+            &generate_node
+        },
+        "source_output_port":if transform_should_commit { "item" } else { "items" },
+        "generated_count":completed.generated_count,
+        "stream_digest":if transform_should_commit {
+            &completed.transformed_stream_digest
+        } else {
+            &completed.stream_digest
+        }
+    });
+    let branch_output = json!({
+        "true_count":completed.branch_true_count,
+        "false_count":completed.branch_false_count,
+        "stream_digest":completed.branch_stream_digest,
+        "output_ports":["true","false"],
+        "item_linking":"one_to_one"
+    });
+    if branch_should_commit {
+        let branch_node = branch_node
+            .as_ref()
+            .ok_or_else(|| RunError::Integrity("If activation has no node".into()))?;
+        let branch_activation = branch_activation
+            .as_ref()
+            .ok_or_else(|| RunError::Integrity("If activation has no identity".into()))?;
+        insert_activation_row(
+            &transaction,
+            ActivationInsert {
+                activation_id: branch_activation,
+                run_id: &completed.run_id,
+                node_id: branch_node,
+                logical_order: branch_order,
+                outcome: branch_outcome,
+                input: &branch_input,
+                output: (state == "succeeded").then_some(&branch_output),
+                failure: if branch_failed { failure.as_ref() } else { None },
+                checkpoint,
+                started_at: completed.started_at,
+                completed_at: completed.completed_at,
+                elapsed_micros: completed.elapsed_micros,
+                provenance: json!({"engine_abi":if_node::IF_ABI,"lane":"native-cpu","effect_class":"pure","input_link":if transform_should_commit { "edit-fields.item" } else { "generate.items" },"output_ports":["true","false"],"item_linking":"one_to_one"}),
+            },
+        )?;
+    }
     let mut previous = current_trace_head(&transaction, &completed.run_id)?;
     let mut sequence = next_trace_sequence(&transaction, &completed.run_id)?;
     if !manual_committed {
@@ -1714,6 +1905,40 @@ fn complete_generated_transaction(
         previous = transform_event.event_hash;
         sequence += 1;
     }
+    if branch_should_commit {
+        let branch_node = branch_node
+            .as_ref()
+            .ok_or_else(|| RunError::Integrity("If trace has no node".into()))?;
+        let branch_activation = branch_activation
+            .as_ref()
+            .ok_or_else(|| RunError::Integrity("If trace has no identity".into()))?;
+        let branch_event = make_trace_event(
+            &completed.run_id,
+            sequence,
+            Some(branch_order),
+            checkpoint,
+            "logical",
+            "activation_outcome",
+            json!({
+                "activation_id":branch_activation,
+                "node_instance_id":branch_node,
+                "attempt":1,
+                "outcome":branch_outcome,
+                "true_count":completed.branch_true_count,
+                "false_count":completed.branch_false_count,
+                "stream_digest":completed.branch_stream_digest,
+                "output_ports":["true","false"],
+                "failure":if branch_failed { failure.clone() } else { None::<Value> },
+                "input_digest":digest(&branch_input).map_err(RunError::Integrity)?,
+                "output_digest":if state == "succeeded" { Some(digest(&branch_output).map_err(RunError::Integrity)?) } else { None }
+            }),
+            &previous,
+            committed_at,
+        )?;
+        insert_trace_event(&transaction, &branch_event)?;
+        previous = branch_event.event_hash;
+        sequence += 1;
+    }
     let checkpoint_event = make_trace_event(
         &completed.run_id,
         sequence,
@@ -1725,6 +1950,8 @@ fn complete_generated_transaction(
             "state":state,"logical_order":final_order,"generated_count":completed.generated_count,"logical_bytes":completed.logical_bytes,
             "stream_digest":completed.stream_digest,"transform_node_id":transform_node,"transformed_count":completed.transformed_count,
             "transformed_logical_bytes":completed.transformed_logical_bytes,"transformed_stream_digest":completed.transformed_stream_digest,
+            "branch_node_id":branch_node,"branch_true_count":completed.branch_true_count,"branch_false_count":completed.branch_false_count,
+            "branch_stream_digest":completed.branch_stream_digest,
             "correctness_digest":correctness_digest,"backpressure_micros":completed.backpressure_micros,
             "safe_resources":safe_resource_facts()
         }),
@@ -1736,7 +1963,7 @@ fn complete_generated_transaction(
     let (succeeded, cancelled, failed) = match state {
         "succeeded" => (attempted, 0, 0),
         "cancelled" => (1, attempted.saturating_sub(1), 0),
-        _ if transform_failed => (attempted.saturating_sub(1), 0, 1),
+        _ if transform_failed || branch_failed => (attempted.saturating_sub(1), 0, 1),
         _ => (1, 0, 1),
     };
     let output_count = if has_transform {
@@ -1749,6 +1976,8 @@ fn complete_generated_transaction(
         "generated_count":completed.generated_count,"logical_bytes":completed.logical_bytes,"stream_digest":completed.stream_digest,
         "transform_node_id":transform_node,"transformed_count":completed.transformed_count,
         "transformed_logical_bytes":completed.transformed_logical_bytes,"transformed_stream_digest":completed.transformed_stream_digest,
+        "branch_node_id":branch_node,"branch_true_count":completed.branch_true_count,"branch_false_count":completed.branch_false_count,
+        "branch_stream_digest":completed.branch_stream_digest,
         "correctness_digest":correctness_digest,"complete":state=="succeeded","artifact":completed.artifact,
         "counters":{"attempted":attempted,"succeeded":succeeded,"cancelled":cancelled,"failed":failed,"output_count":output_count}
     });
@@ -1768,10 +1997,10 @@ fn complete_generated_transaction(
         .map(canonical_text)
         .transpose()?;
     transaction.execute(
-        "INSERT INTO run_generation_progress(run_id,state,generated_count,logical_bytes,stream_digest,backpressure_events,backpressure_micros,artifact_json,transform_node_id,transformed_count,transformed_logical_bytes,transformed_stream_digest,updated_at)
-         VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13)
-         ON CONFLICT(run_id) DO UPDATE SET state=excluded.state,generated_count=excluded.generated_count,logical_bytes=excluded.logical_bytes,stream_digest=excluded.stream_digest,backpressure_events=excluded.backpressure_events,backpressure_micros=excluded.backpressure_micros,artifact_json=excluded.artifact_json,transform_node_id=excluded.transform_node_id,transformed_count=excluded.transformed_count,transformed_logical_bytes=excluded.transformed_logical_bytes,transformed_stream_digest=excluded.transformed_stream_digest,updated_at=excluded.updated_at",
-        params![completed.run_id,state,completed.generated_count as i64,completed.logical_bytes as i64,completed.stream_digest,completed.backpressure_events as i64,completed.backpressure_micros as i64,artifact_json,transform_node,completed.transformed_count as i64,completed.transformed_logical_bytes as i64,completed.transformed_stream_digest,committed_at]
+        "INSERT INTO run_generation_progress(run_id,state,generated_count,logical_bytes,stream_digest,backpressure_events,backpressure_micros,artifact_json,transform_node_id,transformed_count,transformed_logical_bytes,transformed_stream_digest,branch_node_id,branch_true_count,branch_false_count,branch_stream_digest,updated_at)
+         VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17)
+         ON CONFLICT(run_id) DO UPDATE SET state=excluded.state,generated_count=excluded.generated_count,logical_bytes=excluded.logical_bytes,stream_digest=excluded.stream_digest,backpressure_events=excluded.backpressure_events,backpressure_micros=excluded.backpressure_micros,artifact_json=excluded.artifact_json,transform_node_id=excluded.transform_node_id,transformed_count=excluded.transformed_count,transformed_logical_bytes=excluded.transformed_logical_bytes,transformed_stream_digest=excluded.transformed_stream_digest,branch_node_id=excluded.branch_node_id,branch_true_count=excluded.branch_true_count,branch_false_count=excluded.branch_false_count,branch_stream_digest=excluded.branch_stream_digest,updated_at=excluded.updated_at",
+        params![completed.run_id,state,completed.generated_count as i64,completed.logical_bytes as i64,completed.stream_digest,completed.backpressure_events as i64,completed.backpressure_micros as i64,artifact_json,transform_node,completed.transformed_count as i64,completed.transformed_logical_bytes as i64,completed.transformed_stream_digest,completed.branch_node_id,completed.branch_true_count as i64,completed.branch_false_count as i64,completed.branch_stream_digest,committed_at]
     ).map_err(storage_error)?;
     transaction.execute(
         "UPDATE runs SET state=?2,checkpoint_sequence=?3,logical_order=?4,attempted=?5,succeeded=?6,cancelled=?7,failed=?8,output_count=?9,correctness_digest=?10,digest_complete=?11,trace_head_hash=?12,started_at=COALESCE(started_at,?13),updated_at=?14,terminal_at=?14 WHERE run_id=?1 AND state IN ('queued','cancel_requested')",
@@ -2132,6 +2361,7 @@ struct Candidate {
     checkpoint_sequence: u64,
     generate_resume: Option<GenerateResume>,
     edit_fields: Option<EditFieldsCandidate>,
+    if_node: Option<IfCandidate>,
     logical_data_override: Option<Value>,
     artifact: Option<ArtifactReference>,
 }
@@ -2142,6 +2372,14 @@ struct EditFieldsCandidate {
     transformed_count: u64,
     transformed_logical_bytes: u64,
     transformed_stream_digest: String,
+}
+
+struct IfCandidate {
+    node_id: String,
+    configuration: Value,
+    true_count: u64,
+    false_count: u64,
+    stream_digest: String,
 }
 
 struct QueuedWork {
@@ -2180,6 +2418,13 @@ struct GeneratedBatchEvent {
     transformed_logical_bytes: u64,
     transformed_batch_logical_bytes: u64,
     transformed_stream_digest: String,
+    branch_node_id: Option<String>,
+    branch_true_count: u64,
+    branch_false_count: u64,
+    branch_stream_digest: String,
+    branch_batch_true_count: u64,
+    branch_batch_false_count: u64,
+    branch_previous_stream_digest: String,
     backpressure_micros: u64,
     artifact: Option<ArtifactReference>,
     started_at: i64,
@@ -2202,6 +2447,10 @@ struct GeneratedProgressCommit {
     transformed_count: u64,
     transformed_logical_bytes: u64,
     transformed_stream_digest: String,
+    branch_node_id: Option<String>,
+    branch_true_count: u64,
+    branch_false_count: u64,
+    branch_stream_digest: String,
     backpressure_events: u64,
     backpressure_micros: u64,
     first_ordinal: u64,
@@ -2221,6 +2470,10 @@ struct CompletedGeneratedWork {
     transformed_count: u64,
     transformed_logical_bytes: u64,
     transformed_stream_digest: String,
+    branch_node_id: Option<String>,
+    branch_true_count: u64,
+    branch_false_count: u64,
+    branch_stream_digest: String,
     artifact: Option<ArtifactReference>,
     cancelled: bool,
     started_at: i64,
@@ -2239,6 +2492,10 @@ struct GenerationCheckpointState {
     transformed_count: u64,
     transformed_logical_bytes: u64,
     transformed_stream_digest: String,
+    branch_node_id: Option<String>,
+    branch_true_count: u64,
+    branch_false_count: u64,
+    branch_stream_digest: String,
     backpressure_events: u64,
     backpressure_micros: u64,
     checkpointed_at: Instant,
@@ -2253,7 +2510,14 @@ fn start_scheduler(context: SchedulerContext) -> Result<JoinHandle<()>, String> 
 
 fn generation_plan_and_transform(
     plan: &ExecutionPlan,
-) -> Result<(ExecutionPlan, Option<(String, Value)>), GenerateFailure> {
+) -> Result<
+    (
+        ExecutionPlan,
+        Option<(String, Value)>,
+        Option<(String, Value)>,
+    ),
+    GenerateFailure,
+> {
     let manual = plan
         .nodes
         .iter()
@@ -2268,6 +2532,11 @@ fn generation_plan_and_transform(
         .nodes
         .iter()
         .find(|node| node.contract_lock.name == "edit-fields")
+        .cloned();
+    let if_node = plan
+        .nodes
+        .iter()
+        .find(|node| node.contract_lock.name == "if")
         .cloned();
     let Some(manual) = manual else {
         return Err(generate_failure(
@@ -2293,35 +2562,52 @@ fn generation_plan_and_transform(
             "The pinned plan is missing Manual Trigger to Generate Items.",
         ));
     }
-    if edit.is_none() {
-        if plan.nodes.len() != 2 || plan.scheduling_dependencies.len() != 1 {
-            return Err(generate_failure(
-                "canopy.generate-items.invalid_pinned_plan",
-                "The pinned plan has unsupported native topology.",
-            ));
-        }
-        return Ok((plan.clone(), None));
-    }
-    let edit = edit.expect("checked above");
-    let has_generate_to_edit = plan.scheduling_dependencies.iter().any(|dependency| {
-        dependency.source_node_id == generate.node_instance_id
-            && dependency.source_port_id == "items"
-            && dependency.target_node_id == edit.node_instance_id
-            && dependency.target_port_id == "input"
+    let edit_is_valid = edit.as_ref().is_none_or(|edit| {
+        edit.contract_lock.namespace == "canopy.native"
+            && edit.contract_lock.api_version == "v1alpha2"
+            && edit.capabilities.is_empty()
+            && edit.effects["class"] == "pure"
+            && edit.effects["deterministic"] == true
     });
-    let edit_is_native_pure = edit.contract_lock.namespace == "canopy.native"
-        && edit.contract_lock.api_version == "v1alpha2"
-        && edit.capabilities.is_empty()
-        && edit.effects["class"] == "pure"
-        && edit.effects["deterministic"] == true;
-    if plan.nodes.len() != 3
-        || plan.scheduling_dependencies.len() != 2
+    let if_is_valid = if_node.as_ref().is_none_or(|node| {
+        node.contract_lock.namespace == "canopy.native"
+            && node.contract_lock.api_version == "v1alpha1"
+            && node.capabilities.is_empty()
+            && node.effects["class"] == "pure"
+            && node.effects["deterministic"] == true
+    });
+    let has_generate_to_edit = edit.as_ref().is_none_or(|edit| {
+        plan.scheduling_dependencies.iter().any(|dependency| {
+            dependency.source_node_id == generate.node_instance_id
+                && dependency.source_port_id == "items"
+                && dependency.target_node_id == edit.node_instance_id
+                && dependency.target_port_id == "input"
+        })
+    });
+    let has_generate_to_if = if_node.as_ref().is_none_or(|node| {
+        let source_node = edit
+            .as_ref()
+            .map_or(&generate.node_instance_id, |edit| &edit.node_instance_id);
+        let source_port = if edit.is_some() { "item" } else { "items" };
+        plan.scheduling_dependencies.iter().any(|dependency| {
+            dependency.source_node_id == *source_node
+                && dependency.source_port_id == source_port
+                && dependency.target_node_id == node.node_instance_id
+                && dependency.target_port_id == "input"
+        })
+    });
+    let expected_nodes = 2 + usize::from(edit.is_some()) + usize::from(if_node.is_some());
+    let expected_edges = expected_nodes - 1;
+    if plan.nodes.len() != expected_nodes
+        || plan.scheduling_dependencies.len() != expected_edges
+        || !edit_is_valid
+        || !if_is_valid
         || !has_generate_to_edit
-        || !edit_is_native_pure
+        || !has_generate_to_if
     {
         return Err(generate_failure(
             "canopy.generate-items.invalid_pinned_plan",
-            "The pinned plan has unsupported Edit Fields topology.",
+            "The pinned plan has unsupported native topology.",
         ));
     }
     let mut generation_plan = plan.clone();
@@ -2335,17 +2621,15 @@ fn generation_plan_and_transform(
         })
         .cloned()
         .collect();
-    generation_plan.contract_locks = generation_plan
-        .contract_locks
-        .iter()
-        .filter(|lock| lock.name != "edit-fields")
-        .cloned()
-        .collect();
+    generation_plan.contract_locks.retain(|lock| {
+        lock.name == "manual-trigger" || lock.name == "generate-items"
+    });
     generation_plan.segment_candidates =
         vec![vec![manual.node_instance_id, generate.node_instance_id]];
     Ok((
         generation_plan,
-        Some((edit.node_instance_id, edit.configuration)),
+        edit.map(|node| (node.node_instance_id, node.configuration)),
+        if_node.map(|node| (node.node_instance_id, node.configuration)),
     ))
 }
 
@@ -2385,6 +2669,10 @@ fn apply_edit_fields_batch(
     let mut next_stream_digest = transformed_stream_digest.to_owned();
     let mut staged = envelopes.to_vec();
     for envelope in &mut staged {
+        let input_digest = digest(&envelope.logical_item).map_err(|message| GenerateFailure {
+            code: "canopy.edit-fields.digest_failed".into(),
+            message,
+        })?;
         let transformed = configuration
             .apply(&envelope.logical_item, envelope.ordinal)
             .map_err(|error| GenerateFailure {
@@ -2421,6 +2709,7 @@ fn apply_edit_fields_batch(
             code: "canopy.edit-fields.digest_failed".into(),
             message,
         })?;
+        envelope.logical_item = logical_output.clone();
         let mut physical_output = logical_output;
         if let Some(artifact) = artifact {
             let output = physical_output.as_object_mut().ok_or_else(|| {
@@ -2435,15 +2724,7 @@ fn apply_edit_fields_batch(
         if let Some(provenance) = envelope.provenance.as_object_mut() {
             provenance.insert("edit_fields_node_instance_id".into(), json!(node_id));
             provenance.insert("input_ordinal".into(), json!(envelope.ordinal));
-            provenance.insert(
-                "input_digest".into(),
-                json!(
-                    digest(&envelope.logical_item).map_err(|message| GenerateFailure {
-                        code: "canopy.edit-fields.digest_failed".into(),
-                        message,
-                    })?
-                ),
-            );
+            provenance.insert("input_digest".into(), json!(input_digest));
         }
         let physical_bytes = serde_jcs::to_vec(envelope).map_err(|error| GenerateFailure {
             code: "canopy.edit-fields.canonicalization_failed".into(),
@@ -2520,7 +2801,8 @@ fn start_executor(
                 let input = candidate.captured_invocation.clone();
                 let artifact = candidate.artifact.clone();
                 let edit_fields_candidate = candidate.edit_fields;
-                let (generation_plan, edit_fields_definition) =
+                let if_candidate = candidate.if_node;
+                let (generation_plan, edit_fields_definition, if_definition) =
                     match generation_plan_and_transform(&candidate.plan) {
                         Ok(value) => value,
                         Err(error) => {
@@ -2539,6 +2821,10 @@ fn start_executor(
                                     transformed_count: 0,
                                     transformed_logical_bytes: 0,
                                     transformed_stream_digest: "genesis".into(),
+                                    branch_node_id: None,
+                                    branch_true_count: 0,
+                                    branch_false_count: 0,
+                                    branch_stream_digest: "genesis".into(),
                                     artifact,
                                     cancelled: false,
                                     started_at,
@@ -2578,6 +2864,10 @@ fn start_executor(
                                         transformed_count: 0,
                                         transformed_logical_bytes: 0,
                                         transformed_stream_digest: "genesis".into(),
+                                        branch_node_id: None,
+                                        branch_true_count: 0,
+                                        branch_false_count: 0,
+                                        branch_stream_digest: "genesis".into(),
                                         artifact,
                                         cancelled: false,
                                         started_at,
@@ -2598,6 +2888,17 @@ fn start_executor(
                     }
                     None => (None, None),
                 };
+                let (branch_node_id, branch_configuration) = match if_definition {
+                    Some((node_id, configuration)) => (
+                        Some(node_id),
+                        Some(
+                            if_node::compile_configuration(&configuration).map_err(|error| {
+                                generate_failure(&error.code, &error.message)
+                            }),
+                        ),
+                    ),
+                    None => (None, None),
+                };
                 let mut generated_count = 0_u64;
                 let mut logical_bytes = 0_u64;
                 let mut stream_digest = "genesis".to_owned();
@@ -2611,6 +2912,16 @@ fn start_executor(
                     || "genesis".into(),
                     |candidate| candidate.transformed_stream_digest.clone(),
                 );
+                let mut branch_true_count = if_candidate
+                    .as_ref()
+                    .map_or(0, |candidate| candidate.true_count);
+                let mut branch_false_count = if_candidate
+                    .as_ref()
+                    .map_or(0, |candidate| candidate.false_count);
+                let mut branch_stream_digest = if_candidate.as_ref().map_or_else(
+                    || "genesis".into(),
+                    |candidate| candidate.stream_digest.clone(),
+                );
                 let mut backpressure_micros = 0_u64;
                 let mut backpressure_events = 0_u64;
                 let mut cancelled = false;
@@ -2618,7 +2929,12 @@ fn start_executor(
                     .artifact
                     .as_ref()
                     .map(|reference| json!({"$artifact": reference}));
-                let summary = match GenerateSession::start(GenerateStart {
+                let branch_configuration_error = branch_configuration
+                    .as_ref()
+                    .and_then(|configuration| configuration.as_ref().err().cloned());
+                let summary = match branch_configuration_error {
+                    Some(error) => Err(error),
+                    None => match GenerateSession::start(GenerateStart {
                     run_id: candidate.run_id,
                     revision_digest: candidate.revision_digest,
                     plan_digest: candidate.plan_digest,
@@ -2654,6 +2970,36 @@ fn start_executor(
                                     Ok(progress) => progress,
                                     Err(error) => break Err(error),
                                 };
+                                let branch_previous_stream_digest = branch_stream_digest.clone();
+                                let branch = match (
+                                    branch_node_id.as_deref(),
+                                    branch_configuration.as_ref(),
+                                ) {
+                                    (Some(node_id), Some(Ok(configuration))) => configuration
+                                        .route_batch(&mut batch, node_id, &branch_stream_digest)
+                                        .map_err(|error| {
+                                            generate_failure(&error.code, &error.message)
+                                        }),
+                                    (Some(_), Some(Err(error))) => Err(error.clone()),
+                                    (None, None) => Ok(if_node::BranchBatch {
+                                        true_count: 0,
+                                        false_count: 0,
+                                        stream_digest: branch_stream_digest.clone(),
+                                    }),
+                                    _ => Err(generate_failure(
+                                        "canopy.if.invalid_runtime_topology",
+                                        "If runtime configuration and node identity disagree.",
+                                    )),
+                                };
+                                let branch = match branch {
+                                    Ok(branch) => branch,
+                                    Err(error) => break Err(error),
+                                };
+                                branch_true_count =
+                                    branch_true_count.saturating_add(branch.true_count);
+                                branch_false_count =
+                                    branch_false_count.saturating_add(branch.false_count);
+                                branch_stream_digest = branch.stream_digest;
                                 let sent = Instant::now();
                                 if envelopes
                                     .send(GeneratedBatchEvent {
@@ -2671,6 +3017,13 @@ fn start_executor(
                                         transformed_stream_digest: transformed
                                             .transformed_stream_digest
                                             .clone(),
+                                        branch_node_id: branch_node_id.clone(),
+                                        branch_true_count,
+                                        branch_false_count,
+                                        branch_stream_digest: branch_stream_digest.clone(),
+                                        branch_batch_true_count: branch.true_count,
+                                        branch_batch_false_count: branch.false_count,
+                                        branch_previous_stream_digest,
                                         backpressure_micros,
                                         artifact: artifact.clone(),
                                         started_at,
@@ -2695,6 +3048,7 @@ fn start_executor(
                         }
                     },
                     Err(error) => Err(error),
+                },
                 };
                 let completed_at = now_millis();
                 let elapsed_micros = started.elapsed().as_micros().min(i64::MAX as u128) as u64;
@@ -2710,6 +3064,10 @@ fn start_executor(
                         transformed_count,
                         transformed_logical_bytes,
                         transformed_stream_digest,
+                        branch_node_id,
+                        branch_true_count,
+                        branch_false_count,
+                        branch_stream_digest,
                         artifact,
                         cancelled,
                         started_at,
@@ -2985,6 +3343,14 @@ fn handle_generated_batch(
                 // next checkpoint. This value is only a conservative live baseline.
                 "genesis".into()
             },
+            branch_node_id: batch.branch_node_id.clone(),
+            branch_true_count: batch
+                .branch_true_count
+                .saturating_sub(batch.branch_batch_true_count),
+            branch_false_count: batch
+                .branch_false_count
+                .saturating_sub(batch.branch_batch_false_count),
+            branch_stream_digest: batch.branch_previous_stream_digest.clone(),
             backpressure_events: 0,
             backpressure_micros: 0,
             checkpointed_at: Instant::now(),
@@ -3018,6 +3384,12 @@ fn handle_generated_batch(
                 "logical_bytes": batch.transformed_logical_bytes,
                 "stream_digest": batch.transformed_stream_digest
             })),
+            "branch": batch.branch_node_id.as_ref().map(|node_id| json!({
+                "node_instance_id": node_id,
+                "true_count": batch.branch_true_count,
+                "false_count": batch.branch_false_count,
+                "stream_digest": batch.branch_stream_digest
+            })),
             "first_ordinal": first_ordinal,
             "last_ordinal": last_ordinal,
             "batch_count": batch.envelopes.len(),
@@ -3042,6 +3414,10 @@ fn handle_generated_batch(
         transformed_count: batch.transformed_count,
         transformed_logical_bytes: batch.transformed_logical_bytes,
         transformed_stream_digest: batch.transformed_stream_digest.clone(),
+        branch_node_id: batch.branch_node_id.clone(),
+        branch_true_count: batch.branch_true_count,
+        branch_false_count: batch.branch_false_count,
+        branch_stream_digest: batch.branch_stream_digest.clone(),
         backpressure_events: state.backpressure_events,
         backpressure_micros: batch.backpressure_micros,
         first_ordinal: state.generated_count,
@@ -3061,6 +3437,10 @@ fn handle_generated_batch(
             state.transformed_count = batch.transformed_count;
             state.transformed_logical_bytes = batch.transformed_logical_bytes;
             state.transformed_stream_digest = batch.transformed_stream_digest.clone();
+            state.branch_node_id = batch.branch_node_id.clone();
+            state.branch_true_count = batch.branch_true_count;
+            state.branch_false_count = batch.branch_false_count;
+            state.branch_stream_digest = batch.branch_stream_digest.clone();
             state.checkpointed_at = Instant::now();
             context.live.emit(
                 &run.run_id,
@@ -3133,7 +3513,7 @@ fn next_candidate(
 ) -> Result<Option<Candidate>, RunError> {
     let mut statement = connection
         .prepare(
-            "SELECT r.run_id,r.revision_id,r.revision_digest,r.plan_digest,p.payload_json,r.captured_invocation_json,r.checkpoint_sequence,g.generated_count,g.logical_bytes,g.stream_digest,g.transform_node_id,g.transformed_count,g.transformed_logical_bytes,g.transformed_stream_digest,g.artifact_json
+            "SELECT r.run_id,r.revision_id,r.revision_digest,r.plan_digest,p.payload_json,r.captured_invocation_json,r.checkpoint_sequence,g.generated_count,g.logical_bytes,g.stream_digest,g.transform_node_id,g.transformed_count,g.transformed_logical_bytes,g.transformed_stream_digest,g.artifact_json,g.branch_node_id,g.branch_true_count,g.branch_false_count,g.branch_stream_digest
              FROM runs r JOIN execution_plans p ON p.plan_id=r.plan_id
              LEFT JOIN run_generation_progress g ON g.run_id=r.run_id
              WHERE r.state='queued' AND NOT EXISTS(SELECT 1 FROM run_suspensions s WHERE s.run_id=r.run_id)
@@ -3151,7 +3531,7 @@ fn next_candidate(
         let plan: ExecutionPlan = serde_json::from_str(&plan_json).map_err(|error| {
             RunError::Integrity(format!("queued pinned plan is invalid: {error}"))
         })?;
-        let (_, edit_fields_definition) = generation_plan_and_transform(&plan)
+        let (_, edit_fields_definition, if_definition) = generation_plan_and_transform(&plan)
             .map_err(|error| RunError::Integrity(error.message))?;
         let stored_transform_node_id = row.get::<_, Option<String>>(10).map_err(storage_error)?;
         let transformed_count = row
@@ -3179,6 +3559,19 @@ fn next_candidate(
                 })
             })
             .transpose()?;
+        let stored_branch_node_id = row.get::<_, Option<String>>(15).map_err(storage_error)?;
+        let branch_true_count = row
+            .get::<_, Option<i64>>(16)
+            .map_err(storage_error)?
+            .unwrap_or(0) as u64;
+        let branch_false_count = row
+            .get::<_, Option<i64>>(17)
+            .map_err(storage_error)?
+            .unwrap_or(0) as u64;
+        let branch_stream_digest = row
+            .get::<_, Option<String>>(18)
+            .map_err(storage_error)?
+            .unwrap_or_else(|| "genesis".into());
         let edit_fields = match edit_fields_definition {
             Some((node_id, configuration)) => {
                 if stored_transform_node_id
@@ -3206,6 +3599,36 @@ fn next_candidate(
                 None
             }
         };
+        let if_node = match if_definition {
+            Some((node_id, configuration)) => {
+                if stored_branch_node_id
+                    .as_deref()
+                    .is_some_and(|stored| stored != node_id.as_str())
+                {
+                    return Err(RunError::Integrity(
+                        "durable If node identity changed".into(),
+                    ));
+                }
+                Some(IfCandidate {
+                    node_id,
+                    configuration,
+                    true_count: branch_true_count,
+                    false_count: branch_false_count,
+                    stream_digest: branch_stream_digest,
+                })
+            }
+            None => {
+                if stored_branch_node_id.is_some()
+                    || branch_true_count != 0
+                    || branch_false_count != 0
+                {
+                    return Err(RunError::Integrity(
+                        "durable branch progress exists without If".into(),
+                    ));
+                }
+                None
+            }
+        };
         return Ok(Some(Candidate {
             run_id,
             revision_id: row.get(1).map_err(storage_error)?,
@@ -3228,6 +3651,7 @@ fn next_candidate(
                 })
                 .transpose()?,
             edit_fields,
+            if_node,
             logical_data_override: None,
             artifact,
         }));
@@ -3318,7 +3742,7 @@ fn load_generation_progress(
 ) -> Result<Option<GenerationProgress>, RunError> {
     connection
         .query_row(
-            "SELECT state,generated_count,logical_bytes,stream_digest,backpressure_events,artifact_json,transform_node_id,transformed_count,transformed_logical_bytes,transformed_stream_digest FROM run_generation_progress WHERE run_id=?1",
+            "SELECT state,generated_count,logical_bytes,stream_digest,backpressure_events,artifact_json,transform_node_id,transformed_count,transformed_logical_bytes,transformed_stream_digest,branch_node_id,branch_true_count,branch_false_count,branch_stream_digest FROM run_generation_progress WHERE run_id=?1",
             params![run_id],
             |row| {
                 let artifact: Option<String> = row.get(5)?;
@@ -3326,6 +3750,10 @@ fn load_generation_progress(
                 let transformed_count: u64 = row.get::<_, i64>(7)? as u64;
                 let transformed_logical_bytes: u64 = row.get::<_, i64>(8)? as u64;
                 let transformed_stream_digest: String = row.get(9)?;
+                let branch_node_id: Option<String> = row.get(10)?;
+                let branch_true_count: u64 = row.get::<_, i64>(11)? as u64;
+                let branch_false_count: u64 = row.get::<_, i64>(12)? as u64;
+                let branch_stream_digest: String = row.get(13)?;
                 Ok(GenerationProgress {
                     state: row.get(0)?,
                     generated_count: row.get::<_, i64>(1)? as u64,
@@ -3340,6 +3768,12 @@ fn load_generation_progress(
                         transformed_count,
                         logical_bytes: transformed_logical_bytes,
                         stream_digest: transformed_stream_digest,
+                    }),
+                    branch: branch_node_id.map(|node_instance_id| BranchProgress {
+                        node_instance_id,
+                        true_count: branch_true_count,
+                        false_count: branch_false_count,
+                        stream_digest: branch_stream_digest,
                     }),
                 })
             },
@@ -4663,6 +5097,46 @@ mod tests {
             envelopes[0].item["data"]["$artifact"]["artifact_id"],
             "artifact-replace"
         );
+    }
+
+    #[test]
+    fn transformed_logical_items_are_the_if_input() {
+        let edit_configuration = edit_fields::compile_configuration(&json!({
+            "mode": "merge",
+            "assignments": [
+                {"path": ["eco"], "kind": "fixed", "value": true}
+            ]
+        }))
+        .unwrap();
+        let if_configuration = if_node::compile_configuration(&json!({
+            "logic": "all",
+            "conditions": [{"expression": "$json.eco === true"}]
+        }))
+        .unwrap();
+        let mut envelopes = vec![GeneratedEnvelope {
+            ordinal: 0,
+            item: json!({"index":0,"value":1,"data":{}}),
+            logical_item: json!({"index":0,"value":1,"data":{}}),
+            logical_bytes: 32,
+            provenance: json!({"ordinal":0}),
+        }];
+        apply_edit_fields_batch(
+            &mut envelopes,
+            Some(&edit_configuration),
+            Some("edit-fields"),
+            None,
+            0,
+            0,
+            "genesis",
+        )
+        .unwrap();
+        let branch = if_configuration
+            .route_batch(&mut envelopes, "if-node", "genesis")
+            .unwrap();
+        assert_eq!(branch.true_count, 1);
+        assert_eq!(branch.false_count, 0);
+        assert_eq!(envelopes[0].logical_item["eco"], true);
+        assert_eq!(envelopes[0].provenance["if_output_port"], "true");
     }
 
     #[test]

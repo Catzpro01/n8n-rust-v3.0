@@ -5,9 +5,13 @@
 //! node evaluates every condition against the immutable input item and emits
 //! exactly one boolean route; it never duplicates or drops an item.
 
-use crate::expression::{self, EvalValue, ExpressionError, Program};
+use crate::{
+    canonical::digest,
+    expression::{self, EvalValue, ExpressionError, Program},
+    generate_engine::GeneratedEnvelope,
+};
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
+use serde_json::{json, Value};
 use std::fmt;
 
 pub const IF_ABI: &str = "canopy.if/v1alpha1";
@@ -43,6 +47,13 @@ pub struct CompiledConfiguration {
 pub struct RouteResult {
     pub output_port: &'static str,
     pub condition_results: Vec<bool>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct BranchBatch {
+    pub true_count: u64,
+    pub false_count: u64,
+    pub stream_digest: String,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -103,6 +114,57 @@ impl CompiledConfiguration {
         Ok(RouteResult {
             output_port: if matched { "true" } else { "false" },
             condition_results,
+        })
+    }
+
+    pub fn route_batch(
+        &self,
+        envelopes: &mut [GeneratedEnvelope],
+        node_id: &str,
+        previous_digest: &str,
+    ) -> Result<BranchBatch, IfError> {
+        let mut true_count = 0_u64;
+        let mut false_count = 0_u64;
+        let mut stream_digest = previous_digest.to_owned();
+        let mut staged = envelopes.to_vec();
+        for envelope in &mut staged {
+            let input_digest = digest(&envelope.logical_item).map_err(|message| IfError {
+                code: "canopy.if.digest_failed".into(),
+                message,
+            })?;
+            let route = self.route(&envelope.logical_item, envelope.ordinal)?;
+            if route.output_port == "true" {
+                true_count = true_count.saturating_add(1);
+            } else {
+                false_count = false_count.saturating_add(1);
+            }
+            if let Some(provenance) = envelope.provenance.as_object_mut() {
+                provenance.insert("if_node_instance_id".into(), json!(node_id));
+                provenance.insert("if_input_digest".into(), json!(input_digest));
+                provenance.insert("if_output_port".into(), json!(route.output_port));
+                provenance.insert(
+                    "if_condition_results".into(),
+                    json!(route.condition_results.clone()),
+                );
+            }
+            stream_digest = digest(&json!({
+                "schema": "canopy.if-route-chain/v1alpha1",
+                "previous": &stream_digest,
+                "ordinal": envelope.ordinal,
+                "output_port": route.output_port,
+                "condition_results": &route.condition_results,
+                "item": &envelope.logical_item,
+            }))
+            .map_err(|message| IfError {
+                code: "canopy.if.digest_failed".into(),
+                message,
+            })?;
+        }
+        envelopes.clone_from_slice(&staged);
+        Ok(BranchBatch {
+            true_count,
+            false_count,
+            stream_digest,
         })
     }
 }
@@ -198,6 +260,95 @@ mod tests {
             any.route(&json!({"value": 5}), 0).unwrap().output_port,
             "false"
         );
+    }
+
+    #[test]
+    fn batch_routing_is_exactly_one_port_and_replay_stable() {
+        let configuration = compile_configuration(&json!({
+            "logic": "all",
+            "conditions": [{"expression": "$json.value >= 2"}]
+        }))
+        .unwrap();
+        let mut envelopes = vec![
+            GeneratedEnvelope {
+                ordinal: 0,
+                item: json!({"value": 1}),
+                logical_item: json!({"value": 1}),
+                logical_bytes: 11,
+                provenance: json!({"ordinal": 0}),
+            },
+            GeneratedEnvelope {
+                ordinal: 1,
+                item: json!({"value": 2}),
+                logical_item: json!({"value": 2}),
+                logical_bytes: 11,
+                provenance: json!({"ordinal": 1}),
+            },
+            GeneratedEnvelope {
+                ordinal: 2,
+                item: json!({"value": 3}),
+                logical_item: json!({"value": 3}),
+                logical_bytes: 11,
+                provenance: json!({"ordinal": 2}),
+            },
+        ];
+        let replay = envelopes.clone();
+        let first = configuration
+            .route_batch(&mut envelopes, "if-node", "genesis")
+            .unwrap();
+        let mut replay_envelopes = replay;
+        let second = configuration
+            .route_batch(&mut replay_envelopes, "if-node", "genesis")
+            .unwrap();
+        assert_eq!(first, second);
+        assert_eq!(first.true_count, 2);
+        assert_eq!(first.false_count, 1);
+        assert!(first.stream_digest.starts_with("sha256:"));
+        assert_eq!(
+            envelopes
+                .iter()
+                .map(|envelope| envelope.provenance["if_output_port"].as_str())
+                .collect::<Vec<_>>(),
+            vec![Some("false"), Some("true"), Some("true")]
+        );
+        assert!(envelopes.iter().all(|envelope| {
+            envelope.provenance["if_node_instance_id"] == "if-node"
+                && envelope.provenance["if_condition_results"]
+                    .as_array()
+                    .is_some_and(|results| results.len() == 1)
+        }));
+    }
+
+    #[test]
+    fn batch_routing_does_not_publish_partial_provenance_on_error() {
+        let configuration = compile_configuration(&json!({
+            "logic": "all",
+            "conditions": [{"expression": "$json.value === true"}]
+        }))
+        .unwrap();
+        let mut envelopes = vec![
+            GeneratedEnvelope {
+                ordinal: 0,
+                item: json!({"value": true}),
+                logical_item: json!({"value": true}),
+                logical_bytes: 11,
+                provenance: json!({"ordinal": 0}),
+            },
+            GeneratedEnvelope {
+                ordinal: 1,
+                item: json!({}),
+                logical_item: json!({}),
+                logical_bytes: 2,
+                provenance: json!({"ordinal": 1}),
+            },
+        ];
+        let original = envelopes.clone();
+        let error = configuration
+            .route_batch(&mut envelopes, "if-node", "genesis")
+            .unwrap_err();
+        assert_eq!(error.code, "canopy.expression.missing");
+        assert_eq!(envelopes[0].provenance, original[0].provenance);
+        assert_eq!(envelopes[1].provenance, original[1].provenance);
     }
 
     #[test]
