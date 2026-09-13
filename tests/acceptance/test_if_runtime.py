@@ -39,7 +39,9 @@ class IfRuntimeAcceptance(unittest.TestCase):
         self.assertEqual(setup[0], 201, setup[2])
         self.auth, self.mutation = login(self.daemon.origin)
 
-    def publish_workflow(self, include_merge: bool = False) -> dict:
+    def publish_workflow(
+        self, include_merge: bool = False, all_false: bool = False
+    ) -> dict:
         origin = self.daemon.origin
         workflow_id = "wf-if-runtime"
         catalog = api(origin, "/api/v1/catalog", headers=self.auth)[2]
@@ -76,6 +78,11 @@ class IfRuntimeAcceptance(unittest.TestCase):
         self.assertEqual(lease[0], 200, lease[2])
         generation = lease[2]["lease_generation"]
         version = 0
+        condition_expression = (
+            '$json.parity === "never"'
+            if all_false
+            else '$json.parity === "even"'
+        )
         operations = [
             {
                 "kind": "add_node",
@@ -141,7 +148,7 @@ class IfRuntimeAcceptance(unittest.TestCase):
                     "contract_lock": locks["if"],
                     "configuration": {
                         "logic": "all",
-                        "conditions": [{"expression": '$json.parity === "even"'}],
+                        "conditions": [{"expression": condition_expression}],
                     },
                     "layout": {"x": 900, "y": 120},
                     "annotation": "",
@@ -413,6 +420,36 @@ class IfRuntimeAcceptance(unittest.TestCase):
         self.assertEqual(reread[0], 200, reread[2])
         self.assertEqual(reread[2]["durable"]["state"], "succeeded")
         self.assertEqual(reread[2]["generation"]["merge"]["output_count"], 12)
+
+    def test_empty_true_branch_is_reduced_without_padding(self):
+        publication = self.publish_workflow(include_merge=True, all_false=True)
+        current = publication["current_published"]
+        event = publication["current_event"]["envelope"]
+        admitted = api(
+            self.daemon.origin,
+            "/api/v1/workflows/wf-if-runtime/runs",
+            "POST",
+            {
+                "run_request_id": "run-merge-empty-true",
+                "publication_event_id": event["event_id"],
+                "revision_id": current["revision_id"],
+                "plan_digest": current["plan_digest"],
+                "captured_invocation": {"manual": True, "fixture": "merge-empty-true"},
+            },
+            self.mutation,
+        )
+        self.assertEqual(admitted[0], 201, admitted[2])
+        terminal = self.wait_terminal(admitted[2]["run"]["run_id"])
+
+        self.assertEqual(terminal["durable"]["state"], "succeeded")
+        self.assertEqual(terminal["correctness"]["output_count"], 12)
+        merge = terminal["generation"]["merge"]
+        self.assertEqual(merge["true_count"], 0)
+        self.assertEqual(merge["false_count"], 12)
+        self.assertEqual(merge["output_count"], 12)
+        self.assertEqual(merge["true_segments"], [])
+        self.assertEqual(len(merge["false_segments"]), 1)
+        self.assertEqual(len(merge["output_segments"]), 1)
 
 
 if __name__ == "__main__":
