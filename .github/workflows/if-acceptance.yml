@@ -1,0 +1,28 @@
+name: If runtime acceptance
+
+on:
+  push:
+    branches: ["main", "arena/**"]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  if-runtime:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Install pinned Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.85.1
+
+      - name: Build workflow daemon
+        run: cargo build -p workflowd --locked
+
+      - name: Run public If acceptance
+        run: python3 -m unittest tests.acceptance.test_if_runtime -v
