@@ -1,0 +1,323 @@
+diff --git a/crates/workflowd/src/run.rs b/crates/workflowd/src/run.rs
+index 72ada2f..eec42e6 100644
+--- a/crates/workflowd/src/run.rs
++++ b/crates/workflowd/src/run.rs
+@@ -6,11 +6,11 @@ use crate::{
+     compiler::ExecutionPlan,
+     config::ServeConfig,
+     edit_fields::{self, CompiledConfiguration},
+-    if_node,
+     generate_engine::{
+         self, GenerateFailure, GenerateResume, GenerateSession, GenerateStart, GenerateSummary,
+         GeneratedEnvelope,
+     },
++    if_node,
+     run_engine::{self, ActivationOutcome, ManualActivationInput, ManualActivationResult},
+ };
+ use rand_core::{OsRng, RngCore};
+@@ -1318,7 +1318,9 @@ fn generation_progress_transaction(
+         ));
+     }
+     if let Some(branch_node_id) = progress.branch_node_id.as_ref() {
+-        if progress.branch_true_count.saturating_add(progress.branch_false_count)
++        if progress
++            .branch_true_count
++            .saturating_add(progress.branch_false_count)
+             != progress.generated_count
+         {
+             return Err(RunError::Integrity(format!(
+@@ -1594,7 +1596,11 @@ fn complete_generated_transaction(
+             ));
+         }
+     }
+-    let branch_order = if transform_should_commit { 4_u64 } else { 3_u64 };
++    let branch_order = if transform_should_commit {
++        4_u64
++    } else {
++        3_u64
++    };
+     let final_order = if branch_should_commit {
+         branch_order
+     } else if transform_should_commit {
+@@ -1651,7 +1657,8 @@ fn complete_generated_transaction(
+                 "revision_digest":current.revision_digest,
+                 "plan_digest":current.plan_digest,
+                 "logical_outcomes":logical_outcomes
+-            })).map_err(RunError::Integrity)?
++            }))
++            .map_err(RunError::Integrity)?
+         } else {
+             completed
+                 .summary
+@@ -1827,7 +1834,11 @@ fn complete_generated_transaction(
+                 outcome: branch_outcome,
+                 input: &branch_input,
+                 output: (state == "succeeded").then_some(&branch_output),
+-                failure: if branch_failed { failure.as_ref() } else { None },
++                failure: if branch_failed {
++                    failure.as_ref()
++                } else {
++                    None
++                },
+                 checkpoint,
+                 started_at: completed.started_at,
+                 completed_at: completed.completed_at,
+@@ -2621,9 +2632,9 @@ fn generation_plan_and_transform(
+         })
+         .cloned()
+         .collect();
+-    generation_plan.contract_locks.retain(|lock| {
+-        lock.name == "manual-trigger" || lock.name == "generate-items"
+-    });
++    generation_plan
++        .contract_locks
++        .retain(|lock| lock.name == "manual-trigger" || lock.name == "generate-items");
+     generation_plan.segment_candidates =
+         vec![vec![manual.node_instance_id, generate.node_instance_id]];
+     Ok((
+@@ -2892,9 +2903,8 @@ fn start_executor(
+                     Some((node_id, configuration)) => (
+                         Some(node_id),
+                         Some(
+-                            if_node::compile_configuration(&configuration).map_err(|error| {
+-                                generate_failure(&error.code, &error.message)
+-                            }),
++                            if_node::compile_configuration(&configuration)
++                                .map_err(|error| generate_failure(&error.code, &error.message)),
+                         ),
+                     ),
+                     None => (None, None),
+@@ -2935,120 +2945,123 @@ fn start_executor(
+                 let summary = match branch_configuration_error {
+                     Some(error) => Err(error),
+                     None => match GenerateSession::start(GenerateStart {
+-                    run_id: candidate.run_id,
+-                    revision_digest: candidate.revision_digest,
+-                    plan_digest: candidate.plan_digest,
+-                    plan: &generation_plan,
+-                    input: candidate.captured_invocation,
+-                    logical_data_override: candidate.logical_data_override,
+-                    physical_data,
+-                    resume: candidate.generate_resume,
+-                }) {
+-                    Ok(mut session) => loop {
+-                        if cancellation.load(Ordering::Acquire) {
+-                            cancelled = true;
+-                            break Err(GenerateFailure {
+-                                code: "canopy.generate-items.cancelled".into(),
+-                                message: "Generation observed cooperative cancellation.".into(),
+-                            });
+-                        }
+-                        match session.next_batch() {
+-                            Ok(Some(mut batch)) => {
+-                                let progress = session.progress();
+-                                generated_count = progress.0;
+-                                logical_bytes = progress.1;
+-                                stream_digest = progress.2.to_owned();
+-                                let transformed = match apply_edit_fields_batch(
+-                                    &mut batch,
+-                                    transform_configuration.as_ref(),
+-                                    transform_node_id.as_deref(),
+-                                    artifact.as_ref(),
+-                                    transformed_count,
+-                                    transformed_logical_bytes,
+-                                    &transformed_stream_digest,
+-                                ) {
+-                                    Ok(progress) => progress,
+-                                    Err(error) => break Err(error),
+-                                };
+-                                let branch_previous_stream_digest = branch_stream_digest.clone();
+-                                let branch = match (
+-                                    branch_node_id.as_deref(),
+-                                    branch_configuration.as_ref(),
+-                                ) {
+-                                    (Some(node_id), Some(Ok(configuration))) => configuration
+-                                        .route_batch(&mut batch, node_id, &branch_stream_digest)
+-                                        .map_err(|error| {
+-                                            generate_failure(&error.code, &error.message)
++                        run_id: candidate.run_id,
++                        revision_digest: candidate.revision_digest,
++                        plan_digest: candidate.plan_digest,
++                        plan: &generation_plan,
++                        input: candidate.captured_invocation,
++                        logical_data_override: candidate.logical_data_override,
++                        physical_data,
++                        resume: candidate.generate_resume,
++                    }) {
++                        Ok(mut session) => loop {
++                            if cancellation.load(Ordering::Acquire) {
++                                cancelled = true;
++                                break Err(GenerateFailure {
++                                    code: "canopy.generate-items.cancelled".into(),
++                                    message: "Generation observed cooperative cancellation.".into(),
++                                });
++                            }
++                            match session.next_batch() {
++                                Ok(Some(mut batch)) => {
++                                    let progress = session.progress();
++                                    generated_count = progress.0;
++                                    logical_bytes = progress.1;
++                                    stream_digest = progress.2.to_owned();
++                                    let transformed = match apply_edit_fields_batch(
++                                        &mut batch,
++                                        transform_configuration.as_ref(),
++                                        transform_node_id.as_deref(),
++                                        artifact.as_ref(),
++                                        transformed_count,
++                                        transformed_logical_bytes,
++                                        &transformed_stream_digest,
++                                    ) {
++                                        Ok(progress) => progress,
++                                        Err(error) => break Err(error),
++                                    };
++                                    let branch_previous_stream_digest =
++                                        branch_stream_digest.clone();
++                                    let branch = match (
++                                        branch_node_id.as_deref(),
++                                        branch_configuration.as_ref(),
++                                    ) {
++                                        (Some(node_id), Some(Ok(configuration))) => configuration
++                                            .route_batch(&mut batch, node_id, &branch_stream_digest)
++                                            .map_err(|error| {
++                                                generate_failure(&error.code, &error.message)
++                                            }),
++                                        (Some(_), Some(Err(error))) => Err(error.clone()),
++                                        (None, None) => Ok(if_node::BranchBatch {
++                                            true_count: 0,
++                                            false_count: 0,
++                                            stream_digest: branch_stream_digest.clone(),
+                                         }),
+-                                    (Some(_), Some(Err(error))) => Err(error.clone()),
+-                                    (None, None) => Ok(if_node::BranchBatch {
+-                                        true_count: 0,
+-                                        false_count: 0,
+-                                        stream_digest: branch_stream_digest.clone(),
+-                                    }),
+-                                    _ => Err(generate_failure(
+-                                        "canopy.if.invalid_runtime_topology",
+-                                        "If runtime configuration and node identity disagree.",
+-                                    )),
+-                                };
+-                                let branch = match branch {
+-                                    Ok(branch) => branch,
+-                                    Err(error) => break Err(error),
+-                                };
+-                                branch_true_count =
+-                                    branch_true_count.saturating_add(branch.true_count);
+-                                branch_false_count =
+-                                    branch_false_count.saturating_add(branch.false_count);
+-                                branch_stream_digest = branch.stream_digest;
+-                                let sent = Instant::now();
+-                                if envelopes
+-                                    .send(GeneratedBatchEvent {
+-                                        run_id: run_id.clone(),
+-                                        envelopes: batch,
+-                                        generated_count,
+-                                        logical_bytes,
+-                                        stream_digest: stream_digest.clone(),
+-                                        transform_node_id: transform_node_id.clone(),
+-                                        transformed_count: transformed.transformed_count,
+-                                        transformed_logical_bytes: transformed
+-                                            .transformed_logical_bytes,
+-                                        transformed_batch_logical_bytes: transformed
+-                                            .transformed_batch_logical_bytes,
+-                                        transformed_stream_digest: transformed
+-                                            .transformed_stream_digest
+-                                            .clone(),
+-                                        branch_node_id: branch_node_id.clone(),
+-                                        branch_true_count,
+-                                        branch_false_count,
+-                                        branch_stream_digest: branch_stream_digest.clone(),
+-                                        branch_batch_true_count: branch.true_count,
+-                                        branch_batch_false_count: branch.false_count,
+-                                        branch_previous_stream_digest,
+-                                        backpressure_micros,
+-                                        artifact: artifact.clone(),
+-                                        started_at,
+-                                    })
+-                                    .is_err()
+-                                {
+-                                    return;
+-                                }
+-                                transformed_count = transformed.transformed_count;
+-                                transformed_logical_bytes = transformed.transformed_logical_bytes;
+-                                transformed_stream_digest = transformed.transformed_stream_digest;
+-                                let blocked_micros =
+-                                    sent.elapsed().as_micros().min(u64::MAX as u128) as u64;
+-                                backpressure_micros =
+-                                    backpressure_micros.saturating_add(blocked_micros);
+-                                if blocked_micros >= 1_000 {
+-                                    backpressure_events = backpressure_events.saturating_add(1);
++                                        _ => Err(generate_failure(
++                                            "canopy.if.invalid_runtime_topology",
++                                            "If runtime configuration and node identity disagree.",
++                                        )),
++                                    };
++                                    let branch = match branch {
++                                        Ok(branch) => branch,
++                                        Err(error) => break Err(error),
++                                    };
++                                    branch_true_count =
++                                        branch_true_count.saturating_add(branch.true_count);
++                                    branch_false_count =
++                                        branch_false_count.saturating_add(branch.false_count);
++                                    branch_stream_digest = branch.stream_digest;
++                                    let sent = Instant::now();
++                                    if envelopes
++                                        .send(GeneratedBatchEvent {
++                                            run_id: run_id.clone(),
++                                            envelopes: batch,
++                                            generated_count,
++                                            logical_bytes,
++                                            stream_digest: stream_digest.clone(),
++                                            transform_node_id: transform_node_id.clone(),
++                                            transformed_count: transformed.transformed_count,
++                                            transformed_logical_bytes: transformed
++                                                .transformed_logical_bytes,
++                                            transformed_batch_logical_bytes: transformed
++                                                .transformed_batch_logical_bytes,
++                                            transformed_stream_digest: transformed
++                                                .transformed_stream_digest
++                                                .clone(),
++                                            branch_node_id: branch_node_id.clone(),
++                                            branch_true_count,
++                                            branch_false_count,
++                                            branch_stream_digest: branch_stream_digest.clone(),
++                                            branch_batch_true_count: branch.true_count,
++                                            branch_batch_false_count: branch.false_count,
++                                            branch_previous_stream_digest,
++                                            backpressure_micros,
++                                            artifact: artifact.clone(),
++                                            started_at,
++                                        })
++                                        .is_err()
++                                    {
++                                        return;
++                                    }
++                                    transformed_count = transformed.transformed_count;
++                                    transformed_logical_bytes =
++                                        transformed.transformed_logical_bytes;
++                                    transformed_stream_digest =
++                                        transformed.transformed_stream_digest;
++                                    let blocked_micros =
++                                        sent.elapsed().as_micros().min(u64::MAX as u128) as u64;
++                                    backpressure_micros =
++                                        backpressure_micros.saturating_add(blocked_micros);
++                                    if blocked_micros >= 1_000 {
++                                        backpressure_events = backpressure_events.saturating_add(1);
++                                    }
+                                 }
++                                Ok(None) => break session.finish(),
++                                Err(error) => break Err(error),
+                             }
+-                            Ok(None) => break session.finish(),
+-                            Err(error) => break Err(error),
+-                        }
++                        },
++                        Err(error) => Err(error),
+                     },
+-                    Err(error) => Err(error),
+-                },
+                 };
+                 let completed_at = now_millis();
+                 let elapsed_micros = started.elapsed().as_micros().min(i64::MAX as u128) as u64;
