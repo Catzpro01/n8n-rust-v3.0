@@ -40,7 +40,10 @@ class IfRuntimeAcceptance(unittest.TestCase):
         self.auth, self.mutation = login(self.daemon.origin)
 
     def publish_workflow(
-        self, include_merge: bool = False, all_false: bool = False
+        self,
+        include_merge: bool = False,
+        all_false: bool = False,
+        any_logic: bool = False,
     ) -> dict:
         origin = self.daemon.origin
         workflow_id = "wf-if-runtime"
@@ -83,6 +86,9 @@ class IfRuntimeAcceptance(unittest.TestCase):
             if all_false
             else '$json.parity === "even"'
         )
+        conditions = [{"expression": condition_expression}]
+        if any_logic:
+            conditions.append({"expression": "$json.value === 11"})
         operations = [
             {
                 "kind": "add_node",
@@ -147,8 +153,8 @@ class IfRuntimeAcceptance(unittest.TestCase):
                     "name": "If",
                     "contract_lock": locks["if"],
                     "configuration": {
-                        "logic": "all",
-                        "conditions": [{"expression": condition_expression}],
+                        "logic": "any" if any_logic else "all",
+                        "conditions": conditions,
                     },
                     "layout": {"x": 900, "y": 120},
                     "annotation": "",
@@ -330,6 +336,34 @@ class IfRuntimeAcceptance(unittest.TestCase):
         self.assertEqual(branch_events[0]["payload"]["true_count"], 6)
         self.assertEqual(branch_events[0]["payload"]["false_count"], 6)
         self.assertTrue(branch_events[0]["payload"]["exactly_one_output_per_item"])
+
+    def test_any_logic_routes_composed_predicate(self):
+        publication = self.publish_workflow(any_logic=True)
+        current = publication["current_published"]
+        event = publication["current_event"]["envelope"]
+        admitted = api(
+            self.daemon.origin,
+            "/api/v1/workflows/wf-if-runtime/runs",
+            "POST",
+            {
+                "run_request_id": "run-if-any-logic",
+                "publication_event_id": event["event_id"],
+                "revision_id": current["revision_id"],
+                "plan_digest": current["plan_digest"],
+                "captured_invocation": {"manual": True, "fixture": "if-any-logic"},
+            },
+            self.mutation,
+        )
+        self.assertEqual(admitted[0], 201, admitted[2])
+        terminal = self.wait_terminal(admitted[2]["run"]["run_id"])
+
+        self.assertEqual(terminal["durable"]["state"], "succeeded")
+        self.assertEqual(terminal["durable"]["logical_order"], 4)
+        self.assertEqual(terminal["correctness"]["output_count"], 12)
+        branch = terminal["generation"]["branch"]
+        self.assertEqual(branch["true_count"], 7)
+        self.assertEqual(branch["false_count"], 5)
+        self.assertRegex(branch["stream_digest"], r"^sha256:[0-9a-f]{64}$")
 
     def test_closed_branches_are_reduced_and_persisted(self):
         publication = self.publish_workflow(include_merge=True)
