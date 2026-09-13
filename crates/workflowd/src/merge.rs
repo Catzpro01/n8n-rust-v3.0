@@ -93,27 +93,23 @@ impl CompiledConfiguration {
     /// Reduce a true stream followed by a false stream. Each accepted record is
     /// handed to `emit` immediately, so this function never materializes either
     /// input or the merged output.
-    pub fn merge_ordered<IT, IF, ET, EF, Emit>(
+    pub fn merge_ordered<IT, IF, Emit>(
         &self,
         true_records: IT,
         false_records: IF,
         mut emit: Emit,
     ) -> Result<MergeSummary, MergeError>
     where
-        IT: IntoIterator<Item = Result<MergeRecord, ET>>,
-        IF: IntoIterator<Item = Result<MergeRecord, EF>>,
-        ET: Into<MergeError>,
-        EF: Into<MergeError>,
+        IT: IntoIterator<Item = Result<MergeRecord, MergeError>>,
+        IF: IntoIterator<Item = Result<MergeRecord, MergeError>>,
         Emit: FnMut(&MergeRecord, &'static str) -> Result<(), MergeError>,
     {
         let mut reducer = Reducer::new(&self.mode);
         for record in true_records {
-            let record = record.map_err(Into::into)?;
-            reducer.accept("true", record, &mut emit)?;
+            reducer.accept("true", record?, &mut emit)?;
         }
         for record in false_records {
-            let record = record.map_err(Into::into)?;
-            reducer.accept("false", record, &mut emit)?;
+            reducer.accept("false", record?, &mut emit)?;
         }
         reducer.finish()
     }
