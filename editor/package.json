@@ -10,7 +10,8 @@
   "scripts": {
     "build": "node scripts/build.mjs",
     "typecheck": "tsc --noEmit",
-    "test:browser": "node tests/two-tab.mjs && node tests/publish-rollback.mjs && node tests/run-trace.mjs && node tests/generate-artifact.mjs && node tests/edit-fields-run.mjs"
+    "test:browser": "node tests/two-tab.mjs && node tests/publish-rollback.mjs && node tests/run-trace.mjs && node tests/generate-artifact.mjs && node tests/edit-fields-run.mjs",
+    "test:browser:eco": "node tests/eco-summarize.mjs"
   },
   "dependencies": {
     "preact": "10.29.8"

@@ -45,6 +45,8 @@ class IfRuntimeAcceptance(unittest.TestCase):
         all_false: bool = False,
         any_logic: bool = False,
         item_count: int = 12,
+        include_summary: bool = False,
+        eco_fixture: bool = False,
     ) -> dict:
         origin = self.daemon.origin
         workflow_id = "wf-if-runtime"
@@ -90,6 +92,29 @@ class IfRuntimeAcceptance(unittest.TestCase):
         conditions = [{"expression": condition_expression}]
         if any_logic:
             conditions.append({"expression": "$json.value === 11"})
+        assignments = [
+            {
+                "path": ["parity"],
+                "kind": "expression",
+                "source": '$json.value % 2 === 0 ? "even" : "odd"',
+            },
+            {
+                "path": ["label"],
+                "kind": "expression",
+                "source": '"eco-" + $json.index',
+            },
+        ]
+        if eco_fixture:
+            assignments = [
+                {"path": ["eco"], "kind": "fixed", "value": True},
+                *assignments[:1],
+                {
+                    "path": ["doubled"],
+                    "kind": "expression",
+                    "source": "$json.value * 2",
+                },
+                assignments[1],
+            ]
         operations = [
             {
                 "kind": "add_node",
@@ -114,7 +139,7 @@ class IfRuntimeAcceptance(unittest.TestCase):
                         "start": 0,
                         "step": 1,
                         "data": None,
-                        "storage_mode": "auto",
+                        "storage_mode": "artifact" if eco_fixture else "auto",
                     },
                     "layout": {"x": 360, "y": 120},
                     "annotation": "",
@@ -129,18 +154,7 @@ class IfRuntimeAcceptance(unittest.TestCase):
                     "contract_lock": locks["edit-fields"],
                     "configuration": {
                         "mode": "merge",
-                        "assignments": [
-                            {
-                                "path": ["parity"],
-                                "kind": "expression",
-                                "source": '$json.value % 2 === 0 ? "even" : "odd"',
-                            },
-                            {
-                                "path": ["label"],
-                                "kind": "expression",
-                                "source": '"eco-" + $json.index',
-                            },
-                        ],
+                        "assignments": assignments,
                     },
                     "layout": {"x": 620, "y": 120},
                     "annotation": "",
@@ -216,6 +230,32 @@ class IfRuntimeAcceptance(unittest.TestCase):
                             "id": "if-false-to-merge",
                             "source": {"node_id": "if", "port_id": "false"},
                             "target": {"node_id": "merge", "port_id": "false"},
+                        },
+                    },
+                ]
+            )
+        if include_summary:
+            self.assertIn("summarize", locks)
+            operations.extend(
+                [
+                    {
+                        "kind": "add_node",
+                        "node_instance": {
+                            "id": "summarize",
+                            "name": "Summarize",
+                            "contract_lock": locks["summarize"],
+                            "configuration": {"operation": "output_digest"},
+                            "layout": {"x": 1440, "y": 120},
+                            "annotation": "",
+                            "compatibility_metadata": {},
+                        },
+                    },
+                    {
+                        "kind": "connect",
+                        "connection": {
+                            "id": "merge-to-summarize",
+                            "source": {"node_id": "merge", "port_id": "items"},
+                            "target": {"node_id": "summarize", "port_id": "input"},
                         },
                     },
                 ]
@@ -547,6 +587,197 @@ class IfRuntimeAcceptance(unittest.TestCase):
         self.assertEqual(reread[0], 200, reread[2])
         self.assertEqual(reread[2]["durable"]["state"], "succeeded")
         self.assertEqual(reread[2]["generation"]["merge"]["output_count"], 12)
+
+    def test_eco_100k_summary_is_durable_and_rollback_is_non_destructive(self):
+        publication = self.publish_workflow(
+            include_merge=True,
+            include_summary=True,
+            eco_fixture=True,
+            item_count=49_998,
+        )
+        current = publication["current_published"]
+        event = publication["current_event"]["envelope"]
+        admitted = api(
+            self.daemon.origin,
+            "/api/v1/workflows/wf-if-runtime/runs",
+            "POST",
+            {
+                "run_request_id": "run-eco-100k-summary",
+                "publication_event_id": event["event_id"],
+                "revision_id": current["revision_id"],
+                "plan_digest": current["plan_digest"],
+                "captured_invocation": {"manual": True, "fixture": "eco-100k-summary"},
+            },
+            self.mutation,
+        )
+        self.assertEqual(admitted[0], 201, admitted[2])
+        run_id = admitted[2]["run"]["run_id"]
+        terminal = self.wait_terminal(run_id)
+
+        self.assertEqual(terminal["durable"]["state"], "succeeded")
+        self.assertEqual(terminal["durable"]["logical_order"], 6)
+        self.assertEqual(terminal["correctness"]["attempted"], 6)
+        self.assertEqual(terminal["correctness"]["succeeded"], 6)
+        self.assertEqual(terminal["correctness"]["output_count"], 49_998)
+        generation = terminal["generation"]
+        self.assertEqual(generation["generated_count"], 49_998)
+        self.assertEqual(generation["transform"]["transformed_count"], 49_998)
+        self.assertEqual(generation["branch"]["true_count"], 24_999)
+        self.assertEqual(generation["branch"]["false_count"], 24_999)
+        self.assertEqual(generation["merge"]["output_count"], 49_998)
+        self.assertEqual(generation["merge"]["true_count"], 24_999)
+        self.assertEqual(generation["merge"]["false_count"], 24_999)
+        self.assertGreater(generation["merge"]["physical_spool_bytes"], 0)
+        summary = generation["summary"]
+        self.assertEqual(summary["node_instance_id"], "summarize")
+        self.assertEqual(summary["operation"], "output_digest")
+        self.assertEqual(summary["total_count"], 49_998)
+        self.assertEqual(summary["true_count"], 24_999)
+        self.assertEqual(summary["false_count"], 24_999)
+        self.assertEqual(summary["logical_bytes"], 3_791_517)
+        self.assertEqual(summary["first_ordinal"], 0)
+        self.assertEqual(summary["last_ordinal"], 49_997)
+        self.assertEqual(
+            summary["output_digest"],
+            "sha256:1caaeb3901bd0a17d8875a65c3363c8fbbc8c8a6695519ccbad0005e57ae9fdd",
+        )
+
+        trace_response = api(
+            self.daemon.origin,
+            f"/api/v1/runs/{run_id}/trace",
+            headers=self.auth,
+        )
+        self.assertEqual(trace_response[0], 200, trace_response[2])
+        trace = trace_response[2]
+        self.assertTrue(trace["integrity_verified"])
+        self.assertEqual(
+            [activation["logical_order"] for activation in trace["activations"]],
+            [1, 2, 3, 4, 5, 6],
+        )
+        summary_activation = trace["activations"][5]
+        self.assertEqual(summary_activation["node_instance_id"], "summarize")
+        self.assertEqual(summary_activation["output"]["total_count"], 49_998)
+        self.assertEqual(summary_activation["output"]["output_digest"], summary["output_digest"])
+        self.assertEqual(
+            summary_activation["provenance"]["causal_trace_links"]["retained_ordinal_range"],
+            [0, 49_997],
+        )
+        summary_events = [
+            item
+            for item in trace["events"]
+            if item["event_type"] == "activation_outcome"
+            and item["payload"].get("node_instance_id") == "summarize"
+        ]
+        self.assertEqual(len(summary_events), 1)
+        self.assertEqual(summary_events[0]["payload"]["output_digest"], summary["output_digest"])
+        self.assertEqual(
+            summary_events[0]["payload"]["causal_trace_links"]["source_merge_output_digest"],
+            generation["merge"]["stream_digest"],
+        )
+
+        # Restart proves the bounded reducer result and trace are durable before rollback.
+        self.daemon.stop()
+        self.daemon = Daemon(self.state, self.key)
+        self.addCleanup(self.daemon.stop)
+        self.auth, self.mutation = login(self.daemon.origin)
+        reread = api(self.daemon.origin, f"/api/v1/runs/{run_id}", headers=self.auth)
+        self.assertEqual(reread[0], 200, reread[2])
+        self.assertEqual(reread[2]["generation"]["summary"], summary)
+        reread_trace = api(
+            self.daemon.origin,
+            f"/api/v1/runs/{run_id}/trace",
+            headers=self.auth,
+        )
+        self.assertTrue(reread_trace[2]["integrity_verified"])
+        self.assertEqual(reread_trace[2]["activations"][5]["output"], summary_activation["output"])
+
+        # Publish a changed immutable revision, then roll back only the pointer.
+        draft = api(
+            self.daemon.origin,
+            "/api/v1/workflows/wf-if-runtime",
+            headers=self.auth,
+        )[2]
+        lease = api(
+            self.daemon.origin,
+            "/api/v1/workflows/wf-if-runtime/editing/open",
+            "POST",
+            {"editor_session_id": "if-tab", "label": "Eco acceptance"},
+            self.mutation,
+        )
+        self.assertEqual(lease[0], 200, lease[2])
+        changed = api(
+            self.daemon.origin,
+            "/api/v1/workflows/wf-if-runtime/draft-commands",
+            "POST",
+            command(
+                "if-tab",
+                lease[2]["lease_generation"],
+                "eco-second-revision",
+                draft["draft_version"],
+                {"kind": "set_workflow_annotation", "annotation": "Eco revision two"},
+            ),
+            self.mutation,
+        )
+        self.assertEqual(changed[0], 200, changed[2])
+        preview_request = {
+            "editor_session_id": "if-tab",
+            "lease_generation": lease[2]["lease_generation"],
+            "draft_version": changed[2]["draft_version"],
+        }
+        preview = api(
+            self.daemon.origin,
+            "/api/v1/workflows/wf-if-runtime/compile-preview",
+            "POST",
+            preview_request,
+            self.mutation,
+        )
+        self.assertEqual(preview[0], 200, preview[2])
+        second = api(
+            self.daemon.origin,
+            "/api/v1/workflows/wf-if-runtime/publish",
+            "POST",
+            {
+                "publication_id": "publish-eco-revision-two",
+                **preview_request,
+                "compile_input_digest": preview[2]["compile_input_digest"],
+                "acknowledged_diagnostics": [
+                    item["fingerprint"]
+                    for item in preview[2]["diagnostics"]
+                    if item["requires_ack"]
+                ],
+            },
+            self.mutation,
+        )
+        self.assertEqual(second[0], 201, second[2])
+        revision_two = second[2]["revision"]["revision_id"]
+        self.assertNotEqual(revision_two, current["revision_id"])
+        rolled = api(
+            self.daemon.origin,
+            "/api/v1/workflows/wf-if-runtime/rollback",
+            "POST",
+            {
+                "rollback_id": "rollback-eco-to-one",
+                "editor_session_id": "if-tab",
+                "lease_generation": lease[2]["lease_generation"],
+                "draft_version": changed[2]["draft_version"],
+                "target_revision_id": current["revision_id"],
+            },
+            self.mutation,
+        )
+        self.assertEqual(rolled[0], 200, rolled[2])
+        status = api(
+            self.daemon.origin,
+            "/api/v1/workflows/wf-if-runtime/publication",
+            headers=self.auth,
+        )
+        self.assertEqual(status[2]["current_published"]["revision_id"], current["revision_id"])
+        self.assertEqual(status[2]["latest_published"]["revision_id"], revision_two)
+        self.assertEqual(status[2]["mutable_draft"]["draft_version"], changed[2]["draft_version"])
+        self.assertEqual(status[2]["difference"]["state"], "changed")
+        self.assertEqual(
+            api(self.daemon.origin, "/api/v1/workflows/wf-if-runtime", headers=self.auth)[2]["annotation"],
+            "Eco revision two",
+        )
 
     def test_empty_true_branch_is_reduced_without_padding(self):
         publication = self.publish_workflow(include_merge=True, all_false=True)

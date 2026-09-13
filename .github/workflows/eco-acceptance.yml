@@ -1,0 +1,50 @@
+name: Eco 100K Summarize acceptance
+
+on:
+  push:
+    branches: ["main", "arena/**"]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  eco-acceptance:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Install pinned Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.85.1
+
+      - name: Install pinned Node toolchain
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: editor/.nvmrc
+          cache: npm
+          cache-dependency-path: editor/package-lock.json
+
+      - name: Build editor assets
+        working-directory: editor
+        run: |
+          npm ci
+          npm run typecheck
+          npm run build
+
+      - name: Build workflow daemon
+        run: cargo build -p workflowd --locked
+
+      - name: Run Eco API acceptance
+        run: python3 -m unittest tests.acceptance.test_if_runtime.IfRuntimeAcceptance.test_eco_100k_summary_is_durable_and_rollback_is_non_destructive -v
+
+      - name: Install Chromium for browser acceptance
+        working-directory: editor
+        run: npx playwright install --with-deps chromium
+
+      - name: Run Eco browser/API acceptance
+        working-directory: editor
+        run: npm run test:browser:eco
