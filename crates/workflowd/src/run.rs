@@ -3134,6 +3134,15 @@ impl MergeSpool {
         if let Some(lease) = self.active.take() {
             self.artifacts.abandon_upload(lease);
         }
+        for segment in 0..self.references.len() {
+            let reference_id = format!(
+                "run:{}:merge:{}:{}:segment:{}",
+                self.run_id, self.node_id, self.port_id, segment
+            );
+            let _ = self.artifacts.release_reference(&reference_id);
+        }
+        self.references.clear();
+        self.next_segment = 0;
         self.active_count = 0;
         self.active_bytes = 0;
     }

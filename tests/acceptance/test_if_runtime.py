@@ -39,7 +39,7 @@ class IfRuntimeAcceptance(unittest.TestCase):
         self.assertEqual(setup[0], 201, setup[2])
         self.auth, self.mutation = login(self.daemon.origin)
 
-    def publish_workflow(self) -> dict:
+    def publish_workflow(self, include_merge: bool = False) -> dict:
         origin = self.daemon.origin
         workflow_id = "wf-if-runtime"
         catalog = api(origin, "/api/v1/catalog", headers=self.auth)[2]
@@ -50,6 +50,8 @@ class IfRuntimeAcceptance(unittest.TestCase):
         self.assertTrue(
             {"manual-trigger", "generate-items", "edit-fields", "if"}.issubset(locks)
         )
+        if include_merge:
+            self.assertIn("merge", locks)
         created = api(
             origin,
             "/api/v1/workflows",
@@ -171,6 +173,39 @@ class IfRuntimeAcceptance(unittest.TestCase):
                 },
             },
         ]
+        if include_merge:
+            operations.extend(
+                [
+                    {
+                        "kind": "add_node",
+                        "node_instance": {
+                            "id": "merge",
+                            "name": "Merge",
+                            "contract_lock": locks["merge"],
+                            "configuration": {"mode": "true_then_false"},
+                            "layout": {"x": 1180, "y": 120},
+                            "annotation": "",
+                            "compatibility_metadata": {},
+                        },
+                    },
+                    {
+                        "kind": "connect",
+                        "connection": {
+                            "id": "if-true-to-merge",
+                            "source": {"node_id": "if", "port_id": "true"},
+                            "target": {"node_id": "merge", "port_id": "true"},
+                        },
+                    },
+                    {
+                        "kind": "connect",
+                        "connection": {
+                            "id": "if-false-to-merge",
+                            "source": {"node_id": "if", "port_id": "false"},
+                            "target": {"node_id": "merge", "port_id": "false"},
+                        },
+                    },
+                ]
+            )
         for index, operation in enumerate(operations):
             response = api(
                 origin,
@@ -288,6 +323,96 @@ class IfRuntimeAcceptance(unittest.TestCase):
         self.assertEqual(branch_events[0]["payload"]["true_count"], 6)
         self.assertEqual(branch_events[0]["payload"]["false_count"], 6)
         self.assertTrue(branch_events[0]["payload"]["exactly_one_output_per_item"])
+
+    def test_closed_branches_are_reduced_and_persisted(self):
+        publication = self.publish_workflow(include_merge=True)
+        current = publication["current_published"]
+        event = publication["current_event"]["envelope"]
+        admitted = api(
+            self.daemon.origin,
+            "/api/v1/workflows/wf-if-runtime/runs",
+            "POST",
+            {
+                "run_request_id": "run-merge-runtime",
+                "publication_event_id": event["event_id"],
+                "revision_id": current["revision_id"],
+                "plan_digest": current["plan_digest"],
+                "captured_invocation": {"manual": True, "fixture": "merge-runtime"},
+            },
+            self.mutation,
+        )
+        self.assertEqual(admitted[0], 201, admitted[2])
+        run_id = admitted[2]["run"]["run_id"]
+        terminal = self.wait_terminal(run_id)
+
+        self.assertEqual(terminal["durable"]["state"], "succeeded")
+        self.assertEqual(terminal["durable"]["logical_order"], 5)
+        self.assertEqual(terminal["correctness"]["attempted"], 5)
+        self.assertEqual(terminal["correctness"]["succeeded"], 5)
+        self.assertEqual(terminal["correctness"]["output_count"], 12)
+        merge = terminal["generation"]["merge"]
+        self.assertEqual(merge["node_instance_id"], "merge")
+        self.assertEqual(merge["mode"], "true_then_false")
+        self.assertEqual(merge["true_count"], 6)
+        self.assertEqual(merge["false_count"], 6)
+        self.assertEqual(merge["output_count"], 12)
+        self.assertRegex(merge["stream_digest"], r"^sha256:[0-9a-f]{64}$")
+        self.assertGreater(merge["physical_spool_bytes"], 0)
+        self.assertEqual(len(merge["true_segments"]), 1)
+        self.assertEqual(len(merge["false_segments"]), 1)
+        self.assertEqual(len(merge["output_segments"]), 1)
+        self.assertEqual(
+            merge["true_segments"][0]["media_type"], "application/x-ndjson"
+        )
+
+        trace_response = api(
+            self.daemon.origin,
+            f"/api/v1/runs/{run_id}/trace",
+            headers=self.auth,
+        )
+        self.assertEqual(trace_response[0], 200, trace_response[2])
+        trace = trace_response[2]
+        self.assertTrue(trace["integrity_verified"])
+        self.assertEqual(
+            [activation["logical_order"] for activation in trace["activations"]],
+            [1, 2, 3, 4, 5],
+        )
+        merge_activation = trace["activations"][4]
+        self.assertEqual(merge_activation["node_instance_id"], "merge")
+        self.assertEqual(merge_activation["output"]["output_count"], 12)
+        self.assertEqual(
+            merge_activation["provenance"]["input_ports"], ["true", "false"]
+        )
+        self.assertEqual(
+            merge_activation["provenance"]["spooling"], "artifact-backed-segments"
+        )
+
+        merge_events = [
+            event
+            for event in trace["events"]
+            if event["event_type"] == "activation_outcome"
+            and event["payload"].get("node_instance_id") == "merge"
+        ]
+        self.assertEqual(len(merge_events), 1)
+        self.assertEqual(merge_events[0]["payload"]["output_count"], 12)
+        self.assertEqual(
+            merge_events[0]["payload"]["spooling"], "artifact-backed-segments"
+        )
+
+        # The reducer evidence is durable, not only live in the worker.
+        old_daemon = self.daemon
+        old_daemon.stop()
+        self.daemon = Daemon(self.state, self.key)
+        self.addCleanup(self.daemon.stop)
+        self.auth, self.mutation = login(self.daemon.origin)
+        reread = api(
+            self.daemon.origin,
+            f"/api/v1/runs/{run_id}",
+            headers=self.auth,
+        )
+        self.assertEqual(reread[0], 200, reread[2])
+        self.assertEqual(reread[2]["durable"]["state"], "succeeded")
+        self.assertEqual(reread[2]["generation"]["merge"]["output_count"], 12)
 
 
 if __name__ == "__main__":

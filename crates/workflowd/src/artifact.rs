@@ -385,6 +385,83 @@ impl ArtifactService {
         let _ = fs::remove_file(self.staging.join(lease.staging_name));
     }
 
+    /// Release one runtime-owned reference. A released object is moved to
+    /// quarantine immediately when no other Owner reference protects it; the
+    /// normal quarantine safety age still applies before deletion.
+    pub fn release_reference(&self, reference_id: &str) -> Result<(), ArtifactError> {
+        validate_token(reference_id, "reference_id")?;
+        let _guard = self
+            .mutation
+            .lock()
+            .map_err(|_| ArtifactError::Storage("Artifact reference lock is poisoned".into()))?;
+        let mut connection = self.connect().map_err(ArtifactError::Storage)?;
+        let artifact_ids = {
+            let mut statement = connection
+                .prepare("SELECT artifact_id FROM artifact_references WHERE owner_id=1 AND reference_id=?1")
+                .map_err(storage)?;
+            let ids = statement
+                .query_map(params![reference_id], |row| row.get::<_, String>(0))
+                .map_err(storage)?
+                .collect::<Result<Vec<_>, _>>()
+                .map_err(storage)?;
+            ids
+        };
+        connection
+            .execute(
+                "DELETE FROM artifact_references WHERE owner_id=1 AND reference_id=?1",
+                params![reference_id],
+            )
+            .map_err(storage)?;
+        let now = now_millis();
+        let mut moved = false;
+        for artifact_id in artifact_ids {
+            let Some((object_name, state)) = connection
+                .query_row(
+                    "SELECT object_name,state FROM artifacts WHERE owner_id=1 AND artifact_id=?1",
+                    params![artifact_id],
+                    |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)),
+                )
+                .optional()
+                .map_err(storage)?
+            else {
+                continue;
+            };
+            let referenced: bool = connection
+                .query_row(
+                    "SELECT EXISTS(SELECT 1 FROM artifact_references WHERE owner_id=1 AND artifact_id=?1)",
+                    params![artifact_id],
+                    |row| row.get(0),
+                )
+                .map_err(storage)?;
+            if referenced || state != "ready" {
+                continue;
+            }
+            let source = self.objects.join(&object_name);
+            let target = self.quarantine.join(&object_name);
+            if source.exists() {
+                fs::rename(&source, &target).map_err(storage)?;
+                moved = true;
+            }
+            connection
+                .execute(
+                    "UPDATE artifacts SET state='quarantined' WHERE owner_id=1 AND artifact_id=?1 AND state='ready'",
+                    params![artifact_id],
+                )
+                .map_err(storage)?;
+            connection
+                .execute(
+                    "INSERT OR REPLACE INTO artifact_orphans(object_name,reason,quarantined_at,eligible_after) VALUES(?1,'runtime_unreferenced',?2,?3)",
+                    params![object_name, now, now + QUARANTINE_MILLIS],
+                )
+                .map_err(storage)?;
+        }
+        if moved {
+            sync_directory(&self.objects)?;
+            sync_directory(&self.quarantine)?;
+        }
+        Ok(())
+    }
+
     pub fn put(
         &self,
         plaintext: &[u8],
@@ -1468,6 +1545,44 @@ mod tests {
             streamed.extend_from_slice(&chunk);
         }
         assert_eq!(streamed, payload);
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn runtime_reference_release_quarantines_only_unprotected_objects() {
+        let (root, service) = service("release-reference");
+        let first = service
+            .put(b"owned", "text/plain", "runtime-ref", "runtime", 1)
+            .unwrap();
+        let object_name: String = service
+            .connect()
+            .unwrap()
+            .query_row(
+                "SELECT object_name FROM artifacts WHERE artifact_id=?1",
+                params![first.reference.artifact_id],
+                |row| row.get(0),
+            )
+            .unwrap();
+        service.release_reference("runtime-ref").unwrap();
+        let connection = service.connect().unwrap();
+        let reference_count: i64 = connection
+            .query_row(
+                "SELECT COUNT(*) FROM artifact_references WHERE reference_id='runtime-ref'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        let state: String = connection
+            .query_row(
+                "SELECT state FROM artifacts WHERE artifact_id=?1",
+                params![first.reference.artifact_id],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(reference_count, 0);
+        assert_eq!(state, "quarantined");
+        assert!(!service.objects.join(&object_name).exists());
+        assert!(service.quarantine.join(object_name).exists());
         fs::remove_dir_all(root).unwrap();
     }
 
