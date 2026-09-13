@@ -49,16 +49,18 @@ Frozen: preserve an internal Missing value distinct from JSON null. Missing path
 - [x] The compiler/catalog/release paths recognize the Edit Fields contract.
 - [x] The pure Rust safe-expression compiler/evaluator and immutable-input
       Edit Fields assignment module have focused unit tests.
-- [ ] Wire transformed Envelopes into the durable Run scheduler while
+- [x] Wire transformed Envelopes into the durable Run scheduler while
       preserving Ticket 07's checkpoints, backpressure, cancellation, Artifact
       spill, item linking, and replay invariants.
-- [ ] Add public-seam and browser configuration/diagnostic acceptance coverage.
+- [x] Add public-seam and browser configuration/diagnostic acceptance coverage.
 
-The local sandbox still has no Cargo toolchain, but the new Rust unit tests
-have fresh verification in pinned GitHub workflow run `34758186650`. The
-repository validation workflow is `.github/workflows/validate.yml`; automatic
-push validation is available even though manual dispatch is not permitted by
-the current GitHub integration.
+The local sandbox still has no Cargo toolchain. The pure Rust unit tests had
+fresh verification in pinned GitHub workflow run `34758186650`; the durable
+runtime/public seam and focused transform regression passed in run
+`34759106854`, and the browser seam rerun passed in `34759178607`. The
+repository validation workflow is `.github/workflows/validate.yml`; it now
+runs the focused Edit Fields browser seam after the pinned Rust tests. Manual
+dispatch is not permitted by the current GitHub integration.
 
 ## Verification finding — 2026-09-13
 

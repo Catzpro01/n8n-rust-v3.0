@@ -40,10 +40,9 @@ by the recovered session evidence. Ticket 08 is now authorized by ADR 0057;
 ADR 0058 records the follow-up v1alpha2 contract revision for its Eco label.
 
 - **Ticket 08:** `08-transform-items-with-edit-fields-and-the-safe-expression-vm.md`
-- **Status:** `approved-for-implementation`
-- **Next action:** wire transformed Envelopes into the durable Run scheduler
-  while preserving Ticket 07's checkpoints, backpressure, cancellation,
-  Artifact spill, item linking, and replay invariants.
+- **Status:** `implemented-and-pinned-verified`
+- **Next action:** Owner review of the verified Ticket 08 seam; future expansion
+  requires a new decision record beyond ADRs 0057 and 0058.
 
 The earlier Wayfinder selection of “architecture spike first” now means a
 reversible audit/reconciliation of the recovered Rust + connected Preact
@@ -55,8 +54,8 @@ starting a new frontend framework from scratch.
 - **Owner:** none
 - **Ticket:** Ticket 08 is the current frontier and is authorized for
   implementation within ADRs 0057 and 0058.
-- **Blockers:** durable Run integration and public-seam/browser configuration
-  tests remain; the pure v1alpha2 seam now passes the pinned CI gate.
+- **Blockers:** none known in the approved Ticket 08 scope; local Cargo remains
+  unavailable, so pinned GitHub CI is the Rust verification environment.
 
 ## Last verified in this checkout
 
@@ -71,7 +70,12 @@ starting a new frontend framework from scratch.
 - Pinned GitHub workflow run `34758186650` passed editor typecheck/build, Rust
   formatting, `cargo test --workspace --locked`, and the dependency-free
   repository tests after ADR 0058's v1alpha2 revision.
-- `git diff --check` — clean before the current Ticket 08 progress update.
+- Pinned GitHub workflow run `34759106854` passed the durable transform
+  regression and public runtime build; run `34759178607` passed the focused
+  browser/public-seam test for v1alpha2 configuration diagnostics, 17-item
+  transform metrics, Artifact spill, three Activation trace order, and mobile
+  overflow.
+- `git diff --check` — clean before this status update.
 - The historical Ticket 07 full gate is recorded in
   `docs/legacy/session-archive/VERIFICATION.md`; it has not been re-claimed as
   a fresh local result.
