@@ -108,13 +108,10 @@ impl CompiledConfiguration {
 }
 
 pub fn compile_configuration(value: &Value) -> Result<CompiledConfiguration, IfError> {
-    let configuration: Configuration = serde_json::from_value(value.clone()).map_err(|error| {
-        IfError::configuration(format!("invalid If configuration: {error}"))
-    })?;
+    let configuration: Configuration = serde_json::from_value(value.clone())
+        .map_err(|error| IfError::configuration(format!("invalid If configuration: {error}")))?;
     if configuration.conditions.is_empty() {
-        return Err(IfError::configuration(
-            "at least one condition is required",
-        ));
+        return Err(IfError::configuration("at least one condition is required"));
     }
     if configuration.conditions.len() > MAX_CONDITIONS {
         return Err(IfError::configuration(format!(
@@ -124,9 +121,7 @@ pub fn compile_configuration(value: &Value) -> Result<CompiledConfiguration, IfE
     let conditions = configuration
         .conditions
         .iter()
-        .map(|condition| {
-            expression::compile(&condition.expression).map_err(IfError::evaluation)
-        })
+        .map(|condition| expression::compile(&condition.expression).map_err(IfError::evaluation))
         .collect::<Result<Vec<_>, _>>()?;
     Ok(CompiledConfiguration {
         logic: configuration.logic,
@@ -187,10 +182,22 @@ mod tests {
             ]
         }))
         .unwrap();
-        assert_eq!(all.route(&json!({"value": 5}), 0).unwrap().output_port, "true");
-        assert_eq!(all.route(&json!({"value": 10}), 0).unwrap().output_port, "false");
-        assert_eq!(any.route(&json!({"value": 10}), 0).unwrap().output_port, "true");
-        assert_eq!(any.route(&json!({"value": 5}), 0).unwrap().output_port, "false");
+        assert_eq!(
+            all.route(&json!({"value": 5}), 0).unwrap().output_port,
+            "true"
+        );
+        assert_eq!(
+            all.route(&json!({"value": 10}), 0).unwrap().output_port,
+            "false"
+        );
+        assert_eq!(
+            any.route(&json!({"value": 10}), 0).unwrap().output_port,
+            "true"
+        );
+        assert_eq!(
+            any.route(&json!({"value": 5}), 0).unwrap().output_port,
+            "false"
+        );
     }
 
     #[test]
