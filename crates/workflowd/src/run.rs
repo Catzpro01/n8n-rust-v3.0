@@ -1491,9 +1491,11 @@ fn complete_generated_transaction(
     } else {
         "permanent_failure"
     };
-    let failure = completed.summary.as_ref().err().map(|reason| {
-        json!({"code":reason.code,"message":reason.message})
-    });
+    let failure = completed
+        .summary
+        .as_ref()
+        .err()
+        .map(|reason| json!({"code":reason.code,"message":reason.message}));
     let transform_failed = failure
         .as_ref()
         .and_then(|failure| failure["code"].as_str())
@@ -1588,7 +1590,8 @@ fn complete_generated_transaction(
             provenance: json!({"engine_abi":generate_engine::GENERATE_ENGINE_ABI,"lane":"native-cpu","effect_class":"pure","output_port":"items","backpressure_micros":completed.backpressure_micros}),
         },
     )?;
-    let transform_should_commit = has_transform && (state == "succeeded" || state == "cancelled" || transform_failed);
+    let transform_should_commit =
+        has_transform && (state == "succeeded" || state == "cancelled" || transform_failed);
     let transform_outcome = if state == "succeeded" {
         "success"
     } else if state == "cancelled" {
@@ -1625,7 +1628,11 @@ fn complete_generated_transaction(
                 outcome: transform_outcome,
                 input: &transform_input,
                 output: (state == "succeeded").then_some(&transform_output),
-                failure: if transform_failed { failure.as_ref() } else { None },
+                failure: if transform_failed {
+                    failure.as_ref()
+                } else {
+                    None
+                },
                 checkpoint,
                 started_at: completed.started_at,
                 completed_at: completed.completed_at,
@@ -2290,10 +2297,7 @@ fn generation_plan_and_transform(
             && dependency.target_node_id == edit.node_instance_id
             && dependency.target_port_id == "input"
     });
-    if plan.nodes.len() != 3
-        || plan.scheduling_dependencies.len() != 2
-        || !has_generate_to_edit
-    {
+    if plan.nodes.len() != 3 || plan.scheduling_dependencies.len() != 2 || !has_generate_to_edit {
         return Err(generate_failure(
             "canopy.generate-items.invalid_pinned_plan",
             "The pinned plan has unsupported Edit Fields topology.",
@@ -2316,10 +2320,8 @@ fn generation_plan_and_transform(
         .filter(|lock| lock.name != "edit-fields")
         .cloned()
         .collect();
-    generation_plan.segment_candidates = vec![vec![
-        manual.node_instance_id,
-        generate.node_instance_id,
-    ]];
+    generation_plan.segment_candidates =
+        vec![vec![manual.node_instance_id, generate.node_instance_id]];
     Ok((
         generation_plan,
         Some((edit.node_instance_id, edit.configuration)),
@@ -2352,17 +2354,18 @@ fn apply_edit_fields_batch(
         )
     })?;
     for envelope in envelopes {
-        let transformed = configuration.apply(&envelope.logical_item, envelope.ordinal).map_err(
-            |error| GenerateFailure {
+        let transformed = configuration
+            .apply(&envelope.logical_item, envelope.ordinal)
+            .map_err(|error| GenerateFailure {
                 code: error.code,
                 message: error.message,
-            },
-        )?;
+            })?;
         let logical_output = transformed.item;
-        let logical_bytes = serde_jcs::to_vec(&logical_output).map_err(|error| GenerateFailure {
-            code: "canopy.edit-fields.canonicalization_failed".into(),
-            message: error.to_string(),
-        })?;
+        let logical_bytes =
+            serde_jcs::to_vec(&logical_output).map_err(|error| GenerateFailure {
+                code: "canopy.edit-fields.canonicalization_failed".into(),
+                message: error.to_string(),
+            })?;
         let next_bytes = transformed_logical_bytes
             .checked_add(logical_bytes.len() as u64)
             .ok_or_else(|| {
@@ -2404,10 +2407,12 @@ fn apply_edit_fields_batch(
             provenance.insert("input_ordinal".into(), json!(envelope.ordinal));
             provenance.insert(
                 "input_digest".into(),
-                json!(digest(&envelope.logical_item).map_err(|message| GenerateFailure {
-                    code: "canopy.edit-fields.digest_failed".into(),
-                    message,
-                })?),
+                json!(
+                    digest(&envelope.logical_item).map_err(|message| GenerateFailure {
+                        code: "canopy.edit-fields.digest_failed".into(),
+                        message,
+                    })?
+                ),
             );
         }
         let physical_bytes = serde_jcs::to_vec(envelope).map_err(|error| GenerateFailure {
@@ -2561,9 +2566,10 @@ fn start_executor(
                 let mut transformed_logical_bytes = edit_fields_candidate
                     .as_ref()
                     .map_or(0, |candidate| candidate.transformed_logical_bytes);
-                let mut transformed_stream_digest = edit_fields_candidate
-                    .as_ref()
-                    .map_or_else(|| "genesis".into(), |candidate| candidate.transformed_stream_digest.clone());
+                let mut transformed_stream_digest = edit_fields_candidate.as_ref().map_or_else(
+                    || "genesis".into(),
+                    |candidate| candidate.transformed_stream_digest.clone(),
+                );
                 let mut backpressure_micros = 0_u64;
                 let mut backpressure_events = 0_u64;
                 let mut cancelled = false;
@@ -2607,8 +2613,8 @@ fn start_executor(
                                 ) {
                                     break Err(error);
                                 }
-                                let transformed_batch_logical_bytes =
-                                    transformed_logical_bytes.saturating_sub(transformed_batch_start);
+                                let transformed_batch_logical_bytes = transformed_logical_bytes
+                                    .saturating_sub(transformed_batch_start);
                                 let sent = Instant::now();
                                 if envelopes
                                     .send(GeneratedBatchEvent {
@@ -2621,7 +2627,8 @@ fn start_executor(
                                         transformed_count,
                                         transformed_logical_bytes,
                                         transformed_batch_logical_bytes,
-                                        transformed_stream_digest: transformed_stream_digest.clone(),
+                                        transformed_stream_digest: transformed_stream_digest
+                                            .clone(),
                                         backpressure_micros,
                                         artifact: artifact.clone(),
                                         started_at,
@@ -3101,9 +3108,7 @@ fn next_candidate(
         })?;
         let (_, edit_fields_definition) = generation_plan_and_transform(&plan)
             .map_err(|error| RunError::Integrity(error.message))?;
-        let stored_transform_node_id = row
-            .get::<_, Option<String>>(10)
-            .map_err(storage_error)?;
+        let stored_transform_node_id = row.get::<_, Option<String>>(10).map_err(storage_error)?;
         let transformed_count = row
             .get::<_, Option<i64>>(11)
             .map_err(storage_error)?
