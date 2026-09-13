@@ -18,6 +18,15 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: 1.85.1
+      - name: Install pinned Node toolchain
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: editor/.nvmrc
+          cache: npm
+          cache-dependency-path: editor/package-lock.json
+      - name: Build editor assets
+        working-directory: editor
+        run: npm ci && npm run build
       - name: Capture workspace test diagnostics
         run: |
           mkdir -p .scratch
