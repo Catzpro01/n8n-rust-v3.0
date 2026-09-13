@@ -4219,15 +4219,15 @@ fn next_candidate(
             generation_plan_and_transform(&plan)
                 .map_err(|error| RunError::Integrity(error.message))?;
         let stored_transform_node_id = row.get::<_, Option<String>>(10).map_err(storage_error)?;
-        let transformed_count = row
+        let durable_transformed_count = row
             .get::<_, Option<i64>>(11)
             .map_err(storage_error)?
             .unwrap_or(0) as u64;
-        let transformed_logical_bytes = row
+        let durable_transformed_logical_bytes = row
             .get::<_, Option<i64>>(12)
             .map_err(storage_error)?
             .unwrap_or(0) as u64;
-        let transformed_stream_digest = row
+        let durable_transformed_stream_digest = row
             .get::<_, Option<String>>(13)
             .map_err(storage_error)?
             .unwrap_or_else(|| "genesis".into());
@@ -4244,23 +4244,62 @@ fn next_candidate(
                 })
             })
             .transpose()?;
-        let stored_generated_count = row
+        let durable_generated_count = row
             .get::<_, Option<i64>>(7)
             .map_err(storage_error)?
             .unwrap_or(0) as u64;
+        // Merge spools are finalized only after both streams close. If a daemon
+        // stops before that barrier, replay the bounded source from zero rather
+        // than pretending an unpersisted suffix is a complete Merge input.
+        let replay_merge_from_zero = merge_definition.is_some() && durable_generated_count > 0;
+        let stored_generated_count = if replay_merge_from_zero {
+            0
+        } else {
+            durable_generated_count
+        };
         let stored_branch_node_id = row.get::<_, Option<String>>(15).map_err(storage_error)?;
-        let branch_true_count = row
+        let durable_branch_true_count = row
             .get::<_, Option<i64>>(16)
             .map_err(storage_error)?
             .unwrap_or(0) as u64;
-        let branch_false_count = row
+        let durable_branch_false_count = row
             .get::<_, Option<i64>>(17)
             .map_err(storage_error)?
             .unwrap_or(0) as u64;
-        let branch_stream_digest = row
+        let durable_branch_stream_digest = row
             .get::<_, Option<String>>(18)
             .map_err(storage_error)?
             .unwrap_or_else(|| "genesis".into());
+        let transformed_count = if replay_merge_from_zero {
+            0
+        } else {
+            durable_transformed_count
+        };
+        let transformed_logical_bytes = if replay_merge_from_zero {
+            0
+        } else {
+            durable_transformed_logical_bytes
+        };
+        let transformed_stream_digest = if replay_merge_from_zero {
+            "genesis".into()
+        } else {
+            durable_transformed_stream_digest
+        };
+        let branch_true_count = if replay_merge_from_zero {
+            0
+        } else {
+            durable_branch_true_count
+        };
+        let branch_false_count = if replay_merge_from_zero {
+            0
+        } else {
+            durable_branch_false_count
+        };
+        let branch_stream_digest = if replay_merge_from_zero {
+            "genesis".into()
+        } else {
+            durable_branch_stream_digest
+        };
         let edit_fields = match edit_fields_definition {
             Some((node_id, configuration)) => {
                 if stored_transform_node_id
@@ -4346,17 +4385,20 @@ fn next_candidate(
                 RunError::Integrity(format!("queued invocation is invalid: {error}"))
             })?,
             checkpoint_sequence: row.get::<_, i64>(6).map_err(storage_error)? as u64,
-            generate_resume: row
-                .get::<_, Option<i64>>(7)
-                .map_err(storage_error)?
-                .map(|generated_count| {
-                    Ok(GenerateResume {
-                        next_ordinal: generated_count as u64,
-                        logical_bytes: row.get::<_, i64>(8).map_err(storage_error)? as u64,
-                        stream_digest: row.get(9).map_err(storage_error)?,
+            generate_resume: if replay_merge_from_zero {
+                None
+            } else {
+                row.get::<_, Option<i64>>(7)
+                    .map_err(storage_error)?
+                    .map(|generated_count| {
+                        Ok(GenerateResume {
+                            next_ordinal: generated_count as u64,
+                            logical_bytes: row.get::<_, i64>(8).map_err(storage_error)? as u64,
+                            stream_digest: row.get(9).map_err(storage_error)?,
+                        })
                     })
-                })
-                .transpose()?,
+                    .transpose()?
+            },
             edit_fields,
             if_node,
             merge,
