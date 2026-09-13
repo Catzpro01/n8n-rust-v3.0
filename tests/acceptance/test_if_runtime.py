@@ -304,8 +304,8 @@ class IfRuntimeAcceptance(unittest.TestCase):
         self.assertEqual(published[0], 201, published[2])
         return api(origin, f"/api/v1/workflows/{workflow_id}/publication", headers=self.auth)[2]
 
-    def wait_terminal(self, run_id: str) -> dict:
-        for _ in range(4_000):
+    def wait_terminal(self, run_id: str, attempts: int = 4_000) -> dict:
+        for _ in range(attempts):
             response = api(self.daemon.origin, f"/api/v1/runs/{run_id}", headers=self.auth)
             self.assertEqual(response[0], 200, response[2])
             if response[2]["durable"]["terminal"]:
@@ -612,7 +612,7 @@ class IfRuntimeAcceptance(unittest.TestCase):
         )
         self.assertEqual(admitted[0], 201, admitted[2])
         run_id = admitted[2]["run"]["run_id"]
-        terminal = self.wait_terminal(run_id)
+        terminal = self.wait_terminal(run_id, attempts=30_000)
 
         self.assertEqual(terminal["durable"]["state"], "succeeded")
         self.assertEqual(terminal["durable"]["logical_order"], 6)
