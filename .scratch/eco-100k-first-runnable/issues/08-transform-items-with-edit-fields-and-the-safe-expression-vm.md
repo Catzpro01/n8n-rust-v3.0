@@ -57,3 +57,26 @@ The local sandbox has no Cargo toolchain, so the new Rust unit tests still need
 fresh verification in the pinned GitHub/Rust-enabled environment. The
 repository validation workflow is `.github/workflows/validate.yml`; the current
 GitHub integration did not permit manual workflow dispatch.
+
+## Verification finding — 2026-09-13
+
+The pinned Rust/Node GitHub workflow reached compilation and ran 35
+`workflowd` tests plus the node-contract tests. Formatting, editor build, and
+compilation passed. Two focused tests fail for the same frozen Eco label:
+`"eco-" + $itemIndex` in the current test fixture (the approved ticket text
+uses `"eco-" + $json.index`). The generated `index` is a JSON number, while
+08-C explicitly permits string concatenation only when both operands are
+strings. The safe VM correctly rejects the mixed operation with
+`canopy.expression.type`, so this is a frozen-contract inconsistency rather
+than a runtime coercion bug.
+
+Implementation is paused at this boundary pending Owner choice:
+
+1. retain 08-C's strict typing and revise the Eco label expression/fixture to
+   provide a string operand (no numeric-to-string coercion);
+2. approve a separately recorded deterministic numeric-to-string conversion
+   for the label; or
+3. change Generate Items' public `index` type from number to string, which
+   would require revisiting Ticket 07's existing item and digest tests.
+
+No coercion or Generate Items schema change has been made silently.

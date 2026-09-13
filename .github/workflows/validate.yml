@@ -6,7 +6,7 @@ on:
   pull_request:
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   validate:
@@ -40,28 +40,7 @@ jobs:
         run: cargo fmt --all -- --check
 
       - name: Run Rust tests
-        id: rust_tests
-        continue-on-error: true
-        run: |
-          set +e
-          cargo test --workspace --locked 2>&1 | tee ci-rust-test.log
-          status=${PIPESTATUS[0]}
-          exit "$status"
-
-      - name: Publish Rust test diagnostics
-        if: github.event_name == 'push' && steps.rust_tests.outcome == 'failure'
-        env:
-          HEAD_REF: ${{ github.ref_name }}
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add ci-rust-test.log
-          git commit -m "ci: capture Rust test diagnostics"
-          git push origin "HEAD:${HEAD_REF}"
-
-      - name: Fail Rust validation after publishing diagnostics
-        if: steps.rust_tests.outcome == 'failure'
-        run: exit 1
+        run: cargo test --workspace --locked
 
       - name: Run dependency-free repository tests
         run: python3 -m unittest discover -s tests -v
