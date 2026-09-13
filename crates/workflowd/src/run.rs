@@ -162,6 +162,8 @@ pub struct GenerationProgress {
     pub transform: Option<TransformProgress>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub branch: Option<BranchProgress>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub merge: Option<MergeProgress>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -799,6 +801,7 @@ fn initialize_schema(connection: &Connection) -> Result<(), String> {
                 branch_true_count INTEGER NOT NULL DEFAULT 0,
                 branch_false_count INTEGER NOT NULL DEFAULT 0,
                 branch_stream_digest TEXT NOT NULL DEFAULT 'genesis',
+                merge_json TEXT,
                 updated_at INTEGER NOT NULL
             ) STRICT;
             CREATE TABLE IF NOT EXISTS run_suspensions(
@@ -860,6 +863,7 @@ fn initialize_schema(connection: &Connection) -> Result<(), String> {
         "branch_stream_digest",
         "TEXT NOT NULL DEFAULT 'genesis'",
     )?;
+    ensure_generation_column(connection, "merge_json", "TEXT")?;
     Ok(())
 }
 
@@ -1520,9 +1524,9 @@ fn generation_progress_transaction(
     )?;
     let artifact_json = progress.artifact.as_ref().map(canonical_text).transpose()?;
     transaction.execute(
-        "INSERT INTO run_generation_progress(run_id,state,generated_count,logical_bytes,stream_digest,backpressure_events,backpressure_micros,artifact_json,transform_node_id,transformed_count,transformed_logical_bytes,transformed_stream_digest,branch_node_id,branch_true_count,branch_false_count,branch_stream_digest,updated_at)
-         VALUES(?1,'running',?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16)
-         ON CONFLICT(run_id) DO UPDATE SET state='running',generated_count=excluded.generated_count,logical_bytes=excluded.logical_bytes,stream_digest=excluded.stream_digest,backpressure_events=excluded.backpressure_events,backpressure_micros=excluded.backpressure_micros,artifact_json=excluded.artifact_json,transform_node_id=excluded.transform_node_id,transformed_count=excluded.transformed_count,transformed_logical_bytes=excluded.transformed_logical_bytes,transformed_stream_digest=excluded.transformed_stream_digest,branch_node_id=excluded.branch_node_id,branch_true_count=excluded.branch_true_count,branch_false_count=excluded.branch_false_count,branch_stream_digest=excluded.branch_stream_digest,updated_at=excluded.updated_at",
+        "INSERT INTO run_generation_progress(run_id,state,generated_count,logical_bytes,stream_digest,backpressure_events,backpressure_micros,artifact_json,transform_node_id,transformed_count,transformed_logical_bytes,transformed_stream_digest,branch_node_id,branch_true_count,branch_false_count,branch_stream_digest,merge_json,updated_at)
+         VALUES(?1,'running',?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,NULL,?16)
+         ON CONFLICT(run_id) DO UPDATE SET state='running',generated_count=excluded.generated_count,logical_bytes=excluded.logical_bytes,stream_digest=excluded.stream_digest,backpressure_events=excluded.backpressure_events,backpressure_micros=excluded.backpressure_micros,artifact_json=excluded.artifact_json,transform_node_id=excluded.transform_node_id,transformed_count=excluded.transformed_count,transformed_logical_bytes=excluded.transformed_logical_bytes,transformed_stream_digest=excluded.transformed_stream_digest,branch_node_id=excluded.branch_node_id,branch_true_count=excluded.branch_true_count,branch_false_count=excluded.branch_false_count,branch_stream_digest=excluded.branch_stream_digest,merge_json=COALESCE(excluded.merge_json,run_generation_progress.merge_json),updated_at=excluded.updated_at",
         params![progress.run_id,progress.generated_count as i64,progress.logical_bytes as i64,progress.stream_digest,progress.backpressure_events as i64,progress.backpressure_micros as i64,artifact_json,progress.transform_node_id,progress.transformed_count as i64,progress.transformed_logical_bytes as i64,progress.transformed_stream_digest,progress.branch_node_id,progress.branch_true_count as i64,progress.branch_false_count as i64,progress.branch_stream_digest,committed_at]
     ).map_err(storage_error)?;
     transaction.execute(
@@ -1571,8 +1575,15 @@ fn complete_generated_transaction(
             .find(|node| node.contract_lock.name == "if")
             .map(|node| node.node_instance_id.clone())
     });
+    let merge_node = completed.merge.as_ref().map(|merge| merge.node_instance_id.clone()).or_else(|| {
+        plan.nodes
+            .iter()
+            .find(|node| node.contract_lock.name == "merge")
+            .map(|node| node.node_instance_id.clone())
+    });
     let has_transform = transform_node.is_some();
     let has_branch = branch_node.is_some();
+    let has_merge = merge_node.is_some();
     let cancel_won = current.durable.state == "cancel_requested" || completed.cancelled;
     let state = if cancel_won {
         "cancelled"
@@ -1601,10 +1612,16 @@ fn complete_generated_transaction(
         .as_ref()
         .and_then(|failure| failure["code"].as_str())
         .is_some_and(|code| code.starts_with("canopy.if"));
+    let merge_failed = failure
+        .as_ref()
+        .and_then(|failure| failure["code"].as_str())
+        .is_some_and(|code| code.starts_with("canopy.merge"));
     let transform_should_commit =
         has_transform && (state == "succeeded" || state == "cancelled" || transform_failed);
     let branch_should_commit =
         has_branch && (state == "succeeded" || state == "cancelled" || branch_failed);
+    let merge_should_commit =
+        has_merge && (state == "succeeded" || state == "cancelled" || merge_failed);
     if state == "succeeded" && has_branch {
         if completed.branch_node_id.as_deref() != branch_node.as_deref()
             || completed
@@ -1617,12 +1634,26 @@ fn complete_generated_transaction(
             ));
         }
     }
-    let branch_order = if transform_should_commit {
-        4_u64
-    } else {
-        3_u64
-    };
-    let final_order = if branch_should_commit {
+    if state == "succeeded" && has_merge {
+        let Some(merge) = completed.merge.as_ref() else {
+            return Err(RunError::Integrity(
+                "successful Merge execution has no reducer evidence".into(),
+            ));
+        };
+        if merge.node_instance_id != merge_node.as_deref().unwrap_or_default()
+            || merge.output_count != completed.generated_count
+            || merge.true_count.saturating_add(merge.false_count) != merge.output_count
+        {
+            return Err(RunError::Integrity(
+                "successful Merge execution does not cover every routed item".into(),
+            ));
+        }
+    }
+    let branch_order = if transform_should_commit { 4_u64 } else { 3_u64 };
+    let merge_order = branch_order + 1;
+    let final_order = if merge_should_commit {
+        merge_order
+    } else if branch_should_commit {
         branch_order
     } else if transform_should_commit {
         3_u64
@@ -1630,7 +1661,7 @@ fn complete_generated_transaction(
         2_u64
     };
     let correctness_digest = if state == "succeeded" {
-        if has_transform || has_branch {
+        if has_transform || has_branch || has_merge {
             let mut logical_outcomes = vec![
                 json!({
                     "logical_order":1,
@@ -1675,6 +1706,23 @@ fn complete_generated_transaction(
                     "item_linking":"one_to_one"
                 }));
             }
+            if let (Some(merge_node), Some(merge)) = (merge_node.as_ref(), completed.merge.as_ref()) {
+                logical_outcomes.push(json!({
+                    "logical_order":merge_order,
+                    "node_instance_id":merge_node,
+                    "outcome":"success",
+                    "input_ports":["true","false"],
+                    "output_port":"items",
+                    "mode":merge.mode,
+                    "true_count":merge.true_count,
+                    "false_count":merge.false_count,
+                    "output_count":merge.output_count,
+                    "logical_bytes":merge.logical_bytes,
+                    "stream_digest":merge.stream_digest,
+                    "spooling":"artifact-backed-segments",
+                    "item_linking":"one_to_one"
+                }));
+            }
             digest(&json!({
                 "schema":"canopy.correctness-digest/v1alpha2",
                 "revision_digest":current.revision_digest,
@@ -1716,6 +1764,9 @@ fn complete_generated_transaction(
     let branch_activation = branch_node
         .as_ref()
         .map(|node| generated_activation_id(&completed.run_id, node, branch_order));
+    let merge_activation = merge_node
+        .as_ref()
+        .map(|node| generated_activation_id(&completed.run_id, node, merge_order));
     let manual_committed = current.durable.logical_order >= 1;
     if !manual_committed {
         insert_activation_row(
@@ -1842,6 +1893,35 @@ fn complete_generated_transaction(
         "output_ports":["true","false"],
         "item_linking":"one_to_one"
     });
+    let merge_outcome = if state == "succeeded" {
+        "success"
+    } else if state == "cancelled" {
+        "cancelled"
+    } else {
+        "permanent_failure"
+    };
+    let merge_input = json!({
+        "source_node_instance_id":branch_node,
+        "source_output_ports":["true","false"],
+        "true_count":completed.branch_true_count,
+        "false_count":completed.branch_false_count,
+        "closed_before_reduce":true
+    });
+    let merge_output = completed.merge.as_ref().map(|merge| {
+        json!({
+            "mode":merge.mode,
+            "true_count":merge.true_count,
+            "false_count":merge.false_count,
+            "output_count":merge.output_count,
+            "logical_bytes":merge.logical_bytes,
+            "stream_digest":merge.stream_digest,
+            "physical_spool_bytes":merge.physical_spool_bytes,
+            "true_segments":merge.true_segments,
+            "false_segments":merge.false_segments,
+            "output_segments":merge.output_segments,
+            "item_linking":"one_to_one"
+        })
+    });
     if branch_should_commit {
         let branch_node = branch_node
             .as_ref()
@@ -1869,6 +1949,45 @@ fn complete_generated_transaction(
                 completed_at: completed.completed_at,
                 elapsed_micros: completed.elapsed_micros,
                 provenance: json!({"engine_abi":if_node::IF_ABI,"lane":"native-cpu","effect_class":"pure","input_link":if transform_should_commit { "edit-fields.item" } else { "generate.items" },"output_ports":["true","false"],"item_linking":"one_to_one"}),
+            },
+        )?;
+    }
+    if merge_should_commit {
+        let merge_node = merge_node
+            .as_ref()
+            .ok_or_else(|| RunError::Integrity("Merge activation has no node".into()))?;
+        let merge_activation = merge_activation
+            .as_ref()
+            .ok_or_else(|| RunError::Integrity("Merge activation has no identity".into()))?;
+        insert_activation_row(
+            &transaction,
+            ActivationInsert {
+                activation_id: merge_activation,
+                run_id: &completed.run_id,
+                node_id: merge_node,
+                logical_order: merge_order,
+                outcome: merge_outcome,
+                input: &merge_input,
+                output: if state == "succeeded" {
+                    merge_output.as_ref()
+                } else {
+                    None
+                },
+                failure: if merge_failed { failure.as_ref() } else { None },
+                checkpoint,
+                started_at: completed.started_at,
+                completed_at: completed.completed_at,
+                elapsed_micros: completed.elapsed_micros,
+                provenance: json!({
+                    "engine_abi":merge::MERGE_ABI,
+                    "lane":"native-cpu",
+                    "effect_class":"pure",
+                    "activation_shape":"barrier_reducer",
+                    "input_ports":["true","false"],
+                    "output_port":"items",
+                    "spooling":"artifact-backed-segments",
+                    "item_linking":"one_to_one"
+                }),
             },
         )?;
     }
@@ -1977,6 +2096,46 @@ fn complete_generated_transaction(
         previous = branch_event.event_hash;
         sequence += 1;
     }
+    if merge_should_commit {
+        let merge_node = merge_node
+            .as_ref()
+            .ok_or_else(|| RunError::Integrity("Merge trace has no node".into()))?;
+        let merge_activation = merge_activation
+            .as_ref()
+            .ok_or_else(|| RunError::Integrity("Merge trace has no identity".into()))?;
+        let merge_event = make_trace_event(
+            &completed.run_id,
+            sequence,
+            Some(merge_order),
+            checkpoint,
+            "logical",
+            "activation_outcome",
+            json!({
+                "activation_id":merge_activation,
+                "node_instance_id":merge_node,
+                "attempt":1,
+                "outcome":merge_outcome,
+                "input_ports":["true","false"],
+                "output_port":"items",
+                "mode":completed.merge.as_ref().map(|merge| merge.mode.clone()).unwrap_or_else(|| "true_then_false".into()),
+                "true_count":completed.merge.as_ref().map_or(0, |merge| merge.true_count),
+                "false_count":completed.merge.as_ref().map_or(0, |merge| merge.false_count),
+                "output_count":completed.merge.as_ref().map_or(0, |merge| merge.output_count),
+                "logical_bytes":completed.merge.as_ref().map_or(0, |merge| merge.logical_bytes),
+                "stream_digest":completed.merge.as_ref().map_or_else(|| "genesis".into(), |merge| merge.stream_digest.clone()),
+                "physical_spool_bytes":completed.merge.as_ref().map_or(0, |merge| merge.physical_spool_bytes),
+                "spooling":"artifact-backed-segments",
+                "failure":if merge_failed { failure.clone() } else { None::<Value> },
+                "input_digest":digest(&merge_input).map_err(RunError::Integrity)?,
+                "output_digest":merge_output.as_ref().map(digest).transpose().map_err(RunError::Integrity)?
+            }),
+            &previous,
+            committed_at,
+        )?;
+        insert_trace_event(&transaction, &merge_event)?;
+        previous = merge_event.event_hash;
+        sequence += 1;
+    }
     let checkpoint_event = make_trace_event(
         &completed.run_id,
         sequence,
@@ -1990,6 +2149,7 @@ fn complete_generated_transaction(
             "transformed_logical_bytes":completed.transformed_logical_bytes,"transformed_stream_digest":completed.transformed_stream_digest,
             "branch_node_id":branch_node,"branch_true_count":completed.branch_true_count,"branch_false_count":completed.branch_false_count,
             "branch_stream_digest":completed.branch_stream_digest,
+            "merge_node_id":merge_node,"merge":completed.merge,
             "correctness_digest":correctness_digest,"backpressure_micros":completed.backpressure_micros,
             "safe_resources":safe_resource_facts()
         }),
@@ -2001,10 +2161,15 @@ fn complete_generated_transaction(
     let (succeeded, cancelled, failed) = match state {
         "succeeded" => (attempted, 0, 0),
         "cancelled" => (1, attempted.saturating_sub(1), 0),
-        _ if transform_failed || branch_failed => (attempted.saturating_sub(1), 0, 1),
+        _ if transform_failed || branch_failed || merge_failed => (attempted.saturating_sub(1), 0, 1),
         _ => (1, 0, 1),
     };
-    let output_count = if has_transform {
+    let output_count = if has_merge {
+        completed
+            .merge
+            .as_ref()
+            .map_or(completed.generated_count, |merge| merge.output_count)
+    } else if has_transform {
         completed.transformed_count
     } else {
         completed.generated_count
@@ -2034,11 +2199,16 @@ fn complete_generated_transaction(
         .as_ref()
         .map(canonical_text)
         .transpose()?;
+    let merge_json = completed
+        .merge
+        .as_ref()
+        .map(canonical_text)
+        .transpose()?;
     transaction.execute(
-        "INSERT INTO run_generation_progress(run_id,state,generated_count,logical_bytes,stream_digest,backpressure_events,backpressure_micros,artifact_json,transform_node_id,transformed_count,transformed_logical_bytes,transformed_stream_digest,branch_node_id,branch_true_count,branch_false_count,branch_stream_digest,updated_at)
-         VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17)
-         ON CONFLICT(run_id) DO UPDATE SET state=excluded.state,generated_count=excluded.generated_count,logical_bytes=excluded.logical_bytes,stream_digest=excluded.stream_digest,backpressure_events=excluded.backpressure_events,backpressure_micros=excluded.backpressure_micros,artifact_json=excluded.artifact_json,transform_node_id=excluded.transform_node_id,transformed_count=excluded.transformed_count,transformed_logical_bytes=excluded.transformed_logical_bytes,transformed_stream_digest=excluded.transformed_stream_digest,branch_node_id=excluded.branch_node_id,branch_true_count=excluded.branch_true_count,branch_false_count=excluded.branch_false_count,branch_stream_digest=excluded.branch_stream_digest,updated_at=excluded.updated_at",
-        params![completed.run_id,state,completed.generated_count as i64,completed.logical_bytes as i64,completed.stream_digest,completed.backpressure_events as i64,completed.backpressure_micros as i64,artifact_json,transform_node,completed.transformed_count as i64,completed.transformed_logical_bytes as i64,completed.transformed_stream_digest,completed.branch_node_id,completed.branch_true_count as i64,completed.branch_false_count as i64,completed.branch_stream_digest,committed_at]
+        "INSERT INTO run_generation_progress(run_id,state,generated_count,logical_bytes,stream_digest,backpressure_events,backpressure_micros,artifact_json,transform_node_id,transformed_count,transformed_logical_bytes,transformed_stream_digest,branch_node_id,branch_true_count,branch_false_count,branch_stream_digest,merge_json,updated_at)
+         VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18)
+         ON CONFLICT(run_id) DO UPDATE SET state=excluded.state,generated_count=excluded.generated_count,logical_bytes=excluded.logical_bytes,stream_digest=excluded.stream_digest,backpressure_events=excluded.backpressure_events,backpressure_micros=excluded.backpressure_micros,artifact_json=excluded.artifact_json,transform_node_id=excluded.transform_node_id,transformed_count=excluded.transformed_count,transformed_logical_bytes=excluded.transformed_logical_bytes,transformed_stream_digest=excluded.transformed_stream_digest,branch_node_id=excluded.branch_node_id,branch_true_count=excluded.branch_true_count,branch_false_count=excluded.branch_false_count,branch_stream_digest=excluded.branch_stream_digest,merge_json=excluded.merge_json,updated_at=excluded.updated_at",
+        params![completed.run_id,state,completed.generated_count as i64,completed.logical_bytes as i64,completed.stream_digest,completed.backpressure_events as i64,completed.backpressure_micros as i64,artifact_json,transform_node,completed.transformed_count as i64,completed.transformed_logical_bytes as i64,completed.transformed_stream_digest,completed.branch_node_id,completed.branch_true_count as i64,completed.branch_false_count as i64,completed.branch_stream_digest,merge_json,committed_at]
     ).map_err(storage_error)?;
     transaction.execute(
         "UPDATE runs SET state=?2,checkpoint_sequence=?3,logical_order=?4,attempted=?5,succeeded=?6,cancelled=?7,failed=?8,output_count=?9,correctness_digest=?10,digest_complete=?11,trace_head_hash=?12,started_at=COALESCE(started_at,?13),updated_at=?14,terminal_at=?14 WHERE run_id=?1 AND state IN ('queued','cancel_requested')",
@@ -3149,7 +3319,8 @@ fn start_executor(
                 let merge_artifacts = artifacts.clone();
                 let edit_fields_candidate = candidate.edit_fields;
                 let if_candidate = candidate.if_node;
-                let (generation_plan, edit_fields_definition, if_definition, merge_definition) =
+                let merge_candidate = candidate.merge;
+                let (generation_plan, edit_fields_definition, if_definition, plan_merge_definition) =
                     match generation_plan_and_transform(&candidate.plan) {
                         Ok(value) => value,
                         Err(error) => {
@@ -3189,6 +3360,9 @@ fn start_executor(
                             continue;
                         }
                     };
+                let merge_definition = merge_candidate
+                    .map(|candidate| (candidate.node_id, candidate.configuration))
+                    .or(plan_merge_definition);
                 let (transform_node_id, transform_configuration) = match edit_fields_definition {
                     Some((node_id, configuration)) => {
                         let compiled = match edit_fields::compile_configuration(&configuration) {
@@ -4276,7 +4450,7 @@ fn load_generation_progress(
 ) -> Result<Option<GenerationProgress>, RunError> {
     connection
         .query_row(
-            "SELECT state,generated_count,logical_bytes,stream_digest,backpressure_events,artifact_json,transform_node_id,transformed_count,transformed_logical_bytes,transformed_stream_digest,branch_node_id,branch_true_count,branch_false_count,branch_stream_digest FROM run_generation_progress WHERE run_id=?1",
+            "SELECT state,generated_count,logical_bytes,stream_digest,backpressure_events,artifact_json,transform_node_id,transformed_count,transformed_logical_bytes,transformed_stream_digest,branch_node_id,branch_true_count,branch_false_count,branch_stream_digest,merge_json FROM run_generation_progress WHERE run_id=?1",
             params![run_id],
             |row| {
                 let artifact: Option<String> = row.get(5)?;
@@ -4288,6 +4462,7 @@ fn load_generation_progress(
                 let branch_true_count: u64 = row.get::<_, i64>(11)? as u64;
                 let branch_false_count: u64 = row.get::<_, i64>(12)? as u64;
                 let branch_stream_digest: String = row.get(13)?;
+                let merge: Option<String> = row.get(14)?;
                 Ok(GenerationProgress {
                     state: row.get(0)?,
                     generated_count: row.get::<_, i64>(1)? as u64,
@@ -4309,6 +4484,20 @@ fn load_generation_progress(
                         false_count: branch_false_count,
                         stream_digest: branch_stream_digest,
                     }),
+                    merge: merge
+                        .as_deref()
+                        .map(parse_sql_json)
+                        .transpose()?
+                        .map(|value| {
+                            serde_json::from_value(value).map_err(|error| {
+                                rusqlite::Error::FromSqlConversionFailure(
+                                    14,
+                                    rusqlite::types::Type::Text,
+                                    Box::new(error),
+                                )
+                            })
+                        })
+                        .transpose()?,
                 })
             },
         )
