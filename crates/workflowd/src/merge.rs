@@ -174,7 +174,9 @@ impl Reducer {
         let ordinal = usize::try_from(record.ordinal)
             .map_err(|_| MergeError::input("Merge record ordinal is not representable"))?;
         if ordinal >= MAX_MERGE_ITEMS as usize {
-            return Err(MergeError::input("Merge record ordinal exceeds the bounded input"));
+            return Err(MergeError::input(
+                "Merge record ordinal exceeds the bounded input",
+            ));
         }
         let word = ordinal / 64;
         let bit = 1_u64 << (ordinal % 64);
@@ -231,8 +233,9 @@ impl Reducer {
 }
 
 pub fn compile_configuration(value: &Value) -> Result<CompiledConfiguration, MergeError> {
-    let configuration: Configuration = serde_json::from_value(value.clone())
-        .map_err(|error| MergeError::configuration(format!("invalid Merge configuration: {error}")))?;
+    let configuration: Configuration = serde_json::from_value(value.clone()).map_err(|error| {
+        MergeError::configuration(format!("invalid Merge configuration: {error}"))
+    })?;
     if configuration.mode != MERGE_MODE_TRUE_THEN_FALSE {
         return Err(MergeError::configuration(
             "only true_then_false Merge ordering is supported",
@@ -280,7 +283,10 @@ mod tests {
                 },
             )
             .unwrap();
-        assert_eq!(output, [("true", 0), ("true", 2), ("false", 1), ("false", 3)]);
+        assert_eq!(
+            output,
+            [("true", 0), ("true", 2), ("false", 1), ("false", 3)]
+        );
         assert_eq!(summary.true_count, 2);
         assert_eq!(summary.false_count, 2);
         assert_eq!(summary.output_count, 4);
