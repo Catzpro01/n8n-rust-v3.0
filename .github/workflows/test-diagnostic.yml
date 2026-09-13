@@ -24,14 +24,23 @@ jobs:
       - name: Build editor assets
         working-directory: editor
         run: npm ci && npm run build
-      - name: Capture test failure
+      - name: Capture Rust and public acceptance failures
         run: |
           set +e
           cargo test --workspace --locked -- --test-threads=1 2>&1 | tee .scratch/remote-test.log
-          status=${PIPESTATUS[0]}
+          rust_status=${PIPESTATUS[0]}
+          cargo build -p workflowd --locked
+          build_status=$?
+          if [ "$build_status" -eq 0 ]; then
+            python3 -m unittest tests.acceptance.test_if_runtime -v 2>&1 | tee .scratch/remote-merge-acceptance.log
+            acceptance_status=${PIPESTATUS[0]}
+          else
+            acceptance_status=$build_status
+          fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add .scratch/remote-test.log
-          git commit -m "chore: capture remote Merge test diagnostic"
+          git add .scratch/remote-test.log .scratch/remote-merge-acceptance.log
+          git commit -m "chore: capture remote Merge acceptance diagnostic [skip ci]"
           git push origin HEAD:${GITHUB_REF_NAME}
-          exit "$status"
+          if [ "$rust_status" -ne 0 ]; then exit "$rust_status"; fi
+          exit "$acceptance_status"
