@@ -11,6 +11,7 @@ use crate::{
         GeneratedEnvelope,
     },
     if_node,
+    merge,
     run_engine::{self, ActivationOutcome, ManualActivationInput, ManualActivationResult},
 };
 use rand_core::{OsRng, RngCore};
@@ -180,6 +181,21 @@ pub struct BranchProgress {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct MergeProgress {
+    pub node_instance_id: String,
+    pub mode: String,
+    pub true_count: u64,
+    pub false_count: u64,
+    pub output_count: u64,
+    pub logical_bytes: u64,
+    pub stream_digest: String,
+    pub physical_spool_bytes: u64,
+    pub true_segments: Vec<ArtifactReference>,
+    pub false_segments: Vec<ArtifactReference>,
+    pub output_segments: Vec<ArtifactReference>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct QueueProfileView {
     pub profile: String,
     pub maximum_nonterminal_runs: usize,
@@ -335,7 +351,12 @@ impl RunService {
         let (envelope_sender, envelope_receiver) = mpsc::sync_channel(ENVELOPE_BATCH_SLOTS);
         let (wake_sender, wake_receiver) = mpsc::sync_channel(1);
 
-        let executor_thread = start_executor(ready_receiver, result_sender, envelope_sender)?;
+        let executor_thread = start_executor(
+            ready_receiver,
+            result_sender,
+            envelope_sender,
+            artifacts.clone(),
+        )?;
         let scheduler_thread = start_scheduler(SchedulerContext {
             database: database.clone(),
             writer: writer.clone(),
@@ -2379,6 +2400,7 @@ struct Candidate {
     generate_resume: Option<GenerateResume>,
     edit_fields: Option<EditFieldsCandidate>,
     if_node: Option<IfCandidate>,
+    merge: Option<MergeCandidate>,
     logical_data_override: Option<Value>,
     artifact: Option<ArtifactReference>,
 }
@@ -2397,6 +2419,11 @@ struct IfCandidate {
     true_count: u64,
     false_count: u64,
     stream_digest: String,
+}
+
+struct MergeCandidate {
+    node_id: String,
+    configuration: Value,
 }
 
 struct QueuedWork {
@@ -2491,6 +2518,7 @@ struct CompletedGeneratedWork {
     branch_true_count: u64,
     branch_false_count: u64,
     branch_stream_digest: String,
+    merge: Option<MergeProgress>,
     artifact: Option<ArtifactReference>,
     cancelled: bool,
     started_at: i64,
@@ -2532,6 +2560,7 @@ fn generation_plan_and_transform(
         ExecutionPlan,
         Option<(String, Value)>,
         Option<(String, Value)>,
+        Option<(String, Value)>,
     ),
     GenerateFailure,
 > {
@@ -2554,6 +2583,11 @@ fn generation_plan_and_transform(
         .nodes
         .iter()
         .find(|node| node.contract_lock.name == "if")
+        .cloned();
+    let merge_node = plan
+        .nodes
+        .iter()
+        .find(|node| node.contract_lock.name == "merge")
         .cloned();
     let Some(manual) = manual else {
         return Err(generate_failure(
@@ -2613,14 +2647,40 @@ fn generation_plan_and_transform(
                 && dependency.target_port_id == "input"
         })
     });
-    let expected_nodes = 2 + usize::from(edit.is_some()) + usize::from(if_node.is_some());
-    let expected_edges = expected_nodes - 1;
+    let merge_is_valid = merge_node.as_ref().is_none_or(|node| {
+        node.contract_lock.namespace == "canopy.native"
+            && node.contract_lock.api_version == "v1alpha1"
+            && node.contract_lock.name == "merge"
+            && node.capabilities.is_empty()
+            && node.effects["class"] == "pure"
+            && node.effects["deterministic"] == true
+    });
+    let has_if_to_merge = merge_node.as_ref().is_none_or(|merge| {
+        let Some(if_node) = if_node.as_ref() else {
+            return false;
+        };
+        ["true", "false"].into_iter().all(|port| {
+            plan.scheduling_dependencies.iter().any(|dependency| {
+                dependency.source_node_id == if_node.node_instance_id
+                    && dependency.source_port_id == port
+                    && dependency.target_node_id == merge.node_instance_id
+                    && dependency.target_port_id == port
+            })
+        })
+    });
+    let expected_nodes = 2
+        + usize::from(edit.is_some())
+        + usize::from(if_node.is_some())
+        + usize::from(merge_node.is_some());
+    let expected_edges = expected_nodes - 1 + usize::from(merge_node.is_some());
     if plan.nodes.len() != expected_nodes
         || plan.scheduling_dependencies.len() != expected_edges
         || !edit_is_valid
         || !if_is_valid
+        || !merge_is_valid
         || !has_generate_to_edit
         || !has_generate_to_if
+        || !has_if_to_merge
     {
         return Err(generate_failure(
             "canopy.generate-items.invalid_pinned_plan",
@@ -2647,6 +2707,7 @@ fn generation_plan_and_transform(
         generation_plan,
         edit.map(|node| (node.node_instance_id, node.configuration)),
         if_node.map(|node| (node.node_instance_id, node.configuration)),
+        merge_node.map(|node| (node.node_instance_id, node.configuration)),
     ))
 }
 
@@ -2770,10 +2831,278 @@ fn apply_edit_fields_batch(
     })
 }
 
+struct MergeSpool {
+    artifacts: Arc<ArtifactService>,
+    run_id: String,
+    node_id: String,
+    port_id: &'static str,
+    reference_kind: &'static str,
+    next_segment: u32,
+    active: Option<crate::artifact::UploadLease>,
+    active_count: u64,
+    active_bytes: u64,
+    references: Vec<ArtifactReference>,
+    physical_bytes: u64,
+}
+
+impl MergeSpool {
+    fn new(
+        artifacts: Arc<ArtifactService>,
+        run_id: &str,
+        node_id: &str,
+        port_id: &'static str,
+        reference_kind: &'static str,
+    ) -> Self {
+        Self {
+            artifacts,
+            run_id: run_id.into(),
+            node_id: node_id.into(),
+            port_id,
+            reference_kind,
+            next_segment: 0,
+            active: None,
+            active_count: 0,
+            active_bytes: 0,
+            references: Vec::new(),
+            physical_bytes: 0,
+        }
+    }
+
+    fn append(&mut self, record: &merge::MergeRecord) -> Result<(), merge::MergeError> {
+        let mut line = serde_jcs::to_vec(record).map_err(|error| {
+            merge::MergeError {
+                code: "canopy.merge.canonicalization".into(),
+                message: error.to_string(),
+            }
+        })?;
+        line.push(b'\\n');
+        if line.len() > generate_engine::MICRO_BATCH_BYTES {
+            return Err(merge::MergeError {
+                code: "canopy.merge.record_too_large".into(),
+                message: "One Merge record exceeds the bounded spool record size".into(),
+            });
+        }
+        if self.active.is_none() {
+            self.begin_segment()?;
+        }
+        if let Some(lease) = self.active.as_mut() {
+            match self.artifacts.append_upload(lease, &line) {
+                Ok(()) => {
+                    self.active_count += 1;
+                    self.active_bytes = self.active_bytes.saturating_add(line.len() as u64);
+                    self.physical_bytes = self.physical_bytes.saturating_add(line.len() as u64);
+                    return Ok(());
+                }
+                Err(ArtifactError::TooLarge) if self.active_count > 0 => {
+                    self.finish_segment()?;
+                }
+                Err(error) => return Err(merge_artifact_error(error)),
+            }
+        }
+        self.begin_segment()?;
+        let lease = self.active.as_mut().ok_or_else(|| merge::MergeError {
+            code: "canopy.merge.spool_storage".into(),
+            message: "Merge spool did not open an Artifact lease".into(),
+        })?;
+        self.artifacts
+            .append_upload(lease, &line)
+            .map_err(merge_artifact_error)?;
+        self.active_count = 1;
+        self.active_bytes = line.len() as u64;
+        self.physical_bytes = self.physical_bytes.saturating_add(line.len() as u64);
+        Ok(())
+    }
+
+    fn begin_segment(&mut self) -> Result<(), merge::MergeError> {
+        if self.active.is_some() {
+            return Ok(());
+        }
+        let lease = self
+            .artifacts
+            .begin_upload()
+            .map_err(merge_artifact_error)?;
+        self.active = Some(lease);
+        self.active_count = 0;
+        self.active_bytes = 0;
+        Ok(())
+    }
+
+    fn finish_segment(&mut self) -> Result<(), merge::MergeError> {
+        let Some(lease) = self.active.take() else {
+            return Ok(());
+        };
+        if self.active_count == 0 {
+            self.artifacts.abandon_upload(lease);
+            return Ok(());
+        }
+        let reference_id = format!(
+            "run:{}:merge:{}:{}:segment:{}",
+            self.run_id, self.node_id, self.port_id, self.next_segment
+        );
+        let view = self
+            .artifacts
+            .finalize_upload(
+                lease,
+                "application/x-ndjson",
+                &reference_id,
+                self.reference_kind,
+                self.active_count,
+            )
+            .map_err(merge_artifact_error)?;
+        self.references.push(view.reference);
+        self.next_segment = self.next_segment.saturating_add(1);
+        self.active_count = 0;
+        self.active_bytes = 0;
+        Ok(())
+    }
+
+    fn finish(&mut self) -> Result<(), merge::MergeError> {
+        self.finish_segment()
+    }
+
+    fn abandon(&mut self) {
+        if let Some(lease) = self.active.take() {
+            self.artifacts.abandon_upload(lease);
+        }
+        self.active_count = 0;
+        self.active_bytes = 0;
+    }
+
+    fn references(&self) -> Vec<ArtifactReference> {
+        self.references.clone()
+    }
+}
+
+fn merge_artifact_error(error: ArtifactError) -> merge::MergeError {
+    let code = match error {
+        ArtifactError::Storage(_) => "canopy.merge.spool_storage",
+        ArtifactError::TooLarge => "canopy.merge.spool_limit",
+        ArtifactError::Integrity(_) => "canopy.merge.spool_integrity",
+        ArtifactError::NotAuthorized => "canopy.merge.spool_unauthorized",
+        ArtifactError::Invalid(_) => "canopy.merge.spool_invalid",
+    };
+    merge::MergeError {
+        code: code.into(),
+        message: error.to_string(),
+    }
+}
+
+struct MergeArtifactIterator {
+    artifacts: Arc<ArtifactService>,
+    references: Vec<ArtifactReference>,
+    next_reference: usize,
+    stream: Option<crate::artifact::ArtifactContentStream>,
+    buffer: Vec<u8>,
+    finished: bool,
+}
+
+impl MergeArtifactIterator {
+    fn new(artifacts: Arc<ArtifactService>, references: Vec<ArtifactReference>) -> Self {
+        Self {
+            artifacts,
+            references,
+            next_reference: 0,
+            stream: None,
+            buffer: Vec::new(),
+            finished: false,
+        }
+    }
+
+    fn error(error: impl Into<String>) -> merge::MergeError {
+        merge::MergeError {
+            code: "canopy.merge.spool_read".into(),
+            message: error.into(),
+        }
+    }
+}
+
+impl Iterator for MergeArtifactIterator {
+    type Item = Result<merge::MergeRecord, merge::MergeError>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.finished {
+            return None;
+        }
+        loop {
+            if let Some(newline) = self.buffer.iter().position(|byte| *byte == b'\\n') {
+                let line: Vec<u8> = self.buffer.drain(..=newline).collect();
+                let line = &line[..line.len().saturating_sub(1)];
+                return Some(
+                    serde_json::from_slice::<Value>(line)
+                        .map_err(|error| Self::error(format!("Merge record JSON is invalid: {error}")))
+                        .and_then(merge::record_from_value),
+                );
+            }
+            if self.buffer.len() > generate_engine::MICRO_BATCH_BYTES {
+                self.finished = true;
+                return Some(Err(Self::error(
+                    "Merge spool record exceeded the bounded read buffer",
+                )));
+            }
+            if self.stream.is_none() {
+                if self.next_reference >= self.references.len() {
+                    self.finished = true;
+                    if self.buffer.is_empty() {
+                        return None;
+                    }
+                    let line = std::mem::take(&mut self.buffer);
+                    return Some(
+                        serde_json::from_slice::<Value>(&line)
+                            .map_err(|error| Self::error(format!("Merge final record JSON is invalid: {error}")))
+                            .and_then(merge::record_from_value),
+                    );
+                }
+                let reference = &self.references[self.next_reference];
+                self.next_reference += 1;
+                match self.artifacts.stream_content(&reference.artifact_id) {
+                    Ok((_, stream)) => self.stream = Some(stream),
+                    Err(error) => {
+                        self.finished = true;
+                        return Some(Err(merge_artifact_error(error)));
+                    }
+                }
+            }
+            let stream = self.stream.as_mut().expect("Merge stream exists");
+            match stream.next_chunk() {
+                Ok(Some(chunk)) => self.buffer.extend_from_slice(&chunk),
+                Ok(None) => self.stream = None,
+                Err(error) => {
+                    self.finished = true;
+                    return Some(Err(merge_artifact_error(error)));
+                }
+            }
+        }
+    }
+}
+
+fn build_merge_progress(
+    node_id: &str,
+    summary: &merge::MergeSummary,
+    physical_spool_bytes: u64,
+    true_segments: Vec<ArtifactReference>,
+    false_segments: Vec<ArtifactReference>,
+    output_segments: Vec<ArtifactReference>,
+) -> MergeProgress {
+    MergeProgress {
+        node_instance_id: node_id.into(),
+        mode: summary.mode.clone(),
+        true_count: summary.true_count,
+        false_count: summary.false_count,
+        output_count: summary.output_count,
+        logical_bytes: summary.logical_bytes,
+        stream_digest: summary.stream_digest.clone(),
+        physical_spool_bytes,
+        true_segments,
+        false_segments,
+        output_segments,
+    }
+}
+
 fn start_executor(
     ready: Receiver<QueuedWork>,
     results: SyncSender<ExecutorTerminal>,
     envelopes: SyncSender<GeneratedBatchEvent>,
+    artifacts: Arc<ArtifactService>,
 ) -> Result<JoinHandle<()>, String> {
     thread::Builder::new()
         .name("workflowd-native-executor".into())
@@ -2817,9 +3146,10 @@ fn start_executor(
                 let run_id = candidate.run_id.clone();
                 let input = candidate.captured_invocation.clone();
                 let artifact = candidate.artifact.clone();
+                let merge_artifacts = artifacts.clone();
                 let edit_fields_candidate = candidate.edit_fields;
                 let if_candidate = candidate.if_node;
-                let (generation_plan, edit_fields_definition, if_definition) =
+                let (generation_plan, edit_fields_definition, if_definition, merge_definition) =
                     match generation_plan_and_transform(&candidate.plan) {
                         Ok(value) => value,
                         Err(error) => {
@@ -2842,6 +3172,7 @@ fn start_executor(
                                     branch_true_count: 0,
                                     branch_false_count: 0,
                                     branch_stream_digest: "genesis".into(),
+                                    merge: None,
                                     artifact,
                                     cancelled: false,
                                     started_at,
@@ -2885,6 +3216,7 @@ fn start_executor(
                                         branch_true_count: 0,
                                         branch_false_count: 0,
                                         branch_stream_digest: "genesis".into(),
+                                        merge: None,
                                         artifact,
                                         cancelled: false,
                                         started_at,
@@ -2910,6 +3242,16 @@ fn start_executor(
                         Some(node_id),
                         Some(
                             if_node::compile_configuration(&configuration)
+                                .map_err(|error| generate_failure(&error.code, &error.message)),
+                        ),
+                    ),
+                    None => (None, None),
+                };
+                let (merge_node_id, merge_configuration) = match merge_definition {
+                    Some((node_id, configuration)) => (
+                        Some(node_id),
+                        Some(
+                            merge::compile_configuration(&configuration)
                                 .map_err(|error| generate_failure(&error.code, &error.message)),
                         ),
                     ),
@@ -2945,10 +3287,42 @@ fn start_executor(
                     .artifact
                     .as_ref()
                     .map(|reference| json!({"$artifact": reference}));
+                let mut merge_true_spool = merge_node_id.as_ref().map(|node_id| {
+                    MergeSpool::new(
+                        merge_artifacts.clone(),
+                        &run_id,
+                        node_id,
+                        "true",
+                        "run_merge_true_segment",
+                    )
+                });
+                let mut merge_false_spool = merge_node_id.as_ref().map(|node_id| {
+                    MergeSpool::new(
+                        merge_artifacts.clone(),
+                        &run_id,
+                        node_id,
+                        "false",
+                        "run_merge_false_segment",
+                    )
+                });
+                let mut merge_output_spool = merge_node_id.as_ref().map(|node_id| {
+                    MergeSpool::new(
+                        merge_artifacts.clone(),
+                        &run_id,
+                        node_id,
+                        "output",
+                        "run_merge_output_segment",
+                    )
+                });
                 let branch_configuration_error = branch_configuration
                     .as_ref()
                     .and_then(|configuration| configuration.as_ref().err().cloned());
-                let summary = match branch_configuration_error {
+                let merge_configuration_error = merge_configuration
+                    .as_ref()
+                    .and_then(|configuration| configuration.as_ref().err().cloned());
+                let configuration_error = branch_configuration_error.or(merge_configuration_error);
+                let mut merge_progress = None;
+                let mut summary = match configuration_error {
                     Some(error) => Err(error),
                     None => match GenerateSession::start(GenerateStart {
                         run_id: candidate.run_id,
@@ -3017,6 +3391,54 @@ fn start_executor(
                                     branch_false_count =
                                         branch_false_count.saturating_add(branch.false_count);
                                     branch_stream_digest = branch.stream_digest;
+                                    if merge_node_id.is_some() {
+                                        let spool_result: Result<(), GenerateFailure> = (|| {
+                                            for envelope in &batch {
+                                                let port = envelope
+                                                    .provenance
+                                                    .get("if_output_port")
+                                                    .and_then(Value::as_str)
+                                                    .ok_or_else(|| generate_failure(
+                                                        "canopy.merge.missing_route_provenance",
+                                                        "Merge input item is missing the If output port.",
+                                                    ))?;
+                                                let record = merge::MergeRecord {
+                                                    ordinal: envelope.ordinal,
+                                                    item: envelope.item.clone(),
+                                                    logical_item: envelope.logical_item.clone(),
+                                                    logical_bytes: envelope.logical_bytes,
+                                                    provenance: envelope.provenance.clone(),
+                                                };
+                                                let result = match port {
+                                                    "true" => merge_true_spool
+                                                        .as_mut()
+                                                        .ok_or_else(|| generate_failure(
+                                                            "canopy.merge.invalid_runtime_topology",
+                                                            "Merge true input spool is unavailable.",
+                                                        ))?
+                                                        .append(&record),
+                                                    "false" => merge_false_spool
+                                                        .as_mut()
+                                                        .ok_or_else(|| generate_failure(
+                                                            "canopy.merge.invalid_runtime_topology",
+                                                            "Merge false input spool is unavailable.",
+                                                        ))?
+                                                        .append(&record),
+                                                    _ => Err(merge::MergeError {
+                                                        code: "canopy.merge.invalid_route_provenance".into(),
+                                                        message: "If emitted an unknown output port.".into(),
+                                                    }),
+                                                };
+                                                result.map_err(|error| {
+                                                    generate_failure(&error.code, &error.message)
+                                                })?;
+                                            }
+                                            Ok(())
+                                        })();
+                                        if let Err(error) = spool_result {
+                                            break Err(error);
+                                        }
+                                    }
                                     let sent = Instant::now();
                                     if envelopes
                                         .send(GeneratedBatchEvent {
@@ -3069,6 +3491,74 @@ fn start_executor(
                         Err(error) => Err(error),
                     },
                 };
+                if summary.is_ok() {
+                    let merge_result: Result<Option<MergeProgress>, GenerateFailure> = (|| {
+                        let (Some(node_id), Some(Ok(configuration)), Some(true_spool), Some(false_spool), Some(output_spool)) = (
+                            merge_node_id.as_deref(),
+                            merge_configuration.as_ref(),
+                            merge_true_spool.as_mut(),
+                            merge_false_spool.as_mut(),
+                            merge_output_spool.as_mut(),
+                        ) else {
+                            return Ok(None);
+                        };
+                        true_spool.finish().map_err(|error| {
+                            generate_failure(&error.code, &error.message)
+                        })?;
+                        false_spool.finish().map_err(|error| {
+                            generate_failure(&error.code, &error.message)
+                        })?;
+                        let true_segments = true_spool.references();
+                        let false_segments = false_spool.references();
+                        let true_reader = MergeArtifactIterator::new(
+                            merge_artifacts.clone(),
+                            true_segments.clone(),
+                        );
+                        let false_reader = MergeArtifactIterator::new(
+                            merge_artifacts.clone(),
+                            false_segments.clone(),
+                        );
+                        let summary = configuration
+                            .merge_ordered(true_reader, false_reader, |record, _port| {
+                                output_spool
+                                    .append(record)
+                                    .map_err(|error| merge::MergeError {
+                                        code: error.code,
+                                        message: error.message,
+                                    })
+                            })
+                            .map_err(|error| generate_failure(&error.code, &error.message))?;
+                        output_spool.finish().map_err(|error| {
+                            generate_failure(&error.code, &error.message)
+                        })?;
+                        Ok(Some(build_merge_progress(
+                            node_id,
+                            &summary,
+                            true_spool
+                                .physical_bytes
+                                .saturating_add(false_spool.physical_bytes)
+                                .saturating_add(output_spool.physical_bytes),
+                            true_segments,
+                            false_segments,
+                            output_spool.references(),
+                        )))
+                    })();
+                    match merge_result {
+                        Ok(progress) => merge_progress = progress,
+                        Err(error) => summary = Err(error),
+                    }
+                }
+                if summary.is_err() {
+                    if let Some(spool) = merge_true_spool.as_mut() {
+                        spool.abandon();
+                    }
+                    if let Some(spool) = merge_false_spool.as_mut() {
+                        spool.abandon();
+                    }
+                    if let Some(spool) = merge_output_spool.as_mut() {
+                        spool.abandon();
+                    }
+                }
                 let completed_at = now_millis();
                 let elapsed_micros = started.elapsed().as_micros().min(i64::MAX as u128) as u64;
                 if results
@@ -3087,6 +3577,7 @@ fn start_executor(
                         branch_true_count,
                         branch_false_count,
                         branch_stream_digest,
+                        merge: merge_progress,
                         artifact,
                         cancelled,
                         started_at,
@@ -3550,8 +4041,9 @@ fn next_candidate(
         let plan: ExecutionPlan = serde_json::from_str(&plan_json).map_err(|error| {
             RunError::Integrity(format!("queued pinned plan is invalid: {error}"))
         })?;
-        let (_, edit_fields_definition, if_definition) = generation_plan_and_transform(&plan)
-            .map_err(|error| RunError::Integrity(error.message))?;
+        let (_, edit_fields_definition, if_definition, merge_definition) =
+            generation_plan_and_transform(&plan)
+                .map_err(|error| RunError::Integrity(error.message))?;
         let stored_transform_node_id = row.get::<_, Option<String>>(10).map_err(storage_error)?;
         let transformed_count = row
             .get::<_, Option<i64>>(11)
@@ -3666,6 +4158,10 @@ fn next_candidate(
                 None
             }
         };
+        let merge = merge_definition.map(|(node_id, configuration)| MergeCandidate {
+            node_id,
+            configuration,
+        });
         return Ok(Some(Candidate {
             run_id,
             revision_id: row.get(1).map_err(storage_error)?,
@@ -3689,6 +4185,7 @@ fn next_candidate(
                 .transpose()?,
             edit_fields,
             if_node,
+            merge,
             logical_data_override: None,
             artifact,
         }));
