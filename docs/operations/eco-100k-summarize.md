@@ -22,8 +22,19 @@ Manual Trigger(invocation)
   Merge(items) -> Summarize(items)
 ```
 
-There is one node instance for each named node. Merge order is the declared
-`true_then_false` order, and Summarize has one `summary` output.
+There is one node instance for each named node. The compiler/publication gate
+requires exactly these six edges; a Draft with a swapped branch port, an extra
+edge, a duplicate edge, or a malformed endpoint is rejected before publication.
+Merge order is the declared `true_then_false` order, and Summarize has one
+`summary` output.
+
+Every routed item carries the typed
+`canopy.if-route-provenance/v1alpha1` fields `if_node_instance_id`,
+`if_input_digest`, `if_output_port`, and `if_condition_results`. Merge validates
+that the typed output port agrees with the input stream; Summarize consumes the
+same typed provenance rather than treating `if_output_port` as an untrusted
+string projection. Declared source and target port schemas are also checked by
+the compiler before a plan can be published.
 
 ## Frozen input and transform
 
@@ -100,7 +111,14 @@ The exact logical Activation equation is:
 Node-level Causal Trace records retain the bounded aggregate and causal range
 facts needed to locate item work without returning the merged collection to the
 browser. The summary record links back to the Merge output digest, branch
-counts, ordinal range, and the retained per-item provenance in the spool.
+counts, ordinal range, and the retained per-item provenance in the spool. The
+persisted summary and top-level Causal Trace expose the finalized Merge output
+`ArtifactReference` list directly, so an Owner can open a retained segment from
+the trace without guessing an ID or loading the merged stream.
 
 Repeated runs must preserve these counts, ordering, canonicalization facts,
-and Output Digest regardless of safe scheduler interleavings.
+and Output Digest regardless of safe scheduler interleavings. Run projections
+also expose aggregate wall-clock microseconds and, when the configured or
+self-discovered cgroup-v2 `cpu.stat` counter is readable, the corresponding CPU
+microsecond delta. An unavailable CPU counter is explicit rather than inferred
+from wall time.

@@ -55,6 +55,16 @@
         "true",
         "false"
       ],
+      "provenance_schema": {
+        "schema": "canopy.if-route-provenance/v1alpha1",
+        "required": [
+          "if_node_instance_id",
+          "if_input_digest",
+          "if_output_port",
+          "if_condition_results"
+        ],
+        "output_ports": ["true", "false"]
+      },
       "spooling": "artifact-backed-segments",
       "version": "canopy.merge/v1alpha1"
     }

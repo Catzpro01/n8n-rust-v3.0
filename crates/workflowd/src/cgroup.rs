@@ -38,6 +38,22 @@ pub fn discover(configured_directory: Option<&Path>) -> ResourceIdentity {
     }
 }
 
+/// Return the cgroup-v2 CPU usage counter in microseconds. The counter is
+/// sampled around one native run, so it is only exposed as a run measurement
+/// when the cgroup controller is readable.
+pub fn cpu_usage_micros(configured_directory: Option<&Path>) -> Option<u64> {
+    let directory = configured_directory
+        .map(Path::to_path_buf)
+        .or_else(|| self_cgroup_directory().map(|(directory, _)| directory))?;
+    let stat = read(&directory, "cpu.stat")?;
+    stat.lines().find_map(|line| {
+        let mut fields = line.split_whitespace();
+        (fields.next() == Some("usage_usec"))
+            .then(|| fields.next()?.parse::<u64>().ok())
+            .flatten()
+    })
+}
+
 fn self_cgroup_directory() -> Option<(PathBuf, String)> {
     let membership = fs::read_to_string("/proc/self/cgroup").ok()?;
     let relative = membership

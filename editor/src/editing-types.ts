@@ -72,6 +72,16 @@ export type ArtifactView = {
   chunk_count: number;
   integrity_verified: boolean;
 };
+export type RunTimingView = {
+  elapsed_wall_micros: number | null;
+  cpu_micros: number | null;
+  cpu_source: string;
+};
+export type RetainedCausalTraceLinks = {
+  source_merge_output_segments: ArtifactReference[];
+  retained_ordinal_range: [number | null, number | null];
+  retained_item_provenance?: string;
+};
 export type RunView = {
   schema: string;
   run_id: string;
@@ -85,7 +95,8 @@ export type RunView = {
   durable: { state: "queued" | "cancel_requested" | "suspended" | "succeeded" | "failed" | "cancelled"; checkpoint_sequence: number; logical_order: number; terminal: boolean; updated_at: number };
   live?: { state: string; speculative: boolean; boot_epoch: string; sequence: number };
   correctness: { canonicalization: string; algorithm: string; digest?: string; complete: boolean; attempted: number; succeeded: number; cancelled: number; failed: number; output_count: number };
-  generation?: { state: "running" | "suspended" | "succeeded" | "failed" | "cancelled"; generated_count: number; logical_bytes: number; stream_digest: string; backpressure_events: number; artifact?: ArtifactReference; transform?: { node_instance_id: string; transformed_count: number; logical_bytes: number; stream_digest: string }; branch?: { node_instance_id: string; true_count: number; false_count: number; stream_digest: string }; merge?: { node_instance_id: string; mode: string; true_count: number; false_count: number; output_count: number; logical_bytes: number; stream_digest: string; physical_spool_bytes: number; true_segments: unknown[]; false_segments: unknown[]; output_segments: unknown[] }; summary?: { node_instance_id: string; operation: string; total_count: number; true_count: number; false_count: number; logical_bytes: number; output_digest: string; first_ordinal?: number; last_ordinal?: number } };
+  timing: RunTimingView;
+  generation?: { state: "running" | "suspended" | "succeeded" | "failed" | "cancelled"; timing: RunTimingView; generated_count: number; logical_bytes: number; stream_digest: string; backpressure_events: number; artifact?: ArtifactReference; transform?: { node_instance_id: string; transformed_count: number; logical_bytes: number; stream_digest: string }; branch?: { node_instance_id: string; true_count: number; false_count: number; stream_digest: string }; merge?: { node_instance_id: string; mode: string; true_count: number; false_count: number; output_count: number; logical_bytes: number; stream_digest: string; physical_spool_bytes: number; true_segments: ArtifactReference[]; false_segments: ArtifactReference[]; output_segments: ArtifactReference[] }; summary?: { node_instance_id: string; operation: string; total_count: number; true_count: number; false_count: number; logical_bytes: number; output_digest: string; first_ordinal?: number | null; last_ordinal?: number | null; retained_segments: ArtifactReference[]; causal_trace_links?: RetainedCausalTraceLinks } };
   admitted_at: number;
   started_at?: number;
   terminal_at?: number;
@@ -97,6 +108,7 @@ export type TraceView = {
   integrity_verified: boolean;
   run: { run_id: string; workflow_id: string; publication_event_id: string; revision_id: string; revision_digest: string; plan_id: string; plan_digest: string };
   correctness: RunView["correctness"];
+  causal_trace_links?: RetainedCausalTraceLinks;
   checkpoints: Array<{ sequence: number; state: string; logical_order: number; checkpoint_hash: string; trace_head_hash: string; committed_at: number }>;
   activations: Array<{ activation_id: string; node_instance_id: string; logical_order: number; attempt: number; outcome: string; input: unknown; output?: unknown; input_digest: string; output_digest?: string; checkpoint_sequence: number; timing: { started_at: number; completed_at: number; elapsed_micros: number } }>;
   events: Array<{ event_sequence: number; logical_order?: number; checkpoint_sequence: number; phase: string; event_type: string; event_hash: string }>;

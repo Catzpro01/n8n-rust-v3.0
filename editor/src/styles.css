@@ -170,6 +170,17 @@ code { font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace; ov
 .run-actions > p { flex: 1 1 16rem; margin: 0 0 0 .35rem; color: var(--muted); font-size: .82rem; }
 .run-evidence { border: 1px solid var(--line); background: #09140f; }
 .run-states { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.run-timing { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+.run-timing > div { min-width: 0; padding: .8rem 1rem; background: #07110e66; }
+.run-timing > div + div { border-left: 1px solid var(--line); }
+.run-timing p { margin: 0 0 .25rem; color: var(--quiet); font-size: .68rem; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; }
+.run-timing strong, .run-timing small { display: block; overflow-wrap: anywhere; }
+.run-timing strong { color: var(--mint); font-size: 1.05rem; }
+.run-timing small { margin-top: .25rem; color: var(--muted); }
+.causal-links { display: flex; flex-wrap: wrap; align-items: center; gap: .55rem .75rem; margin: 0 1rem 1rem; padding: .8rem; border: 1px solid #354c65; background: #07110e66; }
+.causal-links strong { color: var(--ink); }
+.causal-links span { color: var(--muted); }
+.causal-links a { color: var(--mint); overflow-wrap: anywhere; }
 .run-states article { min-width: 0; min-height: 102px; padding: 1rem; background: var(--surface-soft); border-bottom: 1px solid var(--line); }
 .run-states article + article { border-left: 1px solid var(--line); }
 .run-states p { margin: 0 0 .3rem; color: var(--quiet); font-size: .7rem; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
@@ -234,6 +245,8 @@ code { font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace; ov
   .run-heading { align-items: flex-start; flex-direction: column; }
   .run-states { grid-template-columns: 1fr; }
   .run-states article + article { border-left: 0; }
+  .run-timing { grid-template-columns: 1fr; }
+  .run-timing > div + div { border-top: 1px solid var(--line); border-left: 0; }
   .generation-facts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 @media (max-width: 700px) {

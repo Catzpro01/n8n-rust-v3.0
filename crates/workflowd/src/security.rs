@@ -12,11 +12,15 @@ use chacha20poly1305::{
 use rand_core::{OsRng, RngCore};
 use rusqlite::{limits::Limit, params, Connection};
 use serde::Serialize;
+use serde_json::json;
 use sha2::{Digest, Sha256};
 use std::{
     fs,
     path::{Path, PathBuf},
-    sync::atomic::{AtomicU8, Ordering},
+    sync::{
+        atomic::{AtomicU8, Ordering},
+        Mutex,
+    },
     time::{SystemTime, UNIX_EPOCH},
 };
 use subtle::ConstantTimeEq;
@@ -104,6 +108,10 @@ pub struct SecurityService {
     argon_memory: u32,
     argon_iterations: u32,
     recovery: AtomicU8,
+    // Serialize the read/verify/update login state machine. SQLite serializes
+    // individual writes, but without this guard concurrent failures could all
+    // read the same counter and defeat the lockout threshold.
+    login_lock: Mutex<()>,
 }
 
 impl SecurityService {
@@ -118,6 +126,7 @@ impl SecurityService {
             argon_memory: 8192,
             argon_iterations: 1,
             recovery: AtomicU8::new(1),
+            login_lock: Mutex::new(()),
         }
     }
 
@@ -133,6 +142,7 @@ impl SecurityService {
             argon_memory: config.argon_memory_kib,
             argon_iterations: config.argon_iterations,
             recovery: AtomicU8::new(0),
+            login_lock: Mutex::new(()),
         };
         let connection = service
             .connect()
@@ -293,6 +303,10 @@ impl SecurityService {
         Ok(SetupResult{owner:OwnerView{id:"owner:1",email,password_kdf:PasswordKdf{algorithm:"argon2id",memory_kib:self.argon_memory,iterations:self.argon_iterations,parallelism:1,measured_millis:measured}},recovery_kit:RecoveryKit{document,checksum,acknowledgement:"Store this encrypted document outside the server, then acknowledge its checksum."}})
     }
     pub fn login(&self, email: &str, password: &str) -> Result<SessionGrant, SecurityError> {
+        let _login_guard = self
+            .login_lock
+            .lock()
+            .map_err(|_| SecurityError::Internal("login lock poisoned".into()))?;
         let c = self.connect()?;
         let row = c
             .query_row(
@@ -772,4 +786,48 @@ fn sec_internal(e: rusqlite::Error) -> SecurityError {
 fn internal(e: rusqlite::Error) -> AppError {
     AppError::Security(e.to_string())
 }
-use serde_json::json;
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::{fs, sync::Arc, thread};
+
+    #[test]
+    fn concurrent_failed_logins_are_serialized_before_lockout() {
+        let root = std::env::temp_dir().join(format!(
+            "workflowd-security-login-{}",
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        fs::create_dir_all(&root).unwrap();
+        let service = Arc::new(SecurityService::initialize_for_test(&root));
+        service
+            .setup(
+                "owner@example.test",
+                "correct horse battery staple",
+                "separate recovery phrase",
+            )
+            .unwrap();
+
+        let handles = (0..8)
+            .map(|_| {
+                let service = Arc::clone(&service);
+                thread::spawn(move || service.login("owner@example.test", "wrong password"))
+            })
+            .collect::<Vec<_>>();
+        for handle in handles {
+            assert!(matches!(
+                handle.join().unwrap(),
+                Err(SecurityError::InvalidCredentials) | Err(SecurityError::LoginLimited)
+            ));
+        }
+
+        let connection = service.connect().unwrap();
+        let locked_until: i64 = connection
+            .query_row("SELECT locked_until FROM owners WHERE id=1", [], |row| row.get(0))
+            .unwrap();
+        assert!(locked_until > now());
+        fs::remove_dir_all(root).unwrap();
+    }
+}

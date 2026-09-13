@@ -8,8 +8,17 @@ export PATH="$HOME/.cargo/bin:$HOME/.local/node-v22.19.0-linux-x64/bin:$PATH"
 export SOURCE_DATE_EPOCH=${SOURCE_DATE_EPOCH:-$(git log -1 --format=%ct)}
 export WORKFLOWD_BUILD_COMMIT=${WORKFLOWD_BUILD_COMMIT:-$(git rev-parse HEAD)$(git diff --quiet && git diff --cached --quiet || printf '%s' '-dirty')}
 bundle=${1:-out/tracer-bundle}
-rm -rf "$bundle"
-mkdir -p "$bundle"
+out_root=$(realpath -m -- "$repo/out")
+bundle=$(realpath -m -- "$bundle")
+case "$bundle" in
+  "$out_root"|"$out_root"/*) ;;
+  *)
+    printf 'refusing to remove a release path outside %s: %s\n' "$out_root" "$bundle" >&2
+    exit 2
+    ;;
+esac
+rm -rf -- "$bundle"
+mkdir -p -- "$bundle"
 
 (cd editor && npm ci && npm run typecheck && npm run build && npm audit --audit-level=high)
 cargo +1.85.1 build --workspace --release --frozen

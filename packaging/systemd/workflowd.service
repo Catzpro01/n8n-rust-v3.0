@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 [Unit]
 Description=Canopy Workbench workflow daemon
-Documentation=https://github.com/Catzpro01/n8n-rust-v2.0
+Documentation=https://github.com/Catzpro01/n8n-rust-v3.0
 After=local-fs.target network.target
 Wants=network.target
 

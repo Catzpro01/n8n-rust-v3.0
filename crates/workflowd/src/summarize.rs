@@ -5,7 +5,7 @@
 //! retains only counters, a bounded ordinal bitmap, and the algorithm-tagged
 //! digest chain; it never materializes the merged item payload.
 
-use crate::canonical::digest;
+use crate::{canonical::digest, if_node};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::fmt;
@@ -33,7 +33,7 @@ pub struct SummaryRecord {
     pub input_port: String,
     pub logical_item: Value,
     pub logical_bytes: u64,
-    pub provenance: Value,
+    pub provenance: if_node::RouteProvenance,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
@@ -151,11 +151,6 @@ impl Reducer {
             )));
         }
         self.seen_ordinals[word] |= bit;
-        if record.provenance.is_null() {
-            return Err(SummarizeError::integrity(
-                "Summary record is missing provenance",
-            ));
-        }
         match record.input_port.as_str() {
             "true" => self.true_count = self.true_count.saturating_add(1),
             "false" => self.false_count = self.false_count.saturating_add(1),
@@ -164,6 +159,11 @@ impl Reducer {
                     "Summary input port must be true or false",
                 ))
             }
+        }
+        if record.provenance.if_output_port.as_str() != record.input_port {
+            return Err(SummarizeError::integrity(
+                "Summary input port disagrees with typed If provenance",
+            ));
         }
         self.output_digest = digest(&json!({
             "schema": OUTPUT_DIGEST_SCHEMA,
@@ -231,7 +231,13 @@ mod tests {
             input_port: input_port.into(),
             logical_item: value,
             logical_bytes: 16,
-            provenance: json!({"ordinal": ordinal, "if_output_port": input_port}),
+            provenance: if_node::RouteProvenance::parse(&json!({
+                "if_node_instance_id": "if-node",
+                "if_input_digest": "sha256:input",
+                "if_output_port": input_port,
+                "if_condition_results": [input_port == "true"]
+            }))
+            .unwrap(),
         }
     }
 
@@ -270,8 +276,19 @@ mod tests {
         ]);
         assert_eq!(duplicate.unwrap_err().code, "canopy.summarize.integrity");
 
-        let unknown = configuration.summarize(vec![Ok(record(5, "other", json!({"value": 5})))]);
+        let unknown = configuration.summarize(vec![Ok(SummaryRecord {
+            ordinal: 5,
+            input_port: "other".into(),
+            logical_item: json!({"value": 5}),
+            logical_bytes: 16,
+            provenance: record(5, "true", json!({"value": 5})).provenance,
+        })]);
         assert_eq!(unknown.unwrap_err().code, "canopy.summarize.input");
+
+        let mut mismatched = record(6, "true", json!({"value": 6}));
+        mismatched.provenance = record(6, "false", json!({"value": 6})).provenance;
+        let mismatch = configuration.summarize(vec![Ok(mismatched)]);
+        assert_eq!(mismatch.unwrap_err().code, "canopy.summarize.integrity");
     }
 
     #[test]
@@ -309,10 +326,13 @@ mod tests {
                     input_port: input_port.into(),
                     logical_item,
                     logical_bytes,
-                    provenance: json!({
+                    provenance: if_node::RouteProvenance::parse(&json!({
+                        "if_node_instance_id": "if-node",
+                        "if_input_digest": "sha256:input",
                         "if_output_port": input_port,
-                        "ordinal": ordinal,
-                    }),
+                        "if_condition_results": [input_port == "true"]
+                    }))
+                    .unwrap(),
                 }));
             }
         }

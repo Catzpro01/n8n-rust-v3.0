@@ -108,6 +108,7 @@ pub struct RunView {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub live: Option<LiveProgress>,
     pub correctness: CorrectnessView,
+    pub timing: RunTimingView,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub generation: Option<GenerationProgress>,
     pub admitted_at: i64,
@@ -150,8 +151,16 @@ pub struct CorrectnessView {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct RunTimingView {
+    pub elapsed_wall_micros: Option<u64>,
+    pub cpu_micros: Option<u64>,
+    pub cpu_source: String,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct GenerationProgress {
     pub state: String,
+    pub timing: RunTimingView,
     pub generated_count: u64,
     pub logical_bytes: u64,
     pub stream_digest: String,
@@ -210,6 +219,8 @@ pub struct SummaryProgress {
     pub output_digest: String,
     pub first_ordinal: Option<u64>,
     pub last_ordinal: Option<u64>,
+    #[serde(default)]
+    pub retained_segments: Vec<ArtifactReference>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -247,6 +258,7 @@ pub struct TraceView {
     pub checkpoints: Vec<CheckpointView>,
     pub activations: Vec<ActivationView>,
     pub events: Vec<TraceEventView>,
+    pub causal_trace_links: Value,
     pub safe_resource_facts: Value,
     pub integrity_verified: bool,
 }
@@ -373,6 +385,7 @@ impl RunService {
             result_sender,
             envelope_sender,
             artifacts.clone(),
+            config.cgroup_dir.clone(),
         )?;
         let scheduler_thread = start_scheduler(SchedulerContext {
             database: database.clone(),
@@ -807,6 +820,8 @@ fn initialize_schema(connection: &Connection) -> Result<(), String> {
                 stream_digest TEXT NOT NULL,
                 backpressure_events INTEGER NOT NULL,
                 backpressure_micros INTEGER NOT NULL,
+                elapsed_wall_micros INTEGER NOT NULL DEFAULT 0,
+                cpu_micros INTEGER,
                 artifact_json TEXT,
                 transform_node_id TEXT,
                 transformed_count INTEGER NOT NULL DEFAULT 0,
@@ -881,6 +896,12 @@ fn initialize_schema(connection: &Connection) -> Result<(), String> {
     )?;
     ensure_generation_column(connection, "merge_json", "TEXT")?;
     ensure_generation_column(connection, "summary_json", "TEXT")?;
+    ensure_generation_column(
+        connection,
+        "elapsed_wall_micros",
+        "INTEGER NOT NULL DEFAULT 0",
+    )?;
+    ensure_generation_column(connection, "cpu_micros", "INTEGER")?;
     Ok(())
 }
 
@@ -1541,10 +1562,10 @@ fn generation_progress_transaction(
     )?;
     let artifact_json = progress.artifact.as_ref().map(canonical_text).transpose()?;
     transaction.execute(
-        "INSERT INTO run_generation_progress(run_id,state,generated_count,logical_bytes,stream_digest,backpressure_events,backpressure_micros,artifact_json,transform_node_id,transformed_count,transformed_logical_bytes,transformed_stream_digest,branch_node_id,branch_true_count,branch_false_count,branch_stream_digest,merge_json,updated_at)
-         VALUES(?1,'running',?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,NULL,?16)
-         ON CONFLICT(run_id) DO UPDATE SET state='running',generated_count=excluded.generated_count,logical_bytes=excluded.logical_bytes,stream_digest=excluded.stream_digest,backpressure_events=excluded.backpressure_events,backpressure_micros=excluded.backpressure_micros,artifact_json=excluded.artifact_json,transform_node_id=excluded.transform_node_id,transformed_count=excluded.transformed_count,transformed_logical_bytes=excluded.transformed_logical_bytes,transformed_stream_digest=excluded.transformed_stream_digest,branch_node_id=excluded.branch_node_id,branch_true_count=excluded.branch_true_count,branch_false_count=excluded.branch_false_count,branch_stream_digest=excluded.branch_stream_digest,merge_json=NULL,summary_json=NULL,updated_at=excluded.updated_at",
-        params![progress.run_id,progress.generated_count as i64,progress.logical_bytes as i64,progress.stream_digest,progress.backpressure_events as i64,progress.backpressure_micros as i64,artifact_json,progress.transform_node_id,progress.transformed_count as i64,progress.transformed_logical_bytes as i64,progress.transformed_stream_digest,progress.branch_node_id,progress.branch_true_count as i64,progress.branch_false_count as i64,progress.branch_stream_digest,committed_at]
+        "INSERT INTO run_generation_progress(run_id,state,generated_count,logical_bytes,stream_digest,backpressure_events,backpressure_micros,artifact_json,transform_node_id,transformed_count,transformed_logical_bytes,transformed_stream_digest,branch_node_id,branch_true_count,branch_false_count,branch_stream_digest,merge_json,updated_at,elapsed_wall_micros,cpu_micros)
+         VALUES(?1,'running',?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,NULL,?16,?17,?18)
+         ON CONFLICT(run_id) DO UPDATE SET state='running',generated_count=excluded.generated_count,logical_bytes=excluded.logical_bytes,stream_digest=excluded.stream_digest,backpressure_events=excluded.backpressure_events,backpressure_micros=excluded.backpressure_micros,artifact_json=excluded.artifact_json,transform_node_id=excluded.transform_node_id,transformed_count=excluded.transformed_count,transformed_logical_bytes=excluded.transformed_logical_bytes,transformed_stream_digest=excluded.transformed_stream_digest,branch_node_id=excluded.branch_node_id,branch_true_count=excluded.branch_true_count,branch_false_count=excluded.branch_false_count,branch_stream_digest=excluded.branch_stream_digest,merge_json=NULL,summary_json=NULL,updated_at=excluded.updated_at,elapsed_wall_micros=excluded.elapsed_wall_micros,cpu_micros=excluded.cpu_micros",
+        params![progress.run_id,progress.generated_count as i64,progress.logical_bytes as i64,progress.stream_digest,progress.backpressure_events as i64,progress.backpressure_micros as i64,artifact_json,progress.transform_node_id,progress.transformed_count as i64,progress.transformed_logical_bytes as i64,progress.transformed_stream_digest,progress.branch_node_id,progress.branch_true_count as i64,progress.branch_false_count as i64,progress.branch_stream_digest,committed_at,progress.elapsed_wall_micros as i64,progress.cpu_micros.map(|value| value as i64)]
     ).map_err(storage_error)?;
     transaction.execute(
         "UPDATE runs SET checkpoint_sequence=?2,logical_order=1,attempted=1,succeeded=1,output_count=?3,trace_head_hash=?4,started_at=COALESCE(started_at,?5),updated_at=?6 WHERE run_id=?1 AND state='queued'",
@@ -2049,7 +2070,17 @@ fn complete_generated_transaction(
             "output_digest_algorithm":summarize::OUTPUT_DIGEST_ALGORITHM,
             "output_digest":reduced.output_digest,
             "first_ordinal":reduced.first_ordinal,
-            "last_ordinal":reduced.last_ordinal
+            "last_ordinal":reduced.last_ordinal,
+            "causal_trace_links": {
+                "source_merge_output_digest": completed.merge.as_ref().map(|merge| merge.stream_digest.clone()),
+                "source_merge_output_segments": completed
+                    .merge
+                    .as_ref()
+                    .map(|merge| merge.output_segments.clone())
+                    .unwrap_or_default(),
+                "retained_ordinal_range": [reduced.first_ordinal, reduced.last_ordinal],
+                "retained_item_provenance": "artifact-backed-merge-spool"
+            }
         })
     });
     if branch_should_commit {
@@ -2162,6 +2193,11 @@ fn complete_generated_transaction(
                     "output_digest_algorithm":summarize::OUTPUT_DIGEST_ALGORITHM,
                     "causal_trace_links":{
                         "source_merge_output_digest":completed.merge.as_ref().map(|merge| merge.stream_digest.clone()),
+                        "source_merge_output_segments":completed
+                            .merge
+                            .as_ref()
+                            .map(|merge| merge.output_segments.clone())
+                            .unwrap_or_default(),
                         "retained_ordinal_range":[completed.summary_progress.as_ref().and_then(|summary| summary.first_ordinal),completed.summary_progress.as_ref().and_then(|summary| summary.last_ordinal)],
                         "retained_item_provenance":"artifact-backed-merge-spool"
                     }
@@ -2347,6 +2383,11 @@ fn complete_generated_transaction(
                 "bounded_state":"counters-and-digest-only",
                 "causal_trace_links":{
                     "source_merge_output_digest":completed.merge.as_ref().map(|merge| merge.stream_digest.clone()),
+                    "source_merge_output_segments":completed
+                        .merge
+                        .as_ref()
+                        .map(|merge| merge.output_segments.clone())
+                        .unwrap_or_default(),
                     "retained_ordinal_range":[completed.summary_progress.as_ref().and_then(|summary| summary.first_ordinal),completed.summary_progress.as_ref().and_then(|summary| summary.last_ordinal)],
                     "retained_item_provenance":"artifact-backed-merge-spool"
                 },
@@ -2434,10 +2475,10 @@ fn complete_generated_transaction(
         .map(canonical_text)
         .transpose()?;
     transaction.execute(
-        "INSERT INTO run_generation_progress(run_id,state,generated_count,logical_bytes,stream_digest,backpressure_events,backpressure_micros,artifact_json,transform_node_id,transformed_count,transformed_logical_bytes,transformed_stream_digest,branch_node_id,branch_true_count,branch_false_count,branch_stream_digest,merge_json,summary_json,updated_at)
-         VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19)
-         ON CONFLICT(run_id) DO UPDATE SET state=excluded.state,generated_count=excluded.generated_count,logical_bytes=excluded.logical_bytes,stream_digest=excluded.stream_digest,backpressure_events=excluded.backpressure_events,backpressure_micros=excluded.backpressure_micros,artifact_json=excluded.artifact_json,transform_node_id=excluded.transform_node_id,transformed_count=excluded.transformed_count,transformed_logical_bytes=excluded.transformed_logical_bytes,transformed_stream_digest=excluded.transformed_stream_digest,branch_node_id=excluded.branch_node_id,branch_true_count=excluded.branch_true_count,branch_false_count=excluded.branch_false_count,branch_stream_digest=excluded.branch_stream_digest,merge_json=excluded.merge_json,summary_json=excluded.summary_json,updated_at=excluded.updated_at",
-        params![completed.run_id,state,completed.generated_count as i64,completed.logical_bytes as i64,completed.stream_digest,completed.backpressure_events as i64,completed.backpressure_micros as i64,artifact_json,transform_node,completed.transformed_count as i64,completed.transformed_logical_bytes as i64,completed.transformed_stream_digest,completed.branch_node_id,completed.branch_true_count as i64,completed.branch_false_count as i64,completed.branch_stream_digest,merge_json,summary_json,committed_at]
+        "INSERT INTO run_generation_progress(run_id,state,generated_count,logical_bytes,stream_digest,backpressure_events,backpressure_micros,artifact_json,transform_node_id,transformed_count,transformed_logical_bytes,transformed_stream_digest,branch_node_id,branch_true_count,branch_false_count,branch_stream_digest,merge_json,summary_json,updated_at,elapsed_wall_micros,cpu_micros)
+         VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19,?20,?21)
+         ON CONFLICT(run_id) DO UPDATE SET state=excluded.state,generated_count=excluded.generated_count,logical_bytes=excluded.logical_bytes,stream_digest=excluded.stream_digest,backpressure_events=excluded.backpressure_events,backpressure_micros=excluded.backpressure_micros,artifact_json=excluded.artifact_json,transform_node_id=excluded.transform_node_id,transformed_count=excluded.transformed_count,transformed_logical_bytes=excluded.transformed_logical_bytes,transformed_stream_digest=excluded.transformed_stream_digest,branch_node_id=excluded.branch_node_id,branch_true_count=excluded.branch_true_count,branch_false_count=excluded.branch_false_count,branch_stream_digest=excluded.branch_stream_digest,merge_json=excluded.merge_json,summary_json=excluded.summary_json,updated_at=excluded.updated_at,elapsed_wall_micros=excluded.elapsed_wall_micros,cpu_micros=excluded.cpu_micros",
+        params![completed.run_id,state,completed.generated_count as i64,completed.logical_bytes as i64,completed.stream_digest,completed.backpressure_events as i64,completed.backpressure_micros as i64,artifact_json,transform_node,completed.transformed_count as i64,completed.transformed_logical_bytes as i64,completed.transformed_stream_digest,completed.branch_node_id,completed.branch_true_count as i64,completed.branch_false_count as i64,completed.branch_stream_digest,merge_json,summary_json,committed_at,completed.elapsed_micros as i64,completed.cpu_micros.map(|value| value as i64)]
     ).map_err(storage_error)?;
     transaction.execute(
         "UPDATE runs SET state=?2,checkpoint_sequence=?3,logical_order=?4,attempted=?5,succeeded=?6,cancelled=?7,failed=?8,output_count=?9,correctness_digest=?10,digest_complete=?11,trace_head_hash=?12,started_at=COALESCE(started_at,?13),updated_at=?14,terminal_at=?14 WHERE run_id=?1 AND state IN ('queued','cancel_requested')",
@@ -2902,6 +2943,8 @@ struct GeneratedProgressCommit {
     branch_stream_digest: String,
     backpressure_events: u64,
     backpressure_micros: u64,
+    elapsed_wall_micros: u64,
+    cpu_micros: Option<u64>,
     first_ordinal: u64,
     last_ordinal: u64,
     artifact: Option<ArtifactReference>,
@@ -2930,6 +2973,7 @@ struct CompletedGeneratedWork {
     started_at: i64,
     completed_at: i64,
     elapsed_micros: u64,
+    cpu_micros: Option<u64>,
     backpressure_micros: u64,
     backpressure_events: u64,
     _result_bytes: BytePermit,
@@ -3585,7 +3629,11 @@ fn build_merge_progress(
     }
 }
 
-fn build_summary_progress(node_id: &str, summary: &summarize::Summary) -> SummaryProgress {
+fn build_summary_progress(
+    node_id: &str,
+    summary: &summarize::Summary,
+    retained_segments: Vec<ArtifactReference>,
+) -> SummaryProgress {
     SummaryProgress {
         node_instance_id: node_id.into(),
         operation: summary.operation.clone(),
@@ -3596,6 +3644,7 @@ fn build_summary_progress(node_id: &str, summary: &summarize::Summary) -> Summar
         output_digest: summary.output_digest.clone(),
         first_ordinal: summary.first_ordinal,
         last_ordinal: summary.last_ordinal,
+        retained_segments,
     }
 }
 
@@ -3604,6 +3653,7 @@ fn start_executor(
     results: SyncSender<ExecutorTerminal>,
     envelopes: SyncSender<GeneratedBatchEvent>,
     artifacts: Arc<ArtifactService>,
+    cgroup_directory: Option<PathBuf>,
 ) -> Result<JoinHandle<()>, String> {
     thread::Builder::new()
         .name("workflowd-native-executor".into())
@@ -3616,6 +3666,7 @@ fn start_executor(
                 } = queued.work;
                 let started_at = now_millis();
                 let started = Instant::now();
+                let cpu_started = crate::cgroup::cpu_usage_micros(cgroup_directory.as_deref());
                 if candidate.plan.nodes.len() == 1 {
                     let result = run_engine::execute_manual(ManualActivationInput {
                         run_id: candidate.run_id.clone(),
@@ -3687,6 +3738,10 @@ fn start_executor(
                                     started_at,
                                     completed_at,
                                     elapsed_micros,
+                                    cpu_micros: cpu_elapsed_micros(
+                                        cpu_started,
+                                        cgroup_directory.as_deref(),
+                                    ),
                                     backpressure_micros: 0,
                                     backpressure_events: 0,
                                     _result_bytes,
@@ -3738,6 +3793,10 @@ fn start_executor(
                                         started_at,
                                         completed_at,
                                         elapsed_micros,
+                                        cpu_micros: cpu_elapsed_micros(
+                                            cpu_started,
+                                            cgroup_directory.as_deref(),
+                                        ),
                                         backpressure_micros: 0,
                                         backpressure_events: 0,
                                         _result_bytes,
@@ -3937,14 +3996,16 @@ fn start_executor(
                                     if merge_node_id.is_some() {
                                         let spool_result: Result<(), GenerateFailure> = (|| {
                                             for envelope in &batch {
-                                                let port = envelope
-                                                    .provenance
-                                                    .get("if_output_port")
-                                                    .and_then(Value::as_str)
-                                                    .ok_or_else(|| generate_failure(
-                                                        "canopy.merge.missing_route_provenance",
-                                                        "Merge input item is missing the If output port.",
-                                                    ))?;
+                                                let provenance = if_node::RouteProvenance::parse(
+                                                    &envelope.provenance,
+                                                )
+                                                .map_err(|message| {
+                                                    generate_failure(
+                                                        "canopy.merge.invalid_route_provenance",
+                                                        &message,
+                                                    )
+                                                })?;
+                                                let port = provenance.if_output_port.as_str();
                                                 let logical_bytes = serde_jcs::to_vec(&envelope.logical_item)
                                                     .map_err(|error| {
                                                         generate_failure(
@@ -3958,7 +4019,7 @@ fn start_executor(
                                                     item: envelope.item.clone(),
                                                     logical_item: envelope.logical_item.clone(),
                                                     logical_bytes,
-                                                    provenance: envelope.provenance.clone(),
+                                                    provenance,
                                                 };
                                                 let result = match port {
                                                     "true" => merge_true_spool
@@ -4114,27 +4175,30 @@ fn start_executor(
                                 merge_progress.output_segments.clone(),
                             )
                             .map(|record| {
-                                record
-                                    .map(|record| summarize::SummaryRecord {
-                                        ordinal: record.ordinal,
-                                        input_port: record
-                                            .provenance
-                                            .get("if_output_port")
-                                            .and_then(Value::as_str)
-                                            .unwrap_or("unknown")
-                                            .into(),
-                                        logical_item: record.logical_item,
-                                        logical_bytes: record.logical_bytes,
-                                        provenance: record.provenance,
-                                    })
-                                    .map_err(|error| summarize::SummarizeError {
-                                        code: error.code,
-                                        message: error.message,
-                                    })
+                                let record = record.map_err(|error| summarize::SummarizeError {
+                                    code: error.code,
+                                    message: error.message,
+                                })?;
+                                let provenance = if_node::RouteProvenance::parse(&record.provenance)
+                                    .map_err(|message| summarize::SummarizeError {
+                                        code: "canopy.summarize.integrity".into(),
+                                        message,
+                                    })?;
+                                Ok(summarize::SummaryRecord {
+                                    ordinal: record.ordinal,
+                                    input_port: provenance.if_output_port.as_str().into(),
+                                    logical_item: record.logical_item,
+                                    logical_bytes: record.logical_bytes,
+                                    provenance,
+                                })
                             });
                             match configuration.summarize(records) {
                                 Ok(reduced) => {
-                                    summary_progress = Some(build_summary_progress(node_id, &reduced));
+                                    summary_progress = Some(build_summary_progress(
+                                        node_id,
+                                        &reduced,
+                                        merge_progress.output_segments.clone(),
+                                    ));
                                 }
                                 Err(error) => {
                                     summary = Err(generate_failure(&error.code, &error.message));
@@ -4179,6 +4243,10 @@ fn start_executor(
                         started_at,
                         completed_at,
                         elapsed_micros,
+                        cpu_micros: cpu_elapsed_micros(
+                            cpu_started,
+                            cgroup_directory.as_deref(),
+                        ),
                         backpressure_micros,
                         backpressure_events,
                         _result_bytes,
@@ -4526,6 +4594,11 @@ fn handle_generated_batch(
         branch_stream_digest: batch.branch_stream_digest.clone(),
         backpressure_events: state.backpressure_events,
         backpressure_micros: batch.backpressure_micros,
+        elapsed_wall_micros: now_millis()
+            .saturating_sub(batch.started_at)
+            .max(0) as u64
+            * 1_000,
+        cpu_micros: None,
         first_ordinal: state.generated_count,
         last_ordinal: batch.generated_count.saturating_sub(1),
         artifact: batch.artifact,
@@ -4883,6 +4956,11 @@ fn load_run(connection: &Connection, run_id: &str) -> Result<RunView, RunError> 
                         failed: row.get::<_, i64>(14)? as u64,
                         output_count: row.get::<_, i64>(15)? as u64,
                     },
+                    timing: RunTimingView {
+                        elapsed_wall_micros: None,
+                        cpu_micros: None,
+                        cpu_source: "unavailable".into(),
+                    },
                     generation: None,
                     admitted_at: row.get(18)?,
                     started_at: row.get(19)?,
@@ -4899,6 +4977,20 @@ fn load_run(connection: &Connection, run_id: &str) -> Result<RunView, RunError> 
             }
         })?;
     run.generation = load_generation_progress(connection, run_id)?;
+    if let Some(generation) = run.generation.as_ref() {
+        run.timing = generation.timing.clone();
+    }
+    if run.timing.elapsed_wall_micros.is_none() {
+        let started_at = run.started_at;
+        let terminal_at = run.terminal_at;
+        run.timing.elapsed_wall_micros = started_at.map(|started| {
+            terminal_at
+                .unwrap_or_else(now_millis)
+                .saturating_sub(started)
+                .max(0)
+                .saturating_mul(1_000) as u64
+        });
+    }
     let suspended: bool = connection
         .query_row(
             "SELECT EXISTS(SELECT 1 FROM run_suspensions WHERE run_id=?1)",
@@ -4919,7 +5011,7 @@ fn load_generation_progress(
 ) -> Result<Option<GenerationProgress>, RunError> {
     connection
         .query_row(
-            "SELECT state,generated_count,logical_bytes,stream_digest,backpressure_events,artifact_json,transform_node_id,transformed_count,transformed_logical_bytes,transformed_stream_digest,branch_node_id,branch_true_count,branch_false_count,branch_stream_digest,merge_json,summary_json FROM run_generation_progress WHERE run_id=?1",
+            "SELECT state,generated_count,logical_bytes,stream_digest,backpressure_events,artifact_json,transform_node_id,transformed_count,transformed_logical_bytes,transformed_stream_digest,branch_node_id,branch_true_count,branch_false_count,branch_stream_digest,merge_json,summary_json,elapsed_wall_micros,cpu_micros FROM run_generation_progress WHERE run_id=?1",
             params![run_id],
             |row| {
                 let artifact: Option<String> = row.get(5)?;
@@ -4933,8 +5025,19 @@ fn load_generation_progress(
                 let branch_stream_digest: String = row.get(13)?;
                 let merge: Option<String> = row.get(14)?;
                 let summary: Option<String> = row.get(15)?;
+                let elapsed_wall_micros = row.get::<_, i64>(16)?.max(0) as u64;
+                let cpu_micros = row.get::<_, Option<i64>>(17)?.map(|value| value.max(0) as u64);
                 Ok(GenerationProgress {
                     state: row.get(0)?,
+                    timing: RunTimingView {
+                        elapsed_wall_micros: (elapsed_wall_micros > 0).then_some(elapsed_wall_micros),
+                        cpu_micros,
+                        cpu_source: if cpu_micros.is_some() {
+                            "cgroup-v2-cpu.stat".into()
+                        } else {
+                            "unavailable".into()
+                        },
+                    },
                     generated_count: row.get::<_, i64>(1)? as u64,
                     logical_bytes: row.get::<_, i64>(2)? as u64,
                     stream_digest: row.get(3)?,
@@ -5101,6 +5204,18 @@ fn load_trace(connection: &Connection, run_id: &str) -> Result<TraceView, RunErr
         &activations,
         &expected_trace_head,
     )?;
+    let causal_trace_links = run
+        .generation
+        .as_ref()
+        .and_then(|generation| generation.summary.as_ref())
+        .map(|summary| {
+            json!({
+                "source_merge_output_segments": summary.retained_segments.clone(),
+                "retained_ordinal_range": [summary.first_ordinal, summary.last_ordinal],
+                "retained_item_provenance": "artifact-backed-merge-spool"
+            })
+        })
+        .unwrap_or_else(|| json!({"source_merge_output_segments": [], "retained_ordinal_range": [null, null]}));
     Ok(TraceView {
         schema: TRACE_SCHEMA.into(),
         run: TraceRunIdentity {
@@ -5117,6 +5232,7 @@ fn load_trace(connection: &Connection, run_id: &str) -> Result<TraceView, RunErr
         checkpoints,
         activations,
         events,
+        causal_trace_links,
         safe_resource_facts: safe_resource_facts(),
         integrity_verified: true,
     })
@@ -5614,6 +5730,11 @@ fn queue_profile() -> QueueProfileView {
         },
         maximum_inline_invocation_bytes: MAX_INVOCATION_BYTES,
     }
+}
+
+fn cpu_elapsed_micros(start: Option<u64>, directory: Option<&Path>) -> Option<u64> {
+    let end = crate::cgroup::cpu_usage_micros(directory)?;
+    start.map(|value| end.saturating_sub(value))
 }
 
 fn safe_resource_facts() -> Value {
@@ -6325,6 +6446,11 @@ mod tests {
                 cancelled: 0,
                 failed: 0,
                 output_count: 0,
+            },
+            timing: RunTimingView {
+                elapsed_wall_micros: None,
+                cpu_micros: None,
+                cpu_source: "unavailable".into(),
             },
             generation: None,
             admitted_at: 0,

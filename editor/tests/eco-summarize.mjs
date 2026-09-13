@@ -164,7 +164,11 @@ try {
   await waitText(page.getByTestId("branch-progress"), "24,999 true", 6000);
   await page.getByTestId("inspect-trace").click();
   await waitText(page.getByTestId("causal-trace"), "Integrity verified", 6000);
+  await waitText(page.getByTestId("run-timing"), "Aggregate wall time", 6000);
+  await waitText(page.getByTestId("run-timing"), "Aggregate CPU time", 6000);
   await waitCount(page.getByTestId("activation-outcome"), 6, 6000);
+  await page.getByTestId("retained-merge-links").waitFor({ timeout: 6000 });
+  assert.ok(await page.locator('[data-testid^="retained-merge-segment-"]').count() > 0, "Causal Trace must expose retained Merge segments");
   assert.match(await page.getByTestId("causal-trace").textContent() ?? "", /Output digest/);
 
   // Browser-authored Draft mutation, second publication, and non-destructive rollback.

@@ -36,9 +36,11 @@ separate bounded Artifact-backed spool.
 
 The compiler rejects a missing branch input, a missing If-to-Merge connection,
 unsupported Merge configuration, changed node identity, extra nodes/edges in
-the native topology, and invalid contract capabilities/effects. The compiler
-and reducer preserve typed `canopy.merge.*` diagnostics rather than silently
-coercing an invalid stream.
+the native topology, incompatible declared source/target port schemas, and
+invalid contract capabilities/effects. Each input record carries the typed
+`canopy.if-route-provenance/v1alpha1` contract; the reducer rejects a missing,
+malformed, or cross-port route rather than silently coercing an untyped JSON
+field. The compiler and reducer preserve typed `canopy.merge.*` diagnostics.
 
 ## Artifact-backed streams and ownership
 

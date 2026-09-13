@@ -42,6 +42,10 @@ Ticket 09's native If slice is complete. Ticket 10's bounded native Merge
 success, empty-branch, Artifact-spooling, cleanup, durable-progress, restart,
 trace, and public acceptance slice is now pinned-verified; dedicated runtime
 fault-injection acceptance remains before claiming the whole ticket complete.
+Ticket 11's compiler topology gate, typed route provenance, aggregate timing,
+retained-segment Causal Trace links, login-race fix, UI, and focused tests are
+implemented in the current working tree, but Ticket 11 remains pending Ticket
+10's fault-injection gate and a fresh pinned Rust/browser run.
 
 - **Ticket 08:** `08-transform-items-with-edit-fields-and-the-safe-expression-vm.md`
 - **Status:** `implemented-and-pinned-verified`

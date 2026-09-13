@@ -11,7 +11,7 @@ permissions:
 jobs:
   validate:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
     steps:
       - name: Check out source
         uses: actions/checkout@v4
@@ -41,6 +41,19 @@ jobs:
 
       - name: Run Rust tests
         run: cargo test --workspace --locked -- --test-threads=1
+
+      - name: Build all workspace binaries for acceptance tests
+        run: cargo build --workspace --locked
+
+      - name: Install Chromium for browser acceptance
+        working-directory: editor
+        run: npx playwright install --with-deps chromium
+
+      - name: Run the full browser acceptance suite
+        working-directory: editor
+        run: |
+          npm run test:browser
+          npm run test:browser:eco
 
       - name: Run dependency-free repository tests
         run: python3 -m unittest discover -s tests -v

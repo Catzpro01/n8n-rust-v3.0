@@ -5,7 +5,7 @@
 //! only counters and digest state; callers provide iterators backed by bounded
 //! Artifact readers and decide where merged records are written.
 
-use crate::canonical::digest;
+use crate::{canonical::digest, if_node};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::fmt;
@@ -28,7 +28,7 @@ pub struct MergeRecord {
     pub item: Value,
     pub logical_item: Value,
     pub logical_bytes: u64,
-    pub provenance: Value,
+    pub provenance: if_node::RouteProvenance,
 }
 
 #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
@@ -164,8 +164,16 @@ impl Reducer {
                 self.phase
             )));
         }
-        if record.provenance.is_null() {
-            return Err(MergeError::integrity("Merge record is missing provenance"));
+        let provenance = if_node::RouteProvenance::parse(
+            &serde_json::to_value(&record.provenance)
+                .map_err(|error| MergeError::integrity(error.to_string()))?,
+        )
+        .map_err(MergeError::integrity)?;
+        if provenance.if_output_port.as_str() != input_port {
+            return Err(MergeError::integrity(format!(
+                "Merge input port {input_port} disagrees with provenance port {}",
+                provenance.if_output_port.as_str()
+            )));
         }
         let ordinal = usize::try_from(record.ordinal)
             .map_err(|_| MergeError::input("Merge record ordinal is not representable"))?;
@@ -261,7 +269,13 @@ mod tests {
             item: json!({"ordinal": ordinal}),
             logical_item: json!({"ordinal": ordinal}),
             logical_bytes: 10,
-            provenance: json!({"if_output_port": port}),
+            provenance: if_node::RouteProvenance::parse(&json!({
+                "if_node_instance_id": "if-node",
+                "if_input_digest": "sha256:input",
+                "if_output_port": port,
+                "if_condition_results": [port == "true"]
+            }))
+            .unwrap(),
         }
     }
 
@@ -286,6 +300,19 @@ mod tests {
         assert_eq!(summary.true_count, 2);
         assert_eq!(summary.false_count, 2);
         assert_eq!(summary.output_count, 4);
+    }
+
+    #[test]
+    fn provenance_port_must_match_the_reducer_input() {
+        let configuration = compile_configuration(&json!({"mode": "true_then_false"})).unwrap();
+        let error = configuration
+            .merge_ordered(
+                vec![Ok(record(0, "false"))],
+                Vec::<Result<MergeRecord, MergeError>>::new(),
+                |_, _| Ok(()),
+            )
+            .unwrap_err();
+        assert_eq!(error.code, "canopy.merge.integrity");
     }
 
     #[test]

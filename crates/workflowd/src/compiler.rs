@@ -412,6 +412,41 @@ fn validate_all(
     Ok(())
 }
 
+fn eco_topology_matches(draft: &WorkflowDraft) -> bool {
+    let expected: BTreeSet<(String, String, String, String)> = [
+        ("manual-trigger", "invocation", "generate-items", "input"),
+        ("generate-items", "items", "edit-fields", "input"),
+        ("edit-fields", "item", "if", "input"),
+        ("if", "true", "merge", "true"),
+        ("if", "false", "merge", "false"),
+        ("merge", "items", "summarize", "items"),
+    ]
+    .into_iter()
+    .map(|(source_node, source_port, target_node, target_port)| {
+        (
+            source_node.into(),
+            source_port.into(),
+            target_node.into(),
+            target_port.into(),
+        )
+    })
+    .collect();
+    let actual: BTreeSet<(String, String, String, String)> = draft
+        .connections
+        .iter()
+        .filter_map(|raw| serde_json::from_value::<ConnectionSpec>(raw.clone()).ok())
+        .map(|connection| {
+            (
+                connection.source.node_id,
+                connection.source.port_id,
+                connection.target.node_id,
+                connection.target.port_id,
+            )
+        })
+        .collect();
+    draft.connections.len() == expected.len() && actual == expected
+}
+
 fn validate_eco_fixture(
     draft: &WorkflowDraft,
     diagnostics: &mut Vec<Diagnostic>,
@@ -482,7 +517,15 @@ fn validate_eco_fixture(
     let merge_ok =
         merge.is_some_and(|node| node.configuration == json!({"mode":"true_then_false"}));
     let summary_ok = summarize_node.configuration == json!({"operation":"output_digest"});
-    if names != expected || !range_ok || !transform_ok || !branch_ok || !merge_ok || !summary_ok {
+    let topology_ok = eco_topology_matches(draft);
+    if names != expected
+        || !range_ok
+        || !transform_ok
+        || !branch_ok
+        || !merge_ok
+        || !summary_ok
+        || !topology_ok
+    {
         push(
             diagnostics,
             "E_ECO_FIXTURE_MISMATCH",
@@ -495,7 +538,10 @@ fn validate_eco_fixture(
                 "true_count": summarize::ECO_TRUE_COUNT,
                 "false_count": summarize::ECO_FALSE_COUNT,
                 "expected_nodes": expected,
-                "actual_nodes": names
+                "actual_nodes": names,
+                "topology_valid": topology_ok,
+                "expected_edges": 6,
+                "actual_edges": draft.connections.len()
             }),
             false,
         )?;
@@ -909,6 +955,22 @@ fn validate_connections(
                 false,
             )?;
         }
+        if let (Some(source_port), Some(target_port)) = (source_port, target_port)
+            && !schemas_compatible(&source_port["schema"], &target_port["schema"])
+        {
+            push(
+                diagnostics,
+                "E_PORT_SCHEMA",
+                "error",
+                format!("connection:{}", connection.id),
+                "The source output schema is incompatible with the target input schema.",
+                json!({
+                    "source": {"node_id": connection.source.node_id, "port_id": connection.source.port_id, "schema": source_port["schema"]},
+                    "target": {"node_id": connection.target.node_id, "port_id": connection.target.port_id, "schema": target_port["schema"]}
+                }),
+                false,
+            )?;
+        }
         if let Some(port) = target_port {
             let key = (
                 connection.target.node_id.clone(),
@@ -1069,6 +1131,16 @@ fn build_plan(
     })
 }
 
+fn schemas_compatible(source: &Value, target: &Value) -> bool {
+    let source_type = source.get("type").and_then(Value::as_str);
+    let target_type = target.get("type").and_then(Value::as_str);
+    match (source_type, target_type) {
+        (Some("dynamic-item"), _) | (_, Some("dynamic-item")) => true,
+        (Some(left), Some(right)) => left == right,
+        _ => source == target,
+    }
+}
+
 fn find_port<'a>(ports: &'a Value, id: &str) -> Option<&'a Value> {
     ports
         .as_array()?
@@ -1223,6 +1295,66 @@ mod tests {
         assert!(codes.contains("E_EFFECTS_INVALID"));
         assert!(codes.contains("E_BUDGET_EXCEEDED"));
         assert!(codes.contains("E_COMPATIBILITY_UNSUPPORTED"));
+    }
+
+    #[test]
+    fn exact_eco_edges_are_rejected_when_branch_ports_are_swapped() {
+        let mut input = draft();
+        input.connections = vec![
+            json!({"id":"manual-to-generate","source":{"node_id":"manual-trigger","port_id":"invocation"},"target":{"node_id":"generate-items","port_id":"input"}}),
+            json!({"id":"generate-to-edit","source":{"node_id":"generate-items","port_id":"items"},"target":{"node_id":"edit-fields","port_id":"input"}}),
+            json!({"id":"edit-to-if","source":{"node_id":"edit-fields","port_id":"item"},"target":{"node_id":"if","port_id":"input"}}),
+            json!({"id":"if-true-to-merge","source":{"node_id":"if","port_id":"true"},"target":{"node_id":"merge","port_id":"true"}}),
+            json!({"id":"if-false-to-merge","source":{"node_id":"if","port_id":"false"},"target":{"node_id":"merge","port_id":"false"}}),
+            json!({"id":"merge-to-summarize","source":{"node_id":"merge","port_id":"items"},"target":{"node_id":"summarize","port_id":"items"}}),
+        ];
+        assert!(eco_topology_matches(&input));
+        input.connections[3] = json!({
+            "id":"if-true-to-merge",
+            "source":{"node_id":"if","port_id":"true"},
+            "target":{"node_id":"merge","port_id":"false"}
+        });
+        assert!(!eco_topology_matches(&input));
+    }
+
+    #[test]
+    fn incompatible_declared_port_schemas_are_rejected() {
+        let mut source: Value = serde_json::from_str(include_str!(
+            "../../../contracts/manual-trigger.v1alpha1.json"
+        ))
+        .unwrap();
+        source["ports"]["outputs"][0]["schema"] = json!({"type": "string"});
+        let mut target = source.clone();
+        target["ports"]["inputs"] = json!([{
+            "id": "input",
+            "schema": {"type": "object"},
+            "required": true,
+            "cardinality": "one",
+            "multiplicity": "one"
+        }]);
+        let mut input = draft();
+        input.nodes[0].id = "source".into();
+        input.nodes[0].contract_lock = lock(&source).unwrap();
+        let mut target_node = input.nodes[0].clone();
+        target_node.id = "target".into();
+        target_node.contract_lock = lock(&target).unwrap();
+        input.nodes.push(target_node);
+        input.connections = vec![json!({
+            "id": "source-to-target",
+            "source": {"node_id": "source", "port_id": "invocation"},
+            "target": {"node_id": "target", "port_id": "input"}
+        })];
+        let result = compile_with_inputs(
+            input,
+            vec![source, target],
+            native_profile(),
+            publication_policy(),
+        )
+        .unwrap();
+        assert!(result
+            .diagnostics
+            .iter()
+            .any(|item| item.code == "E_PORT_SCHEMA"));
     }
 
     #[test]

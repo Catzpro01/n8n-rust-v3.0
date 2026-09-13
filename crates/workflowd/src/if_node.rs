@@ -49,6 +49,47 @@ pub struct RouteResult {
     pub condition_results: Vec<bool>,
 }
 
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum RouteOutputPort {
+    True,
+    False,
+}
+
+impl RouteOutputPort {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::True => "true",
+            Self::False => "false",
+        }
+    }
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+pub struct RouteProvenance {
+    pub if_node_instance_id: String,
+    pub if_input_digest: String,
+    pub if_output_port: RouteOutputPort,
+    pub if_condition_results: Vec<bool>,
+}
+
+impl RouteProvenance {
+    pub fn parse(value: &Value) -> Result<Self, String> {
+        let provenance: Self = serde_json::from_value(value.clone())
+            .map_err(|error| format!("invalid If route provenance: {error}"))?;
+        if provenance.if_node_instance_id.is_empty() {
+            return Err("If route provenance has an empty node identity".into());
+        }
+        if provenance.if_input_digest.is_empty() {
+            return Err("If route provenance has an empty input digest".into());
+        }
+        if provenance.if_condition_results.is_empty() {
+            return Err("If route provenance has no condition results".into());
+        }
+        Ok(provenance)
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct BranchBatch {
     pub true_count: u64,

@@ -53,7 +53,20 @@
     "canopy.workbench/summarize-profile": {
       "operation": "output_digest",
       "state": "bounded-counters-and-digest",
-      "version": "canopy.summarize/v1alpha1"
+      "version": "canopy.summarize/v1alpha1",
+      "provenance_schema": {
+        "schema": "canopy.if-route-provenance/v1alpha1",
+        "required": [
+          "if_node_instance_id",
+          "if_input_digest",
+          "if_output_port",
+          "if_condition_results"
+        ],
+        "output_ports": [
+          "true",
+          "false"
+        ]
+      }
     }
   },
   "identity": {
@@ -92,7 +105,157 @@
         "multiplicity": "one",
         "required": true,
         "schema": {
-          "type": "object"
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "operation",
+            "total_count",
+            "true_count",
+            "false_count",
+            "logical_bytes",
+            "output_digest_schema",
+            "output_digest_algorithm",
+            "output_digest",
+            "first_ordinal",
+            "last_ordinal",
+            "causal_trace_links"
+          ],
+          "properties": {
+            "operation": {
+              "type": "string",
+              "enum": [
+                "output_digest"
+              ]
+            },
+            "total_count": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "true_count": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "false_count": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "logical_bytes": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "output_digest_schema": {
+              "type": "string",
+              "const": "canopy.output-digest/v1alpha1"
+            },
+            "output_digest_algorithm": {
+              "type": "string",
+              "const": "sha256-jcs"
+            },
+            "output_digest": {
+              "type": "string",
+              "pattern": "^sha256:[0-9a-f]{64}$"
+            },
+            "first_ordinal": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "last_ordinal": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "causal_trace_links": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "source_merge_output_digest",
+                "source_merge_output_segments",
+                "retained_ordinal_range",
+                "retained_item_provenance"
+              ],
+              "properties": {
+                "source_merge_output_digest": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "source_merge_output_segments": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": [
+                      "artifact_id",
+                      "format",
+                      "media_type",
+                      "logical_bytes",
+                      "content_digest_algorithm"
+                    ],
+                    "properties": {
+                      "artifact_id": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "format": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "media_type": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "logical_bytes": {
+                        "type": "integer",
+                        "minimum": 0
+                      },
+                      "content_digest_algorithm": {
+                        "type": "string",
+                        "minLength": 1
+                      }
+                    }
+                  }
+                },
+                "retained_ordinal_range": {
+                  "type": "array",
+                  "minItems": 2,
+                  "maxItems": 2,
+                  "items": {
+                    "anyOf": [
+                      {
+                        "type": "integer",
+                        "minimum": 0
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                },
+                "retained_item_provenance": {
+                  "type": "string",
+                  "const": "artifact-backed-merge-spool"
+                }
+              }
+            }
+          }
         }
       }
     ]
