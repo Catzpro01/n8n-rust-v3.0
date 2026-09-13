@@ -1523,7 +1523,7 @@ fn complete_generated_transaction(
                 .summary
                 .as_ref()
                 .map(|summary| summary.correctness_digest.clone())
-                .ok_or_else(|| RunError::Integrity("successful generation has no summary".into()))?
+                .map_err(|_| RunError::Integrity("successful generation has no summary".into()))?
         }
     } else {
         digest(&json!({
@@ -2405,7 +2405,7 @@ fn apply_edit_fields_batch(
         })?;
         let mut physical_output = logical_output;
         if artifact.is_some() {
-            if let (Some(Value::Object(output)), Some(data)) = (
+            if let (Some(output), Some(data)) = (
                 physical_output.as_object_mut(),
                 envelope.item.get("data").cloned(),
             ) {
