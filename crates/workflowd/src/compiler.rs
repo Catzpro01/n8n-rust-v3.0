@@ -3,6 +3,7 @@
 use crate::canonical::{digest, CANONICALIZATION, DIGEST_ALGORITHM};
 use crate::draft::WorkflowDraft;
 use crate::edit_fields;
+use crate::if_node;
 use canopy_node_contract::{lock, validate, NodeContractLock};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -168,6 +169,7 @@ fn native_contracts() -> Result<Vec<Value>, String> {
             "Edit Fields",
             include_str!("../../../contracts/edit-fields.v1alpha2.json"),
         ),
+        ("If", include_str!("../../../contracts/if.v1alpha1.json")),
     ]
     .into_iter()
     .map(|(name, source)| {
@@ -388,7 +390,7 @@ fn validate_all(
             continue;
         }
         validate_configuration(node, diagnostics)?;
-        if node.contract_lock.name != "edit-fields" {
+        if node.contract_lock.name != "edit-fields" && node.contract_lock.name != "if" {
             validate_expressions(&node.configuration, &node.id, "$", diagnostics)?;
         }
         validate_capabilities(contract, node, policy, diagnostics)?;
@@ -450,6 +452,26 @@ fn validate_configuration(
                     "error",
                     format!("node:{}", node.id),
                     "The Edit Fields configuration is outside the approved native contract.",
+                    json!({"detail": error.message, "native_code": error.code}),
+                    false,
+                )?;
+                false
+            }
+        },
+        "if" => match if_node::validate_configuration(&node.configuration) {
+            Ok(()) => true,
+            Err(error) => {
+                let code = if error.code.starts_with("canopy.expression") {
+                    "E_EXPRESSION_UNSUPPORTED"
+                } else {
+                    "E_CONFIGURATION_INVALID"
+                };
+                push(
+                    diagnostics,
+                    code,
+                    "error",
+                    format!("node:{}", node.id),
+                    "The If configuration is outside the approved native contract.",
                     json!({"detail": error.message, "native_code": error.code}),
                     false,
                 )?;
