@@ -97,8 +97,8 @@ starting a new frontend framework from scratch.
 - `git diff --check` — clean before this status update.
 - Pinned run `34779941760` passed compilation, 4 Node Contract tests, 50
   workflowd tests, doc tests, and the three public Merge acceptance cases.
-- Final evidence-clean tip runs `34780097629` (public If/Merge acceptance) and
-  `34780097639` (editor build/typecheck, rustfmt, workspace tests, and
+- Final evidence-clean tip runs `34780397609` (public If/Merge acceptance) and
+  `34780397639` (editor build/typecheck, rustfmt, workspace tests, and
   dependency-free repository tests) passed; `34779941770` independently passed
   rustfmt before the temporary helper was removed.
 - `git diff --check` — clean before this status update.

@@ -109,13 +109,13 @@ The bounded Ticket 10 code/test/documentation gate is recorded as follows on
 - `34779941760` — temporary pinned Rust diagnostic: compilation, 4 node-contract
   tests, 50 workflowd tests, doc tests, and the three public Merge acceptance
   cases passed; the diagnostic's final captured acceptance log is `OK`.
-- `34780097629` — final public If/Merge acceptance passed on the evidence-clean
-  branch tip.
-- `34780097639` — final repository validation passed, including editor
-  build/typecheck, `cargo fmt --check`, workspace tests, and dependency-free
-  Python tests.
-- `34779941770` — independent pinned rustfmt check passed before the temporary
-  helper was removed.
+- `34780397609` — final public If/Merge acceptance passed on the evidence-clean
+  branch tip, including empty-branch and restart assertions.
+- `34780397639` — final repository validation passed after the retry-reference
+  cleanup change, including editor build/typecheck, `cargo fmt --check`, all
+  workspace tests, and dependency-free Python tests.
+- `34779941770` — an earlier independent pinned rustfmt check passed; the
+  temporary helper was removed after the final validation lane passed.
 
 The temporary diagnostic and format-helper workflows and their scratch logs are
 removed after this evidence capture. Release-bundle packaging and the broader
