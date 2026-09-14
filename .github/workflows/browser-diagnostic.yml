@@ -36,7 +36,7 @@ jobs:
       - name: Run generate artifact diagnostics
         continue-on-error: true
         run: |
-          sed -i 's/await new Promise((resolve) => daemon.once("exit", resolve));/await new Promise((resolve) => setTimeout(resolve, 1000));/' editor/tests/generate-artifact.mjs
+          sed -i 's/daemon.once("exit", resolve)/setTimeout(resolve, 1000)/' editor/tests/generate-artifact.mjs
           mkdir -p .scratch
           set +e
           (cd editor && node tests/generate-artifact.mjs) > .scratch/current-browser-test.log 2>&1
