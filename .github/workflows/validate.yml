@@ -26,13 +26,8 @@ jobs:
           toolchain: 1.85.1
           components: rustfmt
 
-      - name: Rust cache
-        uses: Swatinem/rust-cache@v2
-        with:
-          cache-all-crates: true
-
       - name: Cargo check (fast feedback, no test/build)
-        run: cargo check --workspace --locked
+        run: cargo check --workspace
 
       - name: Check Rust formatting
         run: cargo fmt --all -- --check
