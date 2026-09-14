@@ -119,7 +119,7 @@ jobs:
 
       - name: Install Chromium for browser acceptance
         working-directory: editor
-        run: npx playwright install --with-deps chromium
+        run: npx playwright install chromium
 
       - name: "Browser acceptance: two-tab editing"
         working-directory: editor
@@ -168,7 +168,7 @@ jobs:
 
       - name: Install Chromium for browser acceptance
         working-directory: editor
-        run: npx playwright install --with-deps chromium
+        run: npx playwright install chromium
 
       - name: "Browser acceptance: artifact generation"
         working-directory: editor
@@ -323,7 +323,7 @@ jobs:
 
       - name: Install Chromium for browser acceptance
         working-directory: editor
-        run: npx playwright install --with-deps chromium
+        run: npx playwright install chromium
 
       - name: Run Eco browser/API acceptance
         working-directory: editor
