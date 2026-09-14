@@ -39,6 +39,26 @@ jobs:
       - name: Check Rust formatting
         run: cargo fmt --all -- --check
 
+      - name: Capture Rust formatting diff
+        if: failure()
+        run: |
+          cargo fmt --all
+          git diff -- crates/workflowd/src/run.rs > "$RUNNER_TEMP/rustfmt.diff"
+          {
+            echo '### Rust formatting diff'
+            echo '```diff'
+            cat "$RUNNER_TEMP/rustfmt.diff"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload Rust formatting diff
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rustfmt-diff
+          path: ${{ runner.temp }}/rustfmt.diff
+          if-no-files-found: ignore
+
       - name: Run Rust tests
         run: cargo test --workspace --locked -- --test-threads=1
 
