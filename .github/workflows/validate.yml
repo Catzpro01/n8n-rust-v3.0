@@ -14,11 +14,14 @@ concurrency:
 
 jobs:
   validate:
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     timeout-minutes: 45
     steps:
       - name: Check out source
         uses: actions/checkout@v4
+
+      - name: Host prerequisites (self-hosted VPS)
+        uses: ./.github/actions/host-prereqs
 
       - name: Install pinned Rust toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -84,11 +87,14 @@ jobs:
     # Dependency audits are a separate job: they need live advisory data from
     # npm/RustSec and must not break the hermetic build/test job when a
     # registry is unreachable.
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     timeout-minutes: 15
     steps:
       - name: Check out source
         uses: actions/checkout@v4
+
+      - name: Host prerequisites (self-hosted VPS)
+        uses: ./.github/actions/host-prereqs
 
       - name: Install pinned Rust toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -114,11 +120,14 @@ jobs:
     # Ticket 11: verify `make release` produces a reproducible, checksummed
     # bundle. No runtime patching of scripts: the dependency audit runs in the
     # separate `audit` job, and build-release.sh is executable in the index.
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     timeout-minutes: 25
     steps:
       - name: Check out source
         uses: actions/checkout@v4
+
+      - name: Host prerequisites (self-hosted VPS)
+        uses: ./.github/actions/host-prereqs
 
       - name: Install pinned Rust toolchain
         uses: dtolnay/rust-toolchain@stable

@@ -10,11 +10,14 @@ permissions:
 
 jobs:
   if-runtime:
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     timeout-minutes: 20
     steps:
       - name: Check out source
         uses: actions/checkout@v4
+
+      - name: Host prerequisites (self-hosted VPS)
+        uses: ./.github/actions/host-prereqs
 
       - name: Install pinned Rust toolchain
         uses: dtolnay/rust-toolchain@stable
