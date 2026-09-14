@@ -91,6 +91,22 @@ reduction and records the typed upstream failure in the terminal trace. A Merge
 configuration, duplicate-ordinal, provenance, Artifact read, or Artifact write
 failure is a typed permanent failure and never publishes a successful output.
 
+Three fault-injection fixtures exercise the typed failure path deterministically
+(only when `WORKFLOWD_TEST_FAULTS=1`):
+
+- `merge-branch-failure` → `canopy.if.injected_failure` (If branch fails before Merge);
+- `merge-spool-read-failure` → `canopy.merge.spool_read` (Merge Artifact read fails during reduction);
+- `merge-spool-write-failure` → `canopy.merge.spool_storage` (Merge spool write fails before reduction).
+
+Each produces a `failed` Run with a typed `permanent_failure` activation and a
+matching `activation_outcome` Causal Trace event, and all spill-backed segment
+leases are abandoned/quarantined. The public seam `test_merge_cancellation`,
+`test_merge_branch_failure_is_typed_and_traceable`,
+`test_merge_spool_read_failure_is_typed_and_traceable`, and
+`test_merge_spool_write_failure_is_typed_and_traceable` in
+`tests/acceptance/test_if_runtime.py` cover cancellation, branch failure, and
+both spill/read fault classes without unbounded memory.
+
 Empty true or false branches are valid: the reducer waits for both closed
 streams and emits the non-empty side in the declared order. The same generated
 items and route decisions therefore produce the same Merge logical digest even

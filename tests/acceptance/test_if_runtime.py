@@ -667,6 +667,55 @@ class IfRuntimeAcceptance(unittest.TestCase):
             )
         )
 
+    def test_merge_spool_write_failure_is_typed_and_traceable(self):
+        publication = self.publish_workflow(include_merge=True)
+        current = publication["current_published"]
+        event = publication["current_event"]["envelope"]
+        admitted = api(
+            self.daemon.origin,
+            "/api/v1/workflows/wf-if-runtime/runs",
+            "POST",
+            {
+                "run_request_id": "run-merge-spool-write-failure",
+                "publication_event_id": event["event_id"],
+                "revision_id": current["revision_id"],
+                "plan_digest": current["plan_digest"],
+                "captured_invocation": {
+                    "manual": True,
+                    "fixture": "merge-spool-write-failure",
+                },
+            },
+            self.mutation,
+        )
+        self.assertEqual(admitted[0], 201, admitted[2])
+        run_id = admitted[2]["run"]["run_id"]
+        terminal = self.wait_terminal(run_id)
+        self.assertEqual(terminal["durable"]["state"], "failed")
+        self.assertFalse(terminal["correctness"]["complete"])
+
+        trace = api(
+            self.daemon.origin,
+            f"/api/v1/runs/{run_id}/trace",
+            headers=self.auth,
+        )
+        self.assertEqual(trace[0], 200, trace[2])
+        evidence = trace[2]
+        self.assertTrue(evidence["integrity_verified"])
+        merge_activation = next(
+            item for item in evidence["activations"] if item["node_instance_id"] == "merge"
+        )
+        self.assertEqual(merge_activation["outcome"], "permanent_failure")
+        self.assertEqual(merge_activation["failure"]["code"], "canopy.merge.spool_storage")
+        self.assertTrue(
+            any(
+                item["event_type"] == "activation_outcome"
+                and item["payload"].get("node_instance_id") == "merge"
+                and item["payload"].get("failure", {}).get("code")
+                == "canopy.merge.spool_storage"
+                for item in evidence["events"]
+            )
+        )
+
     def test_closed_branches_are_reduced_and_persisted(self):
         publication = self.publish_workflow(include_merge=True)
         current = publication["current_published"]

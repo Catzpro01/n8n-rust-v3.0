@@ -3750,6 +3750,8 @@ fn start_executor(
                     fault_injection_enabled(&input, "merge-branch-failure");
                 let inject_spool_read_failure =
                     fault_injection_enabled(&input, "merge-spool-read-failure");
+                let inject_spool_write_failure =
+                    fault_injection_enabled(&input, "merge-spool-write-failure");
                 let artifact = candidate.artifact.clone();
                 let merge_artifacts = artifacts.clone();
                 let edit_fields_candidate = candidate.edit_fields;
@@ -4053,6 +4055,12 @@ fn start_executor(
                                         branch_false_count.saturating_add(branch.false_count);
                                     branch_stream_digest = branch.stream_digest;
                                     if merge_node_id.is_some() {
+                                        if inject_spool_write_failure {
+                                            break Err(generate_failure(
+                                                "canopy.merge.spool_storage",
+                                                "Injected Merge spool write failure for acceptance.",
+                                            ));
+                                        }
                                         let spool_result: Result<(), GenerateFailure> = (|| {
                                             for envelope in &batch {
                                                 let provenance = if_node::RouteProvenance::parse(
