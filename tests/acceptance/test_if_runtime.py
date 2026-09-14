@@ -23,7 +23,11 @@ class IfRuntimeAcceptance(unittest.TestCase):
         self.state = root / "state"
         self.key = root / "master.key"
         self.key.write_bytes(os.urandom(32))
-        self.daemon = Daemon(self.state, self.key)
+        self.daemon = Daemon(
+            self.state,
+            self.key,
+            extra_environment={"WORKFLOWD_TEST_FAULTS": "1"},
+        )
         self.addCleanup(self.daemon.stop)
         setup = api(
             self.daemon.origin,
@@ -499,6 +503,169 @@ class IfRuntimeAcceptance(unittest.TestCase):
         self.assertEqual(next_terminal["durable"]["state"], "succeeded")
         self.assertEqual(next_terminal["generation"]["branch"]["true_count"], 6)
         self.assertEqual(next_terminal["generation"]["branch"]["false_count"], 6)
+
+    def test_merge_cancellation_is_terminal_and_traceable(self):
+        publication = self.publish_workflow(include_merge=True, item_count=49_998)
+        current = publication["current_published"]
+        event = publication["current_event"]["envelope"]
+        admitted = api(
+            self.daemon.origin,
+            "/api/v1/workflows/wf-if-runtime/runs",
+            "POST",
+            {
+                "run_request_id": "run-merge-cancel",
+                "publication_event_id": event["event_id"],
+                "revision_id": current["revision_id"],
+                "plan_digest": current["plan_digest"],
+                "captured_invocation": {"manual": True, "fixture": "merge-cancel"},
+            },
+            self.mutation,
+        )
+        self.assertEqual(admitted[0], 201, admitted[2])
+        run_id = admitted[2]["run"]["run_id"]
+        cancellation = None
+        for _ in range(8_000):
+            progress = api(
+                self.daemon.origin,
+                f"/api/v1/runs/{run_id}",
+                headers=self.auth,
+            )[2]
+            if progress.get("generation", {}).get("generated_count", 0) >= 1_024:
+                cancellation = api(
+                    self.daemon.origin,
+                    f"/api/v1/runs/{run_id}/cancel",
+                    "POST",
+                    {"cancellation_request_id": "cancel-merge-run"},
+                    self.mutation,
+                )
+                break
+            self.assertFalse(progress["durable"]["terminal"])
+            time.sleep(0.005)
+        self.assertIsNotNone(cancellation, "Merge run did not expose cancellable progress")
+        self.assertEqual(cancellation[0], 200, cancellation[2])
+        self.assertTrue(cancellation[2]["accepted"], cancellation[2])
+
+        terminal = self.wait_terminal(run_id, attempts=30_000)
+        self.assertEqual(terminal["durable"]["state"], "cancelled")
+        self.assertFalse(terminal["correctness"]["complete"])
+        trace = api(
+            self.daemon.origin,
+            f"/api/v1/runs/{run_id}/trace",
+            headers=self.auth,
+        )
+        self.assertEqual(trace[0], 200, trace[2])
+        self.assertTrue(trace[2]["integrity_verified"])
+        self.assertEqual(trace[2]["terminal_state"], "cancelled")
+        self.assertIn(
+            "merge",
+            [item["node_instance_id"] for item in trace[2]["activations"]],
+        )
+        self.assertTrue(
+            any(
+                item["event_type"] == "activation_outcome"
+                and item["payload"].get("node_instance_id") == "merge"
+                and item["payload"].get("outcome") == "cancelled"
+                for item in trace[2]["events"]
+            )
+        )
+
+    def test_merge_branch_failure_is_typed_and_traceable(self):
+        publication = self.publish_workflow(include_merge=True)
+        current = publication["current_published"]
+        event = publication["current_event"]["envelope"]
+        admitted = api(
+            self.daemon.origin,
+            "/api/v1/workflows/wf-if-runtime/runs",
+            "POST",
+            {
+                "run_request_id": "run-merge-branch-failure",
+                "publication_event_id": event["event_id"],
+                "revision_id": current["revision_id"],
+                "plan_digest": current["plan_digest"],
+                "captured_invocation": {
+                    "manual": True,
+                    "fixture": "merge-branch-failure",
+                },
+            },
+            self.mutation,
+        )
+        self.assertEqual(admitted[0], 201, admitted[2])
+        run_id = admitted[2]["run"]["run_id"]
+        terminal = self.wait_terminal(run_id)
+        self.assertEqual(terminal["durable"]["state"], "failed")
+        self.assertFalse(terminal["correctness"]["complete"])
+
+        trace = api(
+            self.daemon.origin,
+            f"/api/v1/runs/{run_id}/trace",
+            headers=self.auth,
+        )
+        self.assertEqual(trace[0], 200, trace[2])
+        evidence = trace[2]
+        self.assertTrue(evidence["integrity_verified"])
+        branch = next(
+            item for item in evidence["activations"] if item["node_instance_id"] == "if"
+        )
+        self.assertEqual(branch["outcome"], "permanent_failure")
+        self.assertEqual(branch["failure"]["code"], "canopy.if.injected_failure")
+        self.assertTrue(
+            any(
+                item["event_type"] == "activation_outcome"
+                and item["payload"].get("node_instance_id") == "if"
+                and item["payload"].get("failure", {}).get("code")
+                == "canopy.if.injected_failure"
+                for item in evidence["events"]
+            )
+        )
+
+    def test_merge_spool_read_failure_is_typed_and_traceable(self):
+        publication = self.publish_workflow(include_merge=True)
+        current = publication["current_published"]
+        event = publication["current_event"]["envelope"]
+        admitted = api(
+            self.daemon.origin,
+            "/api/v1/workflows/wf-if-runtime/runs",
+            "POST",
+            {
+                "run_request_id": "run-merge-spool-read-failure",
+                "publication_event_id": event["event_id"],
+                "revision_id": current["revision_id"],
+                "plan_digest": current["plan_digest"],
+                "captured_invocation": {
+                    "manual": True,
+                    "fixture": "merge-spool-read-failure",
+                },
+            },
+            self.mutation,
+        )
+        self.assertEqual(admitted[0], 201, admitted[2])
+        run_id = admitted[2]["run"]["run_id"]
+        terminal = self.wait_terminal(run_id)
+        self.assertEqual(terminal["durable"]["state"], "failed")
+        self.assertFalse(terminal["correctness"]["complete"])
+
+        trace = api(
+            self.daemon.origin,
+            f"/api/v1/runs/{run_id}/trace",
+            headers=self.auth,
+        )
+        self.assertEqual(trace[0], 200, trace[2])
+        evidence = trace[2]
+        self.assertTrue(evidence["integrity_verified"])
+        merge_activation = next(
+            item for item in evidence["activations"] if item["node_instance_id"] == "merge"
+        )
+        self.assertEqual(merge_activation["outcome"], "permanent_failure")
+        self.assertEqual(merge_activation["failure"]["code"], "canopy.merge.spool_read")
+        self.assertTrue(
+            any(
+                item["event_type"] == "activation_outcome"
+                and item["payload"].get("node_instance_id") == "merge"
+                and item["payload"].get("failure", {}).get("code")
+                == "canopy.merge.spool_read"
+                for item in evidence["events"]
+            )
+        )
 
     def test_closed_branches_are_reduced_and_persisted(self):
         publication = self.publish_workflow(include_merge=True)

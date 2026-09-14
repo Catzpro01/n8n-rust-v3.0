@@ -47,7 +47,7 @@ def api(origin, path, method="GET", body=None, headers=None):
 
 
 class Daemon:
-    def __init__(self, state: Path, key: Path):
+    def __init__(self, state: Path, key: Path, extra_environment: dict[str, str] | None = None):
         self.port = free_port()
         self.origin = f"http://127.0.0.1:{self.port}"
         environment = os.environ.copy()
@@ -60,6 +60,7 @@ class Daemon:
                 "WORKFLOWD_ARGON_MEMORY_KIB": "8192",
                 "WORKFLOWD_ARGON_ITERATIONS": "1",
                 "WORKFLOWD_DRAFT_LEASE_TTL_SECONDS": "30",
+                **(extra_environment or {}),
             }
         )
         self.process = subprocess.Popen(

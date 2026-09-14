@@ -3534,6 +3534,11 @@ fn merge_artifact_error(error: ArtifactError) -> merge::MergeError {
     }
 }
 
+fn fault_injection_enabled(input: &Value, fixture: &str) -> bool {
+    std::env::var_os("WORKFLOWD_TEST_FAULTS").is_some()
+        && input.get("fixture").and_then(Value::as_str) == Some(fixture)
+}
+
 struct MergeArtifactIterator {
     artifacts: Arc<ArtifactService>,
     references: Vec<ArtifactReference>,
@@ -3541,10 +3546,26 @@ struct MergeArtifactIterator {
     stream: Option<crate::artifact::ArtifactContentStream>,
     buffer: Vec<u8>,
     finished: bool,
+    read_fault_pending: bool,
 }
 
 impl MergeArtifactIterator {
     fn new(artifacts: Arc<ArtifactService>, references: Vec<ArtifactReference>) -> Self {
+        Self::with_read_fault_inner(artifacts, references, false)
+    }
+
+    fn with_read_fault(
+        artifacts: Arc<ArtifactService>,
+        references: Vec<ArtifactReference>,
+    ) -> Self {
+        Self::with_read_fault_inner(artifacts, references, true)
+    }
+
+    fn with_read_fault_inner(
+        artifacts: Arc<ArtifactService>,
+        references: Vec<ArtifactReference>,
+        read_fault_pending: bool,
+    ) -> Self {
         Self {
             artifacts,
             references,
@@ -3552,6 +3573,7 @@ impl MergeArtifactIterator {
             stream: None,
             buffer: Vec::new(),
             finished: false,
+            read_fault_pending,
         }
     }
 
@@ -3569,6 +3591,13 @@ impl Iterator for MergeArtifactIterator {
     fn next(&mut self) -> Option<Self::Item> {
         if self.finished {
             return None;
+        }
+        if self.read_fault_pending {
+            self.read_fault_pending = false;
+            self.finished = true;
+            return Some(Self::error(
+                "Injected Merge Artifact read failure for acceptance.",
+            ));
         }
         loop {
             if let Some(newline) = self.buffer.iter().position(|byte| *byte == b'\n') {
@@ -3717,6 +3746,10 @@ fn start_executor(
 
                 let run_id = candidate.run_id.clone();
                 let input = candidate.captured_invocation.clone();
+                let inject_branch_failure =
+                    fault_injection_enabled(&input, "merge-branch-failure");
+                let inject_spool_read_failure =
+                    fault_injection_enabled(&input, "merge-spool-read-failure");
                 let artifact = candidate.artifact.clone();
                 let merge_artifacts = artifacts.clone();
                 let edit_fields_candidate = candidate.edit_fields;
@@ -4008,6 +4041,12 @@ fn start_executor(
                                         Ok(branch) => branch,
                                         Err(error) => break Err(error),
                                     };
+                                    if inject_branch_failure {
+                                        break Err(generate_failure(
+                                            "canopy.if.injected_failure",
+                                            "The bounded Merge acceptance injected an If branch failure.",
+                                        ));
+                                    }
                                     branch_true_count =
                                         branch_true_count.saturating_add(branch.true_count);
                                     branch_false_count =
@@ -4142,10 +4181,17 @@ fn start_executor(
                         })?;
                         let true_segments = true_spool.references();
                         let false_segments = false_spool.references();
-                        let true_reader = MergeArtifactIterator::new(
-                            merge_artifacts.clone(),
-                            true_segments.clone(),
-                        );
+                        let true_reader = if inject_spool_read_failure {
+                            MergeArtifactIterator::with_read_fault(
+                                merge_artifacts.clone(),
+                                true_segments.clone(),
+                            )
+                        } else {
+                            MergeArtifactIterator::new(
+                                merge_artifacts.clone(),
+                                true_segments.clone(),
+                            )
+                        };
                         let false_reader = MergeArtifactIterator::new(
                             merge_artifacts.clone(),
                             false_segments.clone(),
