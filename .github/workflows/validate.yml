@@ -53,6 +53,10 @@ jobs:
         working-directory: editor
         run: npx playwright install --with-deps chromium
 
+      - name: "Browser acceptance: artifact generation"
+        working-directory: editor
+        run: node tests/generate-artifact.mjs
+
       - name: "Browser acceptance: two-tab editing"
         working-directory: editor
         run: node tests/two-tab.mjs
@@ -64,10 +68,6 @@ jobs:
       - name: "Browser acceptance: run trace"
         working-directory: editor
         run: node tests/run-trace.mjs
-
-      - name: "Browser acceptance: artifact generation"
-        working-directory: editor
-        run: node tests/generate-artifact.mjs
 
       - name: "Browser acceptance: field editing and run"
         working-directory: editor
