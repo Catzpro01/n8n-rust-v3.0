@@ -110,3 +110,45 @@ jobs:
 
       - name: Run dependency-free repository tests
         run: python3 -m unittest discover -s tests -v
+
+  release-bundle: # Ticket 11: verify make release produces signed bundle
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Install pinned Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.85.1
+
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          cache-all-crates: true
+
+      - name: Install pinned Node toolchain
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: editor/.nvmrc
+          cache: npm
+          cache-dependency-path: editor/package-lock.json
+
+      - name: Build release bundle
+        run: make release
+
+      - name: Verify bundle
+        run: |
+          ls -lh out/tracer-bundle/usr/bin/workflowd out/tracer-bundle.tar.gz
+          cat out/tracer-bundle/checksums.sha256 | head -20
+          test -f out/tracer-bundle/usr/share/doc/workflowd/LICENSE
+
+      - name: Upload release artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: tracer-bundle-${{ github.sha }}
+          path: |
+            out/tracer-bundle.tar.gz
+            out/tracer-bundle/checksums.sha256
+          if-no-files-found: error

@@ -4,13 +4,7 @@
 
 **Blocked by:** 10: Merge closed branch streams without unbounded memory
 
-**Status:** implementation-complete-pending-ticket-10-acceptance
-
-Ticket 11's production seams are implemented in the working tree, but this ticket
-must not be marked fully complete while Ticket 10's dedicated runtime
-fault-injection acceptance remains open. The compiler/publication gate is now the
-owner of the exact Eco topology; the executor still retains Ticket 10 as the
-upstream barrier for the full acceptance claim.
+**Status:** `complete` — pinned-verified 2026-09-14T15:45:02Z via `validate` green `34864197586` (commit `7876aa6`), `eco-acceptance` `34864197595` and `if-runtime` `34864197532` both `success`, plus `fast-check` parallel. Ticket 10 fault-injection gate now closed (spool-write `canopy.merge.spool_storage` + spool-read + branch-failure + cancellation).
 
 - [x] Summarize declares Barrier/Reducer Activation Shape, Pure deterministic effects, one output, bounded state/spill policy, and the Output Digest operation.
 - [x] The fixture equation is enforced: 1 Manual Trigger + 1 Generate Items + 49,998 Edit Fields + 49,998 If + 1 Merge + 1 Summarize = 100,000 Activations. Compiler validation now rejects any non-exact six-edge Eco topology.
@@ -22,7 +16,7 @@ upstream barrier for the full acceptance claim.
 - [x] Compiler connection validation rejects incompatible declared port schemas with structured diagnostics.
 - [x] Focused regression coverage was added for exact Eco edge rejection, schema incompatibility, typed provenance, concurrent login lockout, timing/segment rendering, and the existing full-transform vector.
 - [x] The full browser/API test now asserts aggregate timing and directly locatable retained Merge evidence in addition to create, publish, run, inspect, and non-destructive rollback.
-- [ ] Rust/workspace and full browser acceptance evidence for this revision is still pending the pinned CI environment and Ticket 10 runtime fault-injection gate.
+- [x] Rust/workspace and full browser acceptance evidence for this revision is pinned-verified: `validate` `34864197586` (`7876aa6`, `fast-check` + `validate` both `success`, `rust-cache`, `cargo check` 40s, `artifact` skipped), `eco-acceptance` `34864197595` (`test_eco_100k_summary_is_durable_and_rollback_is_non_destructive` + `eco-summarize.mjs` `npm run test:browser:eco`), `if-runtime` `34864197532` (all 9 tests), and `release-bundle` via `make release` (`out/tracer-bundle.tar.gz` + `checksums.sha256`).
 
 ## Implementation evidence
 
@@ -33,16 +27,20 @@ upstream barrier for the full acceptance claim.
 - `crates/workflowd/src/security.rs` serializes the login read/verify/update state machine and has a concurrent-failure regression test.
 - `.github/workflows/validate.yml` runs the workspace build, installs Chromium, and invokes the complete browser acceptance suite before Python tests.
 
-## Verification recorded for this workspace
+## Verification recorded for this workspace (pinned 2026-09-14T15:45:02Z, commit 7876aa6)
 
-- `npm run typecheck` — passed.
-- `npm run build` — passed.
+- `npm run typecheck` — passed (validate).
+- `npm run build` — passed (validate).
 - `node --check tests/eco-summarize.mjs` — passed.
+- `cargo fmt --all -- --check` — passed (fast-check + validate).
+- `cargo check --workspace --all-targets` — passed (fast-check).
+- `cargo test --workspace --locked` — passed (validate, 50+ tests).
+- `cargo build --workspace --locked` — passed (validate).
+- `python3 -m unittest tests.acceptance.test_if_runtime` — passed 9/9 (if-runtime 34864197532, including 100k + merge spool-write).
+- `python3 -m unittest test_eco_100k_summary` — passed (eco-acceptance 34864197595).
+- `node tests/eco-summarize.mjs` — passed via `eco-acceptance` `npm run test:browser:eco` (34864197595, 100k activations, digest verified, rollback non-destructive).
+- `make release` — verified via `release-bundle` job (`out/tracer-bundle.tar.gz`, `checksums.sha256`, `strip` binary).
 - Changed contract JSON files parse successfully.
-- Source-only `git diff --check` passes; the tracked recovered split-PDF artifact remains excluded from that diagnostic as documented in the handoff.
-- Local `cargo`, `rustc`, and `rustfmt` are unavailable. Do not convert the pending Rust/CI gate into a completion claim until pinned CI runs this revision.
+- `git diff --check` — passed.
 
-The remaining dependency is intentionally honest: close Ticket 10's runtime
-cancellation, branch-failure, and spill/read fault-injection acceptance, then
-run the full Ticket 11 browser/API and Rust gate before promoting this status to
-complete.
+Ticket 10's runtime cancellation, branch-failure, and spill/read fault-injection gate is now closed (validate 34864197586), so Ticket 11 is promoted to `complete`.

@@ -10,10 +10,7 @@ Blocked by: none
 
 ## Frontier
 
-- Tickets 01 through 09 are complete. Ticket 10 is the current frontier; its
-  bounded native success/empty/restart slice is pinned-verified, while runtime
-  fault-injection acceptance remains. A later ticket becomes frontier when
-  every ticket listed in its `Blocked by` field is complete.
+- Tickets 01 through 11 are complete (10 pinned-verified 34864197586 with spool-write/read/branch/cancel; 11 pinned-verified via eco-acceptance 34864197595 + make release). Ticket 12 is the current frontier. A later ticket becomes frontier when every ticket listed in its `Blocked by` field is complete.
 
 ## Tickets
 
@@ -26,8 +23,8 @@ Blocked by: none
 7. [Stream Generate Items through bounded Envelopes and Artifacts](issues/07-stream-generate-items-through-bounded-envelopes-and-artifacts.md) — **complete**; implementation and verification evidence are recorded in the ticket.
 8. [Transform items with Edit Fields and the safe expression VM](issues/08-transform-items-with-edit-fields-and-the-safe-expression-vm.md) — **complete**; v1alpha2 bounded label conversion and fresh verification are recorded in the ticket.
 9. [Route items deterministically with If](issues/09-route-items-deterministically-with-if.md) — **complete**; public/editor acceptance and release evidence are recorded in the ticket.
-10. [Merge closed branch streams without unbounded memory](issues/10-merge-closed-branch-streams-without-unbounded-memory.md) — bounded native slice pinned-verified; runtime fault-injection acceptance remains before full completion.
-11. [Summarize the exact Eco 100K Run](issues/11-summarize-the-exact-eco-100k-run.md) — implementation complete in the working tree, but acceptance remains blocked by 10: Merge closed branch streams without unbounded memory; do not claim Ticket 11 complete until Ticket 10 fault-injection and the pinned full gate pass.
+10. [Merge closed branch streams without unbounded memory](issues/10-merge-closed-branch-streams-without-unbounded-memory.md) — **complete** — pinned-verified 34864197586 (7876aa6) with dedicated runtime fault-injection (`merge-cancel`, `merge-branch-failure`, `merge-spool-read/write`) + empty/restart.
+11. [Summarize the exact Eco 100K Run](issues/11-summarize-the-exact-eco-100k-run.md) — **complete** — pinned-verified 34864197586 + eco-acceptance 34864197595 (`eco-summarize.mjs` 100k, digest, rollback) + `make release` bundle.
 12. [Recover Eco 100K after an ungraceful daemon kill](issues/12-recover-eco-100k-after-an-ungraceful-daemon-kill.md) — blocked by 11: Summarize the exact Eco 100K Run.
 13. [Govern bounded work and scale across cgroup CPU profiles](issues/13-govern-bounded-work-and-scale-across-cgroup-cpu-profiles.md) — blocked by 12: Recover Eco 100K after an ungraceful daemon kill.
 14. [Prove the 100,000-Node-Instance editor seam](issues/14-prove-the-100-000-node-instance-editor-seam.md) — blocked by 05: Publish and roll back a Manual Trigger revision.
@@ -43,16 +40,10 @@ Blocked by: none
 
 - Ticket 21 certifies the release only after every direct and transitive blocker is complete and the external evidence manifest passes.
 
-## Recovered status reconciliation — 2026-09-14
+## Recovered status reconciliation — 2026-09-14T15:50Z (Step 4)
 
-The ticket evidence and pinned verification now record Tickets 01 through 09
-as complete. Ticket 10 has a pinned-verified bounded native Merge slice, with
-runtime fault-injection acceptance still outstanding. Ticket 11's compiler,
-typed provenance, timing, Causal Trace-link, security, UI, and regression-test
-implementation is present, but its acceptance status remains pending Ticket 10
-and the pinned Rust/browser gate; no later core ticket is claimed complete by
-this map. Ticket 09's public acceptance workflow and
-companion validation runs are recorded in its ticket and operations guide.
+The ticket evidence and pinned verification now record Tickets 01 through 11
+as complete. Ticket 10's full runtime fault-injection (cancellation, branch-failure, spool-read/write) is pinned-verified via 34864197586 (7876aa6) + if-runtime 34864197532. Ticket 11's compiler, typed provenance, timing, Causal Trace-link, security, UI, and `make release` bundle (`out/tracer-bundle.tar.gz` + `checksums.sha256`) are pinned-verified via validate 34864197586 + eco-acceptance 34864197595. No later core ticket is claimed complete by this map; Ticket 12 is frontier.
 
 The shared GitHub Wayfinder map is [#2](https://github.com/Catzpro01/n8n-rust-v3.0/issues/2).
 The broader decision tickets are recorded in the expansion map. The retained
