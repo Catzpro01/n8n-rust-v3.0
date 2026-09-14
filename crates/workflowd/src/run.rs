@@ -3215,8 +3215,7 @@ fn native_stage_definitions(
         return Ok((None, None, None, None));
     }
     let (_, edit_fields, if_node, merge, summarize) =
-        generation_plan_and_transform(plan)
-            .map_err(|error| RunError::Integrity(error.message))?;
+        generation_plan_and_transform(plan).map_err(|error| RunError::Integrity(error.message))?;
     Ok((edit_fields, if_node, merge, summarize))
 }
 
