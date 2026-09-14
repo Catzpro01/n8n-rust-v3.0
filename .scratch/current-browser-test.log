@@ -1,7 +1,0 @@
-{"timestamp":"2026-09-14T08:55:59.290434Z","level":"INFO","fields":{"event":"server_listening","address":"127.0.0.1:39137","transport":"http","tokio_core_workers":1,"blocking_threads_max":2},"target":"workflowd"}
-{"timestamp":"2026-09-14T08:56:00.798894Z","level":"INFO","fields":{"event":"run_terminal_notified","run_id":"run-PSVF8jD29uiC25lORh5gCw","sequence":2},"target":"workflowd::run"}
-{"timestamp":"2026-09-14T08:56:01.062756Z","level":"INFO","fields":{"event":"run_terminal_notified","run_id":"run-b5lBrWeWjhTPxwPpS9LQtA","sequence":1},"target":"workflowd::run"}
-run-browser=passed sse-gap-resync=passed axe-serious=0 reload-markup-diff=0 mobile-overflow=0
-{"timestamp":"2026-09-14T08:56:01.747086Z","level":"INFO","fields":{"event":"shutdown_requested"},"target":"workflowd"}
-
-browser-test-exit=0
