@@ -79,7 +79,7 @@ class Daemon:
                 pass
             if self.process.poll() is not None:
                 # The daemon is already gone. Polling out the remaining budget
-                # can only bury the reason it died under a 20s timeout.
+                # can only bury the reason it died under the health budget.
                 break
             time.sleep(0.05)
         if self.process.poll() is None:
@@ -92,7 +92,7 @@ class Daemon:
         outcome = (
             f"exited with code {exit_code}"
             if exit_code is not None
-            else "still running when the 20s health budget expired"
+            else f"still running when the {1200 * 0.05:.0f}s health budget expired"
         )
         raise AssertionError(f"daemon did not start ({outcome}): {stderr}")
 
