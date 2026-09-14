@@ -32,6 +32,8 @@ const daemon = spawn(binary, ["serve"], {
   },
   stdio: ["ignore", "pipe", "pipe"],
 });
+daemon.stdout.resume();
+daemon.stderr.resume();
 let browser;
 try {
   await ready(origin);
