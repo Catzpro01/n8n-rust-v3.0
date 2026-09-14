@@ -91,7 +91,19 @@ try {
   assert.ok(publication.published);
   await page.goto(`${origin}/?workflow=${publication.workflowId}`);
   await page.getByTestId("current-publication").getByText("Revision 1", { exact: true }).waitFor({ timeout: 30_000 });
+  const runResponse = page.waitForResponse((response) => response.request().method() === "POST" && response.url().endsWith(`/api/v1/workflows/${publication.workflowId}/runs`));
   await page.getByTestId("start-run").click();
+  const admittedResponse = await runResponse;
+  assert.equal(admittedResponse.status(), 201);
+  const admitted = await admittedResponse.json();
+  const runId = admitted.run.run_id;
+
+  // Do not keep a live EventSource rendering hundreds of progress frames while the
+  // large artifact is generated. The final state is rendered through the same
+  // browser contract after a bounded browser-side API wait.
+  await page.goto(origin);
+  assert.equal(await waitForTerminal(page, runId), "succeeded");
+  await page.goto(`${origin}/?workflow=${publication.workflowId}&run=${encodeURIComponent(runId)}`);
   await page.getByTestId("generation-progress").waitFor({ timeout: 30_000 });
   await waitAttribute(page.getByTestId("run-durable-state"), "data-state", "succeeded", 900);
   const progressText = await page.getByTestId("generation-progress").textContent();
@@ -172,6 +184,20 @@ async function ready(origin) {
   }
   throw new Error("daemon did not start");
 }
+async function waitForTerminal(page, runId, attempts = 1_800) {
+  return page.evaluate(async ({ runId: id, attempts: maxAttempts }) => {
+    for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+      const response = await fetch(`/api/v1/runs/${encodeURIComponent(id)}`);
+      if (response.ok) {
+        const run = await response.json();
+        if (run.durable?.terminal) return run.durable.state;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+    throw new Error(`run ${id} did not become terminal`);
+  }, { runId, attempts });
+}
+
 async function waitAttribute(locator, name, value, attempts = 200) {
   for (let attempt = 0; attempt < attempts; attempt += 1) {
     if ((await locator.getAttribute(name)) === value) return;
