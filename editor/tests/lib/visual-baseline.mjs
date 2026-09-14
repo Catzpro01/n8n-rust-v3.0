@@ -43,6 +43,38 @@ export async function compareOrWrite(name, actual, { baselineDir, update = false
   assert.fail(mismatchMessage(name, expected, actual, actualPath));
 }
 
+/**
+ * Compare several baselines and report every mismatch in one failure.
+ *
+ * Comparing one at a time makes CI discover mismatches serially: the run dies
+ * on the first one, the next run dies on the second. Rendering a page once and
+ * reporting all differences together costs nothing and saves a whole pipeline
+ * round trip per additional baseline.
+ *
+ * @param {Array<[string, Buffer]>} entries baseline name and rendered bytes
+ * @param {{ baselineDir: string, update?: boolean }} options
+ * @returns {Promise<Array<{ status: string, baselinePath: string }>>}
+ */
+export async function compareAll(entries, { baselineDir, update = false }) {
+  const results = [];
+  const mismatches = [];
+  for (const [name, actual] of entries) {
+    try {
+      results.push(await compareOrWrite(name, actual, { baselineDir, update }));
+    } catch (error) {
+      // compareOrWrite already wrote <name>.actual.png before throwing.
+      mismatches.push(error.message);
+    }
+  }
+  if (mismatches.length > 0) {
+    assert.fail(
+      `${mismatches.length} visual baseline(s) differ from their committed baselines.\n\n` +
+      mismatches.join("\n\n"),
+    );
+  }
+  return results;
+}
+
 /** `generate-progress.desktop.png` -> `generate-progress.desktop.actual.png` */
 export function actualName(name) {
   const dot = name.lastIndexOf(".");

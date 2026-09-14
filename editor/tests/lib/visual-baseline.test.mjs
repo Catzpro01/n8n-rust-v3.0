@@ -5,7 +5,7 @@ import os from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 
-import { actualName, compareOrWrite } from "./visual-baseline.mjs";
+import { actualName, compareAll, compareOrWrite } from "./visual-baseline.mjs";
 
 // The real desktop baseline committed under editor/tests/baselines is 107,596
 // bytes. That exact size is what used to be handed to assert.deepEqual, so the
@@ -81,4 +81,61 @@ test("update mode rewrites the committed baseline", async () => {
 test("actual file names keep the baseline extension", () => {
   assert.equal(actualName("generate-progress.desktop.png"), "generate-progress.desktop.actual.png");
   assert.equal(actualName("baseline"), "baseline.actual");
+});
+
+test("compareAll reports every drifted baseline in a single failure", async () => {
+  await withBaselineDirectory(async (baselineDir) => {
+    await writeFile(join(baselineDir, "generate-progress.desktop.png"), Buffer.alloc(BASELINE_BYTES, 0x5a));
+    await writeFile(join(baselineDir, "generate-progress.mobile.png"), Buffer.alloc(74_089, 0x33));
+
+    const error = await compareAll(
+      [
+        ["generate-progress.desktop.png", Buffer.alloc(BASELINE_BYTES, 0xa5)],
+        ["generate-progress.mobile.png", Buffer.alloc(74_089, 0xc3)],
+      ],
+      { baselineDir },
+    ).then(() => null, (thrown) => thrown);
+
+    assert.ok(error, "two drifted baselines must fail the acceptance test");
+    assert.match(error.message, /2 visual baseline\(s\) differ/);
+    assert.match(error.message, /generate-progress\.desktop\.png differs/);
+    assert.match(error.message, /generate-progress\.mobile\.png differs/);
+    // Both rendered images must survive, so one run is enough to review both.
+    for (const name of ["generate-progress.desktop.actual.png", "generate-progress.mobile.actual.png"]) {
+      const written = await readFile(join(baselineDir, name));
+      assert.ok(written.length > 0, `${name} must be retained`);
+    }
+  });
+});
+
+test("compareAll passes when every baseline matches and stops at nothing", async () => {
+  await withBaselineDirectory(async (baselineDir) => {
+    await writeFile(join(baselineDir, "generate-progress.desktop.png"), Buffer.alloc(64, 0x11));
+    await writeFile(join(baselineDir, "generate-progress.mobile.png"), Buffer.alloc(32, 0x22));
+    const results = await compareAll(
+      [
+        ["generate-progress.desktop.png", Buffer.alloc(64, 0x11)],
+        ["generate-progress.mobile.png", Buffer.alloc(32, 0x22)],
+      ],
+      { baselineDir },
+    );
+    assert.deepEqual(results.map((item) => item.status), ["matched", "matched"]);
+  });
+});
+
+test("compareAll names only the baseline that actually drifted", async () => {
+  await withBaselineDirectory(async (baselineDir) => {
+    await writeFile(join(baselineDir, "generate-progress.desktop.png"), Buffer.alloc(64, 0x11));
+    await writeFile(join(baselineDir, "generate-progress.mobile.png"), Buffer.alloc(32, 0x22));
+    const error = await compareAll(
+      [
+        ["generate-progress.desktop.png", Buffer.alloc(64, 0x11)],
+        ["generate-progress.mobile.png", Buffer.alloc(32, 0x99)],
+      ],
+      { baselineDir },
+    ).then(() => null, (thrown) => thrown);
+    assert.match(error.message, /1 visual baseline\(s\) differ/);
+    assert.match(error.message, /generate-progress\.mobile\.png differs/);
+    assert.doesNotMatch(error.message, /generate-progress\.desktop\.png differs/);
+  });
 });

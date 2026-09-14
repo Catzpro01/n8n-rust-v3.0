@@ -8,7 +8,7 @@ import { join, resolve } from "node:path";
 import { spawn } from "node:child_process";
 import { chromium } from "playwright";
 
-import { compareOrWrite } from "./lib/visual-baseline.mjs";
+import { compareAll } from "./lib/visual-baseline.mjs";
 
 const require = createRequire(import.meta.url);
 const repo = resolve(import.meta.dirname, "../..");
@@ -177,14 +177,15 @@ try {
     values[3].textContent = "sha256:verified…";
   });
   const desktop = await page.getByTestId("generation-progress").screenshot({ animations: "disabled", caret: "hide", scale: "css" });
-  await compareOrWrite("generate-progress.desktop.png", desktop, {
-    baselineDir: baselines,
-    update: process.env.UPDATE_VISUAL_BASELINE === "1",
-  });
   await page.setViewportSize({ width: 390, height: 900 });
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true, "generated progress must fit 390px");
   const mobile = await page.getByTestId("generation-progress").screenshot({ animations: "disabled", caret: "hide", scale: "css" });
-  await compareOrWrite("generate-progress.mobile.png", mobile, {
+  // Both viewports are rendered before either is compared, so one run reports
+  // every baseline that drifted instead of one per pipeline round trip.
+  await compareAll([
+    ["generate-progress.desktop.png", desktop],
+    ["generate-progress.mobile.png", mobile],
+  ], {
     baselineDir: baselines,
     update: process.env.UPDATE_VISUAL_BASELINE === "1",
   });
