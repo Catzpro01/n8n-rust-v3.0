@@ -3595,9 +3595,9 @@ impl Iterator for MergeArtifactIterator {
         if self.read_fault_pending {
             self.read_fault_pending = false;
             self.finished = true;
-            return Some(Self::error(
+            return Some(Err(Self::error(
                 "Injected Merge Artifact read failure for acceptance.",
-            ));
+            )));
         }
         loop {
             if let Some(newline) = self.buffer.iter().position(|byte| *byte == b'\n') {
