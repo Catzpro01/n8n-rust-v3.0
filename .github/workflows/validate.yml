@@ -13,6 +13,30 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  fast-check: # Fast lane: 40s feedback for Rust compile errors (cargo check, no codegen)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Install pinned Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.85.1
+          components: rustfmt
+
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          cache-all-crates: true
+
+      - name: Cargo check (fast feedback, no test/build)
+        run: cargo check --workspace --locked
+
+      - name: Check Rust formatting
+        run: cargo fmt --all -- --check
+
   validate:
     runs-on: ubuntu-latest
     timeout-minutes: 45
@@ -25,6 +49,11 @@ jobs:
         with:
           toolchain: 1.85.1
           components: rustfmt
+
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          cache-all-crates: true
 
       - name: Install pinned Node toolchain
         uses: actions/setup-node@v4
