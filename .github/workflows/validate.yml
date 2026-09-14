@@ -79,25 +79,18 @@ jobs:
             const fs = require("node:fs");
             if (!fs.existsSync(process.env.ARTIFACT_BROWSER_LOG)) return;
             const log = fs.readFileSync(process.env.ARTIFACT_BROWSER_LOG, "utf8");
-            const checks = await github.rest.checks.listForRef({
+            await github.rest.checks.create({
               owner: context.repo.owner,
               repo: context.repo.repo,
-              ref: context.sha,
+              name: "artifact-browser-diagnostic",
+              head_sha: context.sha,
+              status: "completed",
+              conclusion: "neutral",
+              output: {
+                title: "Temporary artifact browser output",
+                summary: log.slice(-60000),
+              },
             });
-            const check = checks.data.check_runs
-              .filter((item) => item.name === "validate")
-              .sort((left, right) => Date.parse(right.started_at || right.created_at) - Date.parse(left.started_at || left.created_at))[0];
-            if (check) {
-              await github.rest.checks.update({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                check_run_id: check.id,
-                output: {
-                  title: "Temporary artifact browser output",
-                  summary: log.slice(-60000),
-                },
-              });
-            }
 
       - name: "Browser acceptance: two-tab editing"
         working-directory: editor
