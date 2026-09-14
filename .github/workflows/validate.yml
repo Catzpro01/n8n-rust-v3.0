@@ -119,7 +119,19 @@ jobs:
 
       - name: Install Chromium for browser acceptance
         working-directory: editor
-        run: npx playwright install chromium
+        run: |
+          set -euo pipefail
+          # Up to three jobs on this host install Chromium at once, into the
+          # runner user's shared ~/.cache/ms-playwright. Serialize host-wide so
+          # concurrent downloads cannot corrupt each other's partial files.
+          # (--with-deps is deliberately absent: see 8fecc63.)
+          exec 9>/tmp/n8n-playwright-install.lock
+          if command -v flock >/dev/null 2>&1; then
+            flock 9
+          else
+            echo "::warning::flock unavailable; Chromium install is not serialized"
+          fi
+          npx playwright install chromium
 
       - name: "Browser acceptance: two-tab editing"
         working-directory: editor
@@ -168,7 +180,19 @@ jobs:
 
       - name: Install Chromium for browser acceptance
         working-directory: editor
-        run: npx playwright install chromium
+        run: |
+          set -euo pipefail
+          # Up to three jobs on this host install Chromium at once, into the
+          # runner user's shared ~/.cache/ms-playwright. Serialize host-wide so
+          # concurrent downloads cannot corrupt each other's partial files.
+          # (--with-deps is deliberately absent: see 8fecc63.)
+          exec 9>/tmp/n8n-playwright-install.lock
+          if command -v flock >/dev/null 2>&1; then
+            flock 9
+          else
+            echo "::warning::flock unavailable; Chromium install is not serialized"
+          fi
+          npx playwright install chromium
 
       - name: "Browser acceptance: artifact generation"
         working-directory: editor
@@ -323,7 +347,19 @@ jobs:
 
       - name: Install Chromium for browser acceptance
         working-directory: editor
-        run: npx playwright install chromium
+        run: |
+          set -euo pipefail
+          # Up to three jobs on this host install Chromium at once, into the
+          # runner user's shared ~/.cache/ms-playwright. Serialize host-wide so
+          # concurrent downloads cannot corrupt each other's partial files.
+          # (--with-deps is deliberately absent: see 8fecc63.)
+          exec 9>/tmp/n8n-playwright-install.lock
+          if command -v flock >/dev/null 2>&1; then
+            flock 9
+          else
+            echo "::warning::flock unavailable; Chromium install is not serialized"
+          fi
+          npx playwright install chromium
 
       - name: Run Eco browser/API acceptance
         working-directory: editor
