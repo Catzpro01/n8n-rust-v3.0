@@ -36,7 +36,7 @@ jobs:
       - name: Run generate artifact diagnostics
         continue-on-error: true
         run: |
-          sed -i 's/daemon.once("exit", resolve)/setTimeout(resolve, 1000)/; s/900);/900);/; s/stdio: \["ignore", "pipe", "pipe"\]/stdio: ["ignore", "inherit", "inherit"]/g' editor/tests/generate-artifact.mjs
+          sed -i 's/daemon.once("exit", resolve)/setTimeout(resolve, 1000)/; s/900);/300);/; s/stdio: \["ignore", "pipe", "pipe"\]/stdio: ["ignore", "inherit", "inherit"]/g' editor/tests/generate-artifact.mjs
           mkdir -p .scratch
           set +e
           grep -n 'daemon.once\|setTimeout(resolve, 1000)' editor/tests/generate-artifact.mjs > .scratch/current-browser-test.log
