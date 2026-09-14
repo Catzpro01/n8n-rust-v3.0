@@ -131,6 +131,7 @@ try {
   await page.getByTestId("password").fill("correct horse battery staple");
   await page.getByTestId("sign-in").click();
   await page.waitForFunction(() => Boolean(sessionStorage.getItem("canopy-editor-session-v1")));
+  await page.waitForFunction(() => Boolean(localStorage.getItem("canopy-owner-session-v1")));
   await page.goto(`${origin}/?workflow=${publication.workflowId}&run=${encodeURIComponent(runId)}`);
   await page.getByTestId("generation-progress").waitFor({ timeout: 30_000 });
   await waitAttribute(page.getByTestId("run-durable-state"), "data-state", "succeeded", 900);
