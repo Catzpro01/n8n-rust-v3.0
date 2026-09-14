@@ -35,6 +35,8 @@ const daemon = spawn(binary, ["serve"], {
 daemon.stdout.resume();
 daemon.stderr.resume();
 let browser;
+let context;
+let page;
 try {
   await ready(origin);
   const setup = await fetch(`${origin}/api/v1/setup`, {
@@ -44,8 +46,8 @@ try {
   });
   assert.equal(setup.status, 201);
   browser = await chromium.launch({ headless: true });
-  const context = await browser.newContext({ viewport: { width: 1280, height: 1050 }, locale: "en-US", timezoneId: "UTC", colorScheme: "dark", reducedMotion: "reduce", bypassCSP: true });
-  const page = await context.newPage();
+  context = await browser.newContext({ viewport: { width: 1280, height: 1050 }, locale: "en-US", timezoneId: "UTC", colorScheme: "dark", reducedMotion: "reduce", bypassCSP: true });
+  page = await context.newPage();
   await page.goto(origin);
   await page.getByTestId("email").fill("owner@example.test");
   await page.getByTestId("password").fill("correct horse battery staple");
@@ -106,19 +108,33 @@ try {
   const admitted = await admittedResponse.json();
   const runId = admitted.run.run_id;
 
-  // Do not keep a live EventSource rendering hundreds of progress frames while the
-  // large artifact is generated. The final state is rendered through the same
-  // browser contract after a bounded browser-side API wait.
+  // Do not keep Chromium resident while the large Artifact run is generating.
+  // The final state is rendered through the same browser contract after a
+  // bounded authenticated API wait, which keeps the browser acceptance inside
+  // the runner's memory budget.
   console.log("::notice::generate-artifact:waiting-for-terminal");
   console.log("generate-ui=waiting-for-terminal");
-  await page.goto(`${origin}/health/live`);
+  const cookies = (await context.cookies(origin)).map(({ name, value }) => `${name}=${value}`).join("; ");
+  await browser.close();
+  browser = undefined;
+  context = undefined;
+  page = undefined;
   const heartbeat = setInterval(() => console.log("generate-ui=waiting-for-terminal"), 5_000);
   try {
-    assert.equal(await waitForTerminal(page, runId), "succeeded");
+    assert.equal(await waitForTerminal(origin, runId, cookies), "succeeded");
   } finally {
     clearInterval(heartbeat);
   }
   console.log("generate-ui=terminal");
+
+  browser = await chromium.launch({ headless: true });
+  context = await browser.newContext({ viewport: { width: 1280, height: 1050 }, locale: "en-US", timezoneId: "UTC", colorScheme: "dark", reducedMotion: "reduce", bypassCSP: true });
+  page = await context.newPage();
+  await page.goto(origin);
+  await page.getByTestId("email").fill("owner@example.test");
+  await page.getByTestId("password").fill("correct horse battery staple");
+  await page.getByTestId("sign-in").click();
+  await page.waitForFunction(() => Boolean(sessionStorage.getItem("canopy-editor-session-v1")));
   await page.goto(`${origin}/?workflow=${publication.workflowId}&run=${encodeURIComponent(runId)}`);
   await page.getByTestId("generation-progress").waitFor({ timeout: 30_000 });
   await waitAttribute(page.getByTestId("run-durable-state"), "data-state", "succeeded", 900);
@@ -200,18 +216,18 @@ async function ready(origin) {
   }
   throw new Error("daemon did not start");
 }
-async function waitForTerminal(page, runId, attempts = 1_800) {
-  return page.evaluate(async ({ runId: id, attempts: maxAttempts }) => {
-    for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
-      const response = await fetch(`/api/v1/runs/${encodeURIComponent(id)}`);
-      if (response.ok) {
-        const run = await response.json();
-        if (run.durable?.terminal) return run.durable.state;
-      }
-      await new Promise((resolve) => setTimeout(resolve, 100));
+async function waitForTerminal(origin, runId, cookie, attempts = 1_800) {
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    const response = await fetch(`${origin}/api/v1/runs/${encodeURIComponent(runId)}`, {
+      headers: { cookie },
+    });
+    if (response.ok) {
+      const run = await response.json();
+      if (run.durable?.terminal) return run.durable.state;
     }
-    throw new Error(`run ${id} did not become terminal`);
-  }, { runId, attempts });
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+  throw new Error(`run ${runId} did not become terminal`);
 }
 
 async function waitAttribute(locator, name, value, attempts = 200) {

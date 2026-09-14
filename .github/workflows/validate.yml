@@ -60,7 +60,7 @@ jobs:
         shell: bash
         run: |
           set +e
-          timeout --signal=TERM --kill-after=3s 20s node tests/generate-artifact.mjs 2>&1 | tee "$RUNNER_TEMP/generate-artifact.log"
+          timeout --signal=TERM --kill-after=5s 180s node tests/generate-artifact.mjs 2>&1 | tee "$RUNNER_TEMP/generate-artifact.log"
           status=${PIPESTATUS[0]}
           {
             echo '### Artifact browser output'
