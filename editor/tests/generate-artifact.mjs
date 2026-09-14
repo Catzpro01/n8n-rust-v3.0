@@ -93,17 +93,14 @@ try {
   assert.ok(publication.published);
   await page.goto(`${origin}/?workflow=${publication.workflowId}`);
   await page.getByTestId("current-publication").getByText("Revision 1", { exact: true }).waitFor({ timeout: 30_000 });
-  console.log("::notice::generate-artifact:publication-ready");
   console.log("generate-ui=publication-ready");
   const runResponse = page.waitForResponse((response) => response.request().method() === "POST" && response.url().endsWith(`/api/v1/workflows/${publication.workflowId}/runs`));
   const startRun = page.getByTestId("start-run");
   assert.equal(await startRun.isEnabled(), true);
-  console.log("::notice::generate-artifact:starting-run");
   console.log("generate-ui=starting-run");
   await startRun.click({ timeout: 10_000 });
   const admittedResponse = await runResponse;
   assert.equal(admittedResponse.status(), 201);
-  console.log("::notice::generate-artifact:run-admitted");
   console.log("generate-ui=run-admitted");
   const admitted = await admittedResponse.json();
   const runId = admitted.run.run_id;
@@ -112,7 +109,6 @@ try {
   // The final state is rendered through the same browser contract after a
   // bounded authenticated API wait, which keeps the browser acceptance inside
   // the runner's memory budget.
-  console.log("::notice::generate-artifact:waiting-for-terminal");
   console.log("generate-ui=waiting-for-terminal");
   const cookies = (await context.cookies(origin)).map(({ name, value }) => `${name}=${value}`).join("; ");
   await browser.close();
