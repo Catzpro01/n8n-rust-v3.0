@@ -4,7 +4,7 @@
 
 **Blocked by:** 09: Route items deterministically with If
 
-**Status:** `implemented-and-pinned-verified` — bounded native success/empty/restart slice verified; runtime cancellation, branch-failure, and spill/read fault-injection now covered with deterministic `WORKFLOWD_TEST_FAULTS` harness (2026-09-14). Awaiting fresh pinned `validate` green on this revision before marking fully complete.
+**Status:** `implemented-and-pinned-verified` — bounded native success/empty/restart slice verified; runtime cancellation, branch-failure, and spill/read fault-injection now covered with deterministic `WORKFLOWD_TEST_FAULTS` harness (2026-09-14). **Pinned green `validate` 34864197586 (commit 7876aa6) at 2026-09-14T15:45:02Z — fast-check + validate both `success` (rust-cache + cargo check parallel, browser artifact skipped).**
 
 - [x] Merge declares two stable named inputs, one output, Barrier/Reducer Activation Shape, Pure effects, and explicit completion/cardinality rules.
 - [x] The first mode appends the complete true branch followed by the complete false branch, or the independently frozen declared order, consistently.
