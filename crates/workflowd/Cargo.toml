@@ -9,6 +9,14 @@ repository.workspace = true
 build = "build.rs"
 [dependencies]
 canopy-node-contract = { path = "../node-contract" }
+backoff.workspace = true
+governor.workspace = true
+moka.workspace = true
+reqwest.workspace = true
+reqwest-middleware.workspace = true
+reqwest-retry.workspace = true
+scraper.workspace = true
+tokio-cron-scheduler.workspace = true
 argon2.workspace = true
 axum.workspace = true
 axum-server.workspace = true

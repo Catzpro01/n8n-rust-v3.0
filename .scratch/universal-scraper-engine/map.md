@@ -4,8 +4,8 @@
 Transition web scraping, crawling, and headless browser automation from heavy Node.js Playwright dependencies to an all-in-one, 100% native Rust node.
 
 ## Frontier
-- **Issue 01:** [01-crate-dependencies.md](issues/01-crate-dependencies.md) â€” Status: completed.
-- **Issue 02:** [02-node-contract-and-types.md](issues/02-node-contract-and-types.md) â€” Status: ready (unblocked by 01).
+- **Issue 01:** [01-crate-dependencies.md](issues/01-crate-dependencies.md) â€” Status: in-progress (deps inert until a member crate uses them; 3 crates missing).
+- **Issue 02:** [02-node-contract-and-types.md](issues/02-node-contract-and-types.md) â€” Status: partially unblocked - mode 1 only; modes 2/3/4 need spider, chromiumoxide, polars.
 - **Issue 03:** [03-core-engine-implementation.md](issues/03-core-engine-implementation.md) â€” Status: pending (blocked by 02).
 - **Issue 04:** [04-acceptance-test-and-ci.md](issues/04-acceptance-test-and-ci.md) â€” Status: pending (blocked by 03).
 
