@@ -195,27 +195,41 @@ ENV_FILE=".scratch/ci-evidence.env"
 
 REPO="Catzpro01/n8n-rust-v3.0"
 PR=16
-KEEP_VALIDATE_RUN=34887094932   # Validate, pull_request, head 8ded14e
-KEEP_ECO_RUN=34887094917        # Eco 100K Summarize acceptance, head 8ded14e
-KEEP_IF_RUN=34887094941         # If runtime acceptance, head 8ded14e
+BRANCH="arena/01a0a14f-n8n-rust-v3-0"
 
-# Queued runs whose content is superseded: six from the already-merged branch
-# arena/01a0a0c6-n8n-rust-v3-0, and five from this branch's superseded commit
-# ec07446. Cancelling them is what frees the single self-hosted runner.
-STALE_RUNS=(
-  34884406719 34881819585 34882805776 34882805777 34884406664 34884406697
-  34886806779 34886806798 34886806807 34886850087 34886850093
-)
-# Trunk runs for the merge commit. PR #16 supersedes this tree, but cancelling
-# trunk evidence is a judgement call, so it is asked about separately.
-MAIN_RUNS=(34884429635 34884429694)
+# Run ids are resolved, never baked: GitHub already replaced one pending
+# Validate run between two agent turns, so a hard-coded list goes stale.
+ghq() { command -v gh >/dev/null 2>&1 && gh "$@" 2>/dev/null; }
+collect() { # collect <jq-filter> -> ids on stdout, one per line
+  ghq api "repos/${REPO}/actions/runs?per_page=50" --jq "$1" || true
+}
+
+HEAD_SHA=$(ghq api "repos/${REPO}/pulls/${PR}" --jq '.head.sha')
+HEAD_SHA=${HEAD_SHA:-unknown}
+SHORT=${HEAD_SHA:0:7}
+
+VALIDATE_RUN=$(ghq run list --repo "$REPO" --branch "$BRANCH" \
+  --workflow "Validate Rust workflow platform" --limit 1 --json databaseId --jq '.[0].databaseId')
+IF_RUN=$(ghq run list --repo "$REPO" --branch "$BRANCH" \
+  --workflow "If runtime acceptance" --limit 1 --json databaseId --jq '.[0].databaseId')
+ECO_RUN=$(ghq run list --repo "$REPO" --branch "$BRANCH" \
+  --workflow "Eco 100K Summarize acceptance" --limit 1 --json databaseId --jq '.[0].databaseId')
+
+# Everything still queued for a superseded commit: the merged branch
+# arena/01a0a0c6-n8n-rust-v3-0 and this branch's earlier commits.
+STALE_RUNS=()
+while read -r id; do [[ -n "$id" ]] && STALE_RUNS+=("$id"); done < <(
+  collect ".workflow_runs[]|select(.status!=\"completed\")|select(.head_sha!=\"${HEAD_SHA}\")|select(.head_branch!=\"main\")|.id")
+MAIN_RUNS=()
+while read -r id; do [[ -n "$id" ]] && MAIN_RUNS+=("$id"); done < <(
+  collect ".workflow_runs[]|select(.status!=\"completed\")|select(.head_branch==\"main\")|.id")
 
 banner "Unblock CI evidence for PR #${PR}"
 
 # ── Stage 1 ──────────────────────────────────────────────────────────────
 stage "Self-hosted runner: is it alive?"
-say "16 workflow runs are queued and none is in progress, which means the"
-say "runner stopped picking up jobs rather than running slowly."
+say "Every workflow here is runs-on: self-hosted, so one VPS serializes all"
+say "three workflows. When it stalls, runs queue instead of failing."
 open_url "https://github.com/${REPO}/settings/actions/runners"
 step "Read the runner's status: Idle (free), Active (busy), or Offline."
 warn "If it is Offline, the VPS runner service is down. On the VPS run:"
@@ -244,12 +258,14 @@ fi
 
 # ── Stage 3 ──────────────────────────────────────────────────────────────
 stage "Cancel the superseded queued runs"
-say "These 11 runs test content that PR #${PR} replaces. Cancelling them is"
-say "what lets the runner reach the run we actually need."
-for id in "${STALE_RUNS[@]}"; do note "    $id"; done
-note "  Re-derive the list any time with:"
-note "    gh run list --repo ${REPO} --limit 40"
-if confirm "Cancel those ${#STALE_RUNS[@]} superseded runs now?"; then
+say "PR #${PR} is at ${SHORT}. These ${#STALE_RUNS[@]} unfinished runs test commits it"
+say "replaces; cancelling them is what lets the runner reach the run we need."
+for id in ${STALE_RUNS[@]+"${STALE_RUNS[@]}"}; do note "    $id"; done
+note "  Re-derive the list any time with:  gh run list --repo ${REPO} --limit 40"
+if [[ ${#STALE_RUNS[@]} -eq 0 ]]; then
+  warn "nothing to cancel — either the queue drained or gh could not read it."
+  write_env STALE_RUNS_CANCELLED "0"
+elif confirm "Cancel those ${#STALE_RUNS[@]} superseded runs now?"; then
   cancelled=0
   for id in "${STALE_RUNS[@]}"; do
     if gh run cancel "$id" --repo "$REPO" >/dev/null 2>&1; then
@@ -263,9 +279,10 @@ else
   write_env STALE_RUNS_CANCELLED "0"
 fi
 say ""
-say "Separately, these two are the trunk runs for the merge commit 24bc367:"
-for id in "${MAIN_RUNS[@]}"; do note "    $id"; done
-if confirm "Cancel the trunk runs too? (default no)"; then
+say "Separately, these ${#MAIN_RUNS[@]} are trunk runs for main. PR #${PR} supersedes"
+say "that tree, but cancelling trunk evidence is a judgement call."
+for id in ${MAIN_RUNS[@]+"${MAIN_RUNS[@]}"}; do note "    $id"; done
+if [[ ${#MAIN_RUNS[@]} -gt 0 ]] && confirm "Cancel the trunk runs too? (default no)"; then
   for id in "${MAIN_RUNS[@]}"; do gh run cancel "$id" --repo "$REPO" || warn "could not cancel $id"; done
   write_env MAIN_RUNS_CANCELLED "yes"
 else
@@ -275,23 +292,29 @@ fi
 # ── Stage 4 ──────────────────────────────────────────────────────────────
 stage "Watch the Validate run reach the artifact step"
 say "This is the step that has never passed: 'Browser acceptance: artifact"
-say "generation'. Everything else in that workflow already passes."
-open_url "https://github.com/${REPO}/actions/runs/${KEEP_VALIDATE_RUN}"
-note "  Or follow it in the terminal:  gh run watch ${KEEP_VALIDATE_RUN} --repo ${REPO}"
+say "generation'. Every other step in that workflow already passes."
+if [[ -z "${VALIDATE_RUN:-}" ]]; then
+  warn "gh could not resolve the run id."
+  open_url "https://github.com/${REPO}/pull/${PR}/checks"
+  ask VALIDATE_RUN "Paste the Validate run id from that page:"
+else
+  open_url "https://github.com/${REPO}/actions/runs/${VALIDATE_RUN}"
+fi
+note "  Or follow it in the terminal:  gh run watch ${VALIDATE_RUN:-<id>} --repo ${REPO}"
 note "  Then read one step's verdict:"
-note "    gh run view ${KEEP_VALIDATE_RUN} --repo ${REPO} \\"
+note "    gh run view ${VALIDATE_RUN:-<id>} --repo ${REPO} \\"
 note "      --json jobs --jq '.jobs[]|select(.name==\"validate\")|.steps[]|select(.name|test(\"artifact generation\"))|.conclusion'"
 step "Wait for that step to finish, then tell me what it says."
 ask ARTIFACT_STEP_RESULT "Conclusion (success / failure / cancelled / still-running):"
 write_env ARTIFACT_STEP_RESULT "$ARTIFACT_STEP_RESULT"
-write_env VALIDATE_RUN_ID "$KEEP_VALIDATE_RUN"
+write_env VALIDATE_RUN_ID "${VALIDATE_RUN:-unresolved}"
 
 # ── Stage 5 ──────────────────────────────────────────────────────────────
 stage "If it failed: mismatch or regression?"
 say "A readable failure here is progress, not defeat. The old code was"
 say "OOM-killed; a message with byte counts and a sha256 means the rendered"
 say "PNG genuinely differs from the committed baseline on this host."
-open_url "https://github.com/${REPO}/actions/runs/${KEEP_VALIDATE_RUN}"
+open_url "https://github.com/${REPO}/actions/runs/${VALIDATE_RUN:-0}"
 step "On the failed run, download the artifact named"
 note "    visual-baseline-actual-<sha>"
 step "Compare it with the committed baseline of the same name:"
@@ -309,11 +332,11 @@ say "Paste the block below into the agent chat. It is what lets the next turn"
 say "record pinned evidence and promote Ticket 11 without re-asking you."
 printf '\n'
 note "---- paste from here ----"
-printf '  runner=%s app_actions_write=%s cancelled=%s\n' \
-  "${RUNNER_STATE:-unknown}" "${APP_ACTIONS_WRITE:-unknown}" "${STALE_RUNS_CANCELLED:-0}"
+printf '  pr=%s head=%s runner=%s app_actions_write=%s cancelled=%s\n' \
+  "$PR" "$SHORT" "${RUNNER_STATE:-unknown}" "${APP_ACTIONS_WRITE:-unknown}" "${STALE_RUNS_CANCELLED:-0}"
 printf '  validate_run=%s artifact_generation_step=%s baseline_decision=%s\n' \
-  "${VALIDATE_RUN_ID:-$KEEP_VALIDATE_RUN}" "${ARTIFACT_STEP_RESULT:-unknown}" "${BASELINE_DECISION:-unknown}"
-printf '  if_run=%s eco_run=%s\n' "$KEEP_IF_RUN" "$KEEP_ECO_RUN"
+  "${VALIDATE_RUN:-unresolved}" "${ARTIFACT_STEP_RESULT:-unknown}" "${BASELINE_DECISION:-unknown}"
+printf '  if_run=%s eco_run=%s\n' "${IF_RUN:-unresolved}" "${ECO_RUN:-unresolved}"
 note "---- paste to here ----"
 printf '\n'
 pause "Done?"
