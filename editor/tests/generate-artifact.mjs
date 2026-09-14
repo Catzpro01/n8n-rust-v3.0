@@ -91,16 +91,22 @@ try {
   assert.ok(publication.published);
   await page.goto(`${origin}/?workflow=${publication.workflowId}`);
   await page.getByTestId("current-publication").getByText("Revision 1", { exact: true }).waitFor({ timeout: 30_000 });
+  console.log("generate-ui=publication-ready");
   const runResponse = page.waitForResponse((response) => response.request().method() === "POST" && response.url().endsWith(`/api/v1/workflows/${publication.workflowId}/runs`));
-  await page.getByTestId("start-run").click();
+  const startRun = page.getByTestId("start-run");
+  assert.equal(await startRun.isEnabled(), true);
+  console.log("generate-ui=starting-run");
+  await startRun.click({ timeout: 10_000 });
   const admittedResponse = await runResponse;
   assert.equal(admittedResponse.status(), 201);
+  console.log("generate-ui=run-admitted");
   const admitted = await admittedResponse.json();
   const runId = admitted.run.run_id;
 
   // Do not keep a live EventSource rendering hundreds of progress frames while the
   // large artifact is generated. The final state is rendered through the same
   // browser contract after a bounded browser-side API wait.
+  console.log("generate-ui=waiting-for-terminal");
   await page.goto(origin);
   const heartbeat = setInterval(() => console.log("generate-ui=waiting-for-terminal"), 5_000);
   try {
