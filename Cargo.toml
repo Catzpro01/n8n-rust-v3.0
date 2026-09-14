@@ -34,14 +34,24 @@ tokio-stream = { version = "=0.1.17", default-features = false }
 tracing = "=0.1.41"
 tracing-subscriber = { version = "=0.3.23", default-features = false, features = ["fmt", "json"] }
 
+# Universal scraper stack. Versions resolved against the VPS toolchain under
+# MSRV 1.85.1; every feature set below is chosen to keep OpenSSL, sqlx, cmake
+# and C++ bindings out of the tree.
 backoff = "=0.4.0"
 governor = "=0.10.4"
 moka = "=0.12.16"
-reqwest = { version = "=0.12.28", default-features = false, features = ["rustls"] }
-reqwest-middleware = "=0.5.2"
-reqwest-retry = "=0.9.1"
+reqwest = { version = "=0.12.12", default-features = false, features = ["rustls-tls"] }
+reqwest-middleware = "=0.4.1"
+reqwest-retry = "=0.7.0"
 scraper = "=0.27.0"
 tokio-cron-scheduler = "=0.15.1"
+# Transitive pins: without these, url pulls idna 1.1.0 -> icu 2.3.0, which
+# requires Rust 1.88 and breaks the workspace MSRV.
+url = "=2.5.4"
+idna_adapter = "=1.2.0"
+spider = { version = "=2.53.9", default-features = false, features = ["sync", "headers", "time", "rate_limit", "ua_generator", "encoding"] }
+chromiumoxide = { version = "=0.9.1", default-features = false, features = ["rustls"] }
+polars = { version = "=0.55.2", default-features = false, features = ["lazy", "csv", "json"] }
 
 [profile.release]
 opt-level = 3
