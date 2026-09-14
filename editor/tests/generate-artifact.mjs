@@ -102,7 +102,13 @@ try {
   // large artifact is generated. The final state is rendered through the same
   // browser contract after a bounded browser-side API wait.
   await page.goto(origin);
-  assert.equal(await waitForTerminal(page, runId), "succeeded");
+  const heartbeat = setInterval(() => console.log("generate-ui=waiting-for-terminal"), 5_000);
+  try {
+    assert.equal(await waitForTerminal(page, runId), "succeeded");
+  } finally {
+    clearInterval(heartbeat);
+  }
+  console.log("generate-ui=terminal");
   await page.goto(`${origin}/?workflow=${publication.workflowId}&run=${encodeURIComponent(runId)}`);
   await page.getByTestId("generation-progress").waitFor({ timeout: 30_000 });
   await waitAttribute(page.getByTestId("run-durable-state"), "data-state", "succeeded", 900);
