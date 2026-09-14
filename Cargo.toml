@@ -23,7 +23,7 @@ zeroize = "=1.9.0"
 axum = { version = "=0.8.9", default-features = false, features = ["http1", "json", "query", "tokio"] }
 axum-server = { version = "=0.8.0", default-features = false, features = ["tls-rustls-no-provider"] }
 rusqlite = { version = "=0.40.2", default-features = false, features = ["backup", "bundled", "hooks", "limits"] }
-rustls = { version = "=0.23.44", default-features = false, features = ["ring", "std", "tls12"] }
+rustls = { version = "=0.23.45", default-features = false, features = ["ring", "std", "tls12"] }
 serde = { version = "=1.0.228", features = ["derive"] }
 serde_json = "=1.0.145"
 serde_jcs = "=0.2.0"

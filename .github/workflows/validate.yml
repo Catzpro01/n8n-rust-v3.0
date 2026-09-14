@@ -10,15 +10,20 @@ permissions:
 
 concurrency:
   group: validate-${{ github.workflow }}-${{ github.head_ref || github.ref_name }}
-  cancel-in-progress: true
+  # Serial single-VPS runner: cancelling in-progress runs killed the audit
+  # job mid-download. Let runs finish; queue depth is bounded by pushes.
+  cancel-in-progress: false
 
 jobs:
   validate:
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     timeout-minutes: 45
     steps:
       - name: Check out source
         uses: actions/checkout@v4
+
+      - name: Host prerequisites (self-hosted VPS)
+        uses: ./.github/actions/host-prereqs
 
       - name: Install pinned Rust toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -51,11 +56,28 @@ jobs:
 
       - name: Install Chromium for browser acceptance
         working-directory: editor
+        # Self-hosted: browsers persist in ~/.cache/ms-playwright, so this is a
+        # no-op after the first run. --with-deps needs passwordless sudo once.
         run: npx playwright install --with-deps chromium
 
       - name: "Browser acceptance: artifact generation"
         working-directory: editor
-        run: node tests/generate-artifact.mjs
+        # Diagnostic mode: this step dies with exit 137 (OOM) ~60s after
+        # "progress-visible" on both GitHub-hosted (7 GB) and the VPS (2 GB),
+        # with the Node heartbeat silent the whole time. Cap the JS heap so an
+        # in-process blowup surfaces as a JS stack instead of a silent SIGKILL,
+        # and sample per-process RSS so a Chromium/workflowd blowup is visible.
+        run: |
+          ( while true; do
+              printf 'mem %s | ' "$(free -m | awk '/Mem:/{print $3"/"$2"MB"}')"
+              ps -eo rss=,comm= | awk '$2 ~ /node|chrome|headless|workflowd/ {a[$2]+=$1} END {for (k in a) printf "%s=%dMB ", k, a[k]/1024}'
+              echo; sleep 5; done ) & monitor=$!
+          set +e
+          NODE_OPTIONS=--max-old-space-size=768 node tests/generate-artifact.mjs
+          status=$?
+          set -e
+          kill "$monitor" 2>/dev/null || true
+          exit "$status"
 
       - name: "Browser acceptance: two-tab editing"
         working-directory: editor
@@ -79,3 +101,88 @@ jobs:
 
       - name: Run dependency-free repository tests
         run: python3 -m unittest discover -s tests -v
+
+  audit:
+    # Dependency audits are a separate job: they need live advisory data from
+    # npm/RustSec and must not break the hermetic build/test job when a
+    # registry is unreachable.
+    runs-on: self-hosted
+    timeout-minutes: 15
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Host prerequisites (self-hosted VPS)
+        uses: ./.github/actions/host-prereqs
+
+      - name: Install pinned Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.85.1
+
+      - name: Install pinned Node toolchain
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: editor/.nvmrc
+          cache: npm
+          cache-dependency-path: editor/package-lock.json
+
+      - name: Install cargo-audit (prebuilt; newest source releases need rustc >= 1.88)
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-audit
+
+      - name: Audit npm and Rust dependencies
+        run: REQUIRE_CARGO_AUDIT=1 ./scripts/audit-deps.sh
+
+  release-bundle:
+    # Ticket 11: verify `make release` produces a reproducible, checksummed
+    # bundle. No runtime patching of scripts: the dependency audit runs in the
+    # separate `audit` job, and build-release.sh is executable in the index.
+    runs-on: self-hosted
+    timeout-minutes: 25
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Host prerequisites (self-hosted VPS)
+        uses: ./.github/actions/host-prereqs
+
+      - name: Install pinned Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.85.1
+
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          cache-all-crates: true
+
+      - name: Install pinned Node toolchain
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: editor/.nvmrc
+          cache: npm
+          cache-dependency-path: editor/package-lock.json
+
+      - name: Prefetch crates for the offline (--frozen) release build
+        run: cargo fetch --locked
+
+      - name: Build release bundle
+        run: make release
+
+      - name: Verify bundle
+        run: |
+          ls -lh out/tracer-bundle/usr/bin/workflowd out/tracer-bundle.tar.gz
+          head -20 out/tracer-bundle/checksums.sha256
+          test -f out/tracer-bundle/usr/share/doc/workflowd/LICENSE
+          python3 -m unittest tests/acceptance/test_release_bundle.py
+
+      - name: Upload release artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: tracer-bundle-${{ github.sha }}
+          path: |
+            out/tracer-bundle.tar.gz
+            out/tracer-bundle/checksums.sha256
+          if-no-files-found: error

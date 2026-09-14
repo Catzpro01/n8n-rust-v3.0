@@ -188,7 +188,7 @@ Before the production stack is locked, build a tracer daemon with the candidate 
 - **S1 — Tokio runtime and builder:** https://docs.rs/tokio/1.53.1/tokio/runtime/struct.Builder.html and https://docs.rs/tokio/1.53.1/tokio/
 - **S2 — Axum 0.8.9:** https://docs.rs/axum/0.8.9/axum/
 - **S3 — Tower HTTP feature inventory:** https://docs.rs/crate/tower-http/0.6.11/features
-- **S4 — rustls 0.23.44 and crypto providers:** https://docs.rs/rustls/0.23.44/rustls/
+- **S4 — rustls 0.23.45 and crypto providers:** https://docs.rs/rustls/0.23.45/rustls/
 - **S5 — rust-embed 8.12.0:** https://docs.rs/crate/rust-embed/8.12.0
 - **S6 — Rusqlite 0.40.2:** https://docs.rs/rusqlite/0.40.2/rusqlite/ and https://docs.rs/crate/libsqlite3-sys/0.38.2
 - **S7 — BLAKE3 incremental/parallel behavior:** https://docs.rs/blake3/latest/blake3/struct.Hasher.html

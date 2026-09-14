@@ -1,0 +1,28 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+name: Host prerequisites
+description: >
+  Ensure the self-hosted VPS runner has the OS packages the pinned toolchains
+  need (C linker for cargo, binutils strip for the release bundle, python3 for
+  acceptance tests, unzip/curl for actions). Idempotent; no-op when present.
+runs:
+  using: composite
+  steps:
+    - name: Install missing OS packages
+      shell: bash
+      run: |
+        set -euo pipefail
+        need=()
+        for pkg in build-essential pkg-config binutils python3 curl unzip ca-certificates git; do
+          dpkg -s "$pkg" >/dev/null 2>&1 || need+=("$pkg")
+        done
+        if [ "${#need[@]}" -eq 0 ]; then echo "all host packages present"; exit 0; fi
+        echo "installing: ${need[*]}"
+        if [ "$(id -u)" -eq 0 ]; then SUDO=""; else SUDO="sudo -n"; fi
+        export DEBIAN_FRONTEND=noninteractive
+        $SUDO apt-get update -qq
+        $SUDO apt-get install -y -qq --no-install-recommends "${need[@]}"
+    - name: Report host
+      shell: bash
+      run: |
+        echo "host=$(hostname) cpus=$(nproc) mem=$(free -m | awk '/Mem:/{print $2"MB"}') disk=$(df -h . | awk 'NR==2{print $4" free"}')"
+        cargo --version 2>/dev/null || echo "cargo: not yet installed (toolchain action will install)"

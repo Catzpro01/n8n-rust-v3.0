@@ -5,6 +5,13 @@ set -euo pipefail
 repo=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 cd "$repo"
 export PATH="$HOME/.cargo/bin:$HOME/.local/node-v22.19.0-linux-x64/bin:$PATH"
+# Reproducibility guard: the release binary must not depend on whatever the
+# build host has in ~/.cargo/config.toml or its shell environment (custom
+# linkers, sccache wrappers, extra rustflags). Pin those inputs here so the
+# same commit yields the same checksums on the VPS, a laptop, or CI.
+export RUSTC_WRAPPER="" RUSTC_WORKSPACE_WRAPPER="" RUSTFLAGS="" CARGO_INCREMENTAL=0
+export CARGO_BUILD_RUSTC_WRAPPER="" CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER=cc
+export CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUSTFLAGS=""
 export SOURCE_DATE_EPOCH=${SOURCE_DATE_EPOCH:-$(git log -1 --format=%ct)}
 export WORKFLOWD_BUILD_COMMIT=${WORKFLOWD_BUILD_COMMIT:-$(git rev-parse HEAD)$(git diff --quiet && git diff --cached --quiet || printf '%s' '-dirty')}
 bundle=${1:-out/tracer-bundle}
@@ -20,7 +27,10 @@ esac
 rm -rf -- "$bundle"
 mkdir -p -- "$bundle"
 
-(cd editor && npm ci && npm run typecheck && npm run build && npm audit --audit-level=high)
+# Dependency vulnerability audits live in scripts/audit-deps.sh (make audit);
+# they need network access to advisory databases and must not gate the
+# hermetic, reproducible release build.
+(cd editor && npm ci && npm run typecheck && npm run build)
 cargo +1.85.1 build --workspace --release --frozen
 
 install -D -m 0755 target/release/workflowd "$bundle/usr/bin/workflowd"
