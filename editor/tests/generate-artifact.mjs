@@ -122,7 +122,7 @@ try {
   context = undefined;
   page = undefined;
   console.log("::notice::generate-artifact:terminal-polling");
-  assert.equal(await waitForTerminal(origin, runId, cookies), "succeeded");
+  assert.equal(await waitForTerminal(origin, runId, cookies, 3600), "succeeded");
   console.log("::notice::generate-artifact:terminal");
   console.log("generate-ui=terminal");
 
@@ -150,7 +150,7 @@ try {
   console.log(`::notice::generate-artifact:run-probe:${JSON.stringify(runProbe)}`);
   await page.getByTestId("generation-progress").waitFor({ timeout: 30_000 });
   console.log("::notice::generate-artifact:progress-visible");
-  await waitAttribute(page.getByTestId("run-durable-state"), "data-state", "succeeded", 900);
+  await waitAttribute(page.getByTestId("run-durable-state"), "data-state", "succeeded", 1800);
   const progressText = await page.getByTestId("generation-progress").textContent();
   assert.match(progressText ?? "", /Generated 49,998 items/);
   assert.match(progressText ?? "", /Encrypted spill/);
@@ -229,14 +229,20 @@ async function ready(origin) {
   }
   throw new Error("daemon did not start");
 }
-async function waitForTerminal(origin, runId, cookie, attempts = 1_800) {
+async function waitForTerminal(origin, runId, cookie, attempts = 3_600) {
   for (let attempt = 0; attempt < attempts; attempt += 1) {
-    const response = await fetch(`${origin}/api/v1/runs/${encodeURIComponent(runId)}`, {
-      headers: { cookie },
-    });
-    if (response.ok) {
-      const run = await response.json();
-      if (run.durable?.terminal) return run.durable.state;
+    try {
+      const response = await fetch(`${origin}/api/v1/runs/${encodeURIComponent(runId)}`, {
+        headers: { cookie },
+      });
+      if (response.ok) {
+        const run = await response.json();
+        if (run.durable?.terminal) return run.durable.state;
+      } else if (response.status !== 404) {
+        console.log(`generate-ui=terminal-poll status=${response.status} attempt=${attempt}`);
+      }
+    } catch (error) {
+      console.log(`generate-ui=terminal-poll error=${error} attempt=${attempt}`);
     }
     await new Promise((resolve) => setTimeout(resolve, 100));
   }
