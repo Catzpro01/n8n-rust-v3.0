@@ -88,6 +88,8 @@ jobs:
 
       - name: Install Chromium for browser acceptance
         working-directory: editor
+        # Self-hosted: browsers persist in ~/.cache/ms-playwright, so this is a
+        # no-op after the first run. --with-deps needs passwordless sudo once.
         run: npx playwright install --with-deps chromium
 
       - name: Run Eco browser/API acceptance

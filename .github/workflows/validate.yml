@@ -10,7 +10,9 @@ permissions:
 
 concurrency:
   group: validate-${{ github.workflow }}-${{ github.head_ref || github.ref_name }}
-  cancel-in-progress: true
+  # Serial single-VPS runner: cancelling in-progress runs killed the audit
+  # job mid-download. Let runs finish; queue depth is bounded by pushes.
+  cancel-in-progress: false
 
 jobs:
   validate:
@@ -54,6 +56,8 @@ jobs:
 
       - name: Install Chromium for browser acceptance
         working-directory: editor
+        # Self-hosted: browsers persist in ~/.cache/ms-playwright, so this is a
+        # no-op after the first run. --with-deps needs passwordless sudo once.
         run: npx playwright install --with-deps chromium
 
       - name: "Browser acceptance: artifact generation"
