@@ -1,0 +1,2 @@
+# Keep retained provenance archives out of text-oriented diff checks.
+workspace-split.zip.*.pdf binary

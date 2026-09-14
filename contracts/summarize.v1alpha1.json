@@ -1,0 +1,287 @@
+{
+  "activation": {
+    "bounded_batch": null,
+    "ordering": "merged_input_then_summary",
+    "shape": "barrier_reducer"
+  },
+  "capabilities": [],
+  "compatibility": {
+    "aliases": [],
+    "profile": "native",
+    "safe_opaque_fields": {}
+  },
+  "configuration": {
+    "defaults": {
+      "operation": "output_digest"
+    },
+    "editor_hints": {
+      "operation": {
+        "control": "select",
+        "label": "Summary operation"
+      }
+    },
+    "schema": {
+      "additionalProperties": false,
+      "properties": {
+        "operation": {
+          "enum": [
+            "output_digest"
+          ],
+          "type": "string"
+        }
+      },
+      "required": [
+        "operation"
+      ],
+      "type": "object"
+    }
+  },
+  "effects": {
+    "approval_required": false,
+    "class": "pure",
+    "deterministic": true,
+    "idempotent": true,
+    "reconciliation": "not_required",
+    "retry": "safe"
+  },
+  "extensions": {
+    "canopy.workbench/display": {
+      "accent": "violet",
+      "description": "Reduce the closed merged stream into bounded counters and an algorithm-tagged Output Digest.",
+      "display_name": "Summarize"
+    },
+    "canopy.workbench/summarize-profile": {
+      "operation": "output_digest",
+      "state": "bounded-counters-and-digest",
+      "version": "canopy.summarize/v1alpha1",
+      "provenance_schema": {
+        "schema": "canopy.if-route-provenance/v1alpha1",
+        "required": [
+          "if_node_instance_id",
+          "if_input_digest",
+          "if_output_port",
+          "if_condition_results"
+        ],
+        "output_ports": [
+          "true",
+          "false"
+        ]
+      }
+    }
+  },
+  "identity": {
+    "api_version": "v1alpha1",
+    "license": "Apache-2.0",
+    "name": "summarize",
+    "namespace": "canopy.native",
+    "publisher": "Canopy Workbench",
+    "version": "0.1.0"
+  },
+  "outcomes": {
+    "allowed": [
+      "success",
+      "permanent_failure",
+      "durable_suspension",
+      "cancelled"
+    ],
+    "error_namespace": "canopy.summarize"
+  },
+  "ports": {
+    "inputs": [
+      {
+        "cardinality": "many",
+        "id": "items",
+        "multiplicity": "many",
+        "required": true,
+        "schema": {
+          "type": "dynamic-item"
+        }
+      }
+    ],
+    "outputs": [
+      {
+        "cardinality": "one",
+        "id": "summary",
+        "multiplicity": "one",
+        "required": true,
+        "schema": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "operation",
+            "total_count",
+            "true_count",
+            "false_count",
+            "logical_bytes",
+            "output_digest_schema",
+            "output_digest_algorithm",
+            "output_digest",
+            "first_ordinal",
+            "last_ordinal",
+            "causal_trace_links"
+          ],
+          "properties": {
+            "operation": {
+              "type": "string",
+              "enum": [
+                "output_digest"
+              ]
+            },
+            "total_count": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "true_count": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "false_count": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "logical_bytes": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "output_digest_schema": {
+              "type": "string",
+              "const": "canopy.output-digest/v1alpha1"
+            },
+            "output_digest_algorithm": {
+              "type": "string",
+              "const": "sha256-jcs"
+            },
+            "output_digest": {
+              "type": "string",
+              "pattern": "^sha256:[0-9a-f]{64}$"
+            },
+            "first_ordinal": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "last_ordinal": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "causal_trace_links": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "source_merge_output_digest",
+                "source_merge_output_segments",
+                "retained_ordinal_range",
+                "retained_item_provenance"
+              ],
+              "properties": {
+                "source_merge_output_digest": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "source_merge_output_segments": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": [
+                      "artifact_id",
+                      "format",
+                      "media_type",
+                      "logical_bytes",
+                      "content_digest_algorithm"
+                    ],
+                    "properties": {
+                      "artifact_id": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "format": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "media_type": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "logical_bytes": {
+                        "type": "integer",
+                        "minimum": 0
+                      },
+                      "content_digest_algorithm": {
+                        "type": "string",
+                        "minLength": 1
+                      }
+                    }
+                  }
+                },
+                "retained_ordinal_range": {
+                  "type": "array",
+                  "minItems": 2,
+                  "maxItems": 2,
+                  "items": {
+                    "anyOf": [
+                      {
+                        "type": "integer",
+                        "minimum": 0
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                },
+                "retained_item_provenance": {
+                  "type": "string",
+                  "const": "artifact-backed-merge-spool"
+                }
+              }
+            }
+          }
+        }
+      }
+    ]
+  },
+  "resources": {
+    "default": {
+      "artifact_bytes": 0,
+      "concurrency": 1,
+      "cpu_millis": 5000,
+      "input_bytes": 67108864,
+      "input_count": 50000,
+      "memory_bytes": 4194304,
+      "output_bytes": 65536,
+      "output_count": 1,
+      "wall_millis": 300000
+    },
+    "hard": {
+      "artifact_bytes": 0,
+      "concurrency": 1,
+      "cpu_millis": 300000,
+      "input_bytes": 67108864,
+      "input_count": 50000,
+      "memory_bytes": 16777216,
+      "output_bytes": 1048576,
+      "output_count": 1,
+      "wall_millis": 900000
+    }
+  }
+}

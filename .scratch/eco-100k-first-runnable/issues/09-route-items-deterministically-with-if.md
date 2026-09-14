@@ -1,0 +1,49 @@
+# 09: Route items deterministically with If
+
+**What to build:** If routes every transformed item to exactly one named true/false output with stable ordering, counts, provenance, diagnostics, and Causal Trace.
+
+**Blocked by:** 08: Transform items with Edit Fields and the safe expression VM
+
+**Status:** complete (2026-09-14)
+
+- [x] If declares one typed/dynamic-item input, two stable named outputs, Per-Item Stream Activation Shape, Pure effects, and no capabilities.
+- [x] The editor catalog exposes the If contract and its bounded declarative condition configuration.
+- [x] Every input item reaches exactly one output; no item is duplicated, dropped, or sent to both branches.
+- [x] True/false item order is deterministic across repeated runs, restarts, and resource profiles.
+- [x] Missing/null/type/coercion boundary cases and AND/OR composition used by the first contract are covered by conformance tests.
+- [x] Invalid Port Schema, predicate, or output configuration blocks publication with structured diagnostics.
+- [x] Branch output, count, item-link provenance, and logical route decision are inspectable in Causal Trace without retaining all payloads in browser memory.
+- [x] Cancellation, queue pressure, and downstream backpressure do not violate exactly-one-branch behavior.
+
+## Implementation progress — 2026-09-14
+
+- [x] Added `canopy.native/if` v1alpha1 with stable `true` and `false`
+      dynamic-item outputs, pure deterministic effects, bounded resources, and
+      no capabilities.
+- [x] Added the Rust bounded condition compiler/evaluator with `all`/`any`
+      composition, strict boolean results, missing/null/type diagnostics, and
+      deterministic route results.
+- [x] Added the contract to the Rust compiler, Draft catalog/validation, and
+      browser catalog build.
+- [x] Wire batched If routing through the durable Run scheduler, checkpoints,
+      branch output persistence, item-link trace, and cancellation/backpressure
+      handling.
+- [x] Add replay-stable route-chain evidence, durable true/false progress, and
+      transformed logical-item coverage.
+- [x] Complete the public/editor acceptance journey and attach release evidence.
+
+The native runtime implementation is in `crates/workflowd/src/if_node.rs` and
+`crates/workflowd/src/run.rs`; its operational contract is documented in
+`docs/operations/if-routing.md`. The hardened public seam acceptance in
+`tests/acceptance/test_if_runtime.py` publishes the four-node editor topology,
+runs transformed items through If with both `all` and composed `any` logic,
+exercises 1,024-item bounded envelope backpressure, verifies cancellation
+before activation plus a follow-on Run, and checks durable branch counts, trace
+activation order, route evidence, and integrity. It passed in pinned workflow
+`34782134925`; companion validation workflow `34782134893` also passed
+formatting, workspace tests, editor build, and dependency-free repository tests
+on 2026-09-14. Focused Rust tests additionally cover idempotent cancellation,
+permit release after a full queue send, and no partial If provenance after an
+injected typed fault. The contract/catalog work remains committed as `71e8c6a`
+plus formatting fix `292e3ca`; earlier push CI `34775814353` and pull-request
+CI `34775816647` passed the initial contract and editor checks.

@@ -1,0 +1,81 @@
+name: Validate Rust workflow platform
+
+on:
+  push:
+    branches: ["main", "arena/**"]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: validate-${{ github.workflow }}-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Install pinned Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.85.1
+          components: rustfmt
+
+      - name: Install pinned Node toolchain
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: editor/.nvmrc
+          cache: npm
+          cache-dependency-path: editor/package-lock.json
+
+      - name: Build editor assets
+        working-directory: editor
+        run: |
+          npm ci
+          npm run typecheck
+          npm run build
+
+      - name: Check Rust formatting
+        run: cargo fmt --all -- --check
+
+      - name: Run Rust tests
+        run: cargo test --workspace --locked -- --test-threads=1
+
+      - name: Build all workspace binaries for acceptance tests
+        run: cargo build --workspace --locked
+
+      - name: Install Chromium for browser acceptance
+        working-directory: editor
+        run: npx playwright install --with-deps chromium
+
+      - name: "Browser acceptance: artifact generation"
+        working-directory: editor
+        run: node tests/generate-artifact.mjs
+
+      - name: "Browser acceptance: two-tab editing"
+        working-directory: editor
+        run: node tests/two-tab.mjs
+
+      - name: "Browser acceptance: publish rollback"
+        working-directory: editor
+        run: node tests/publish-rollback.mjs
+
+      - name: "Browser acceptance: run trace"
+        working-directory: editor
+        run: node tests/run-trace.mjs
+
+      - name: "Browser acceptance: field editing and run"
+        working-directory: editor
+        run: node tests/edit-fields-run.mjs
+
+      - name: "Browser acceptance: Eco summarize"
+        working-directory: editor
+        run: node tests/eco-summarize.mjs
+
+      - name: Run dependency-free repository tests
+        run: python3 -m unittest discover -s tests -v
