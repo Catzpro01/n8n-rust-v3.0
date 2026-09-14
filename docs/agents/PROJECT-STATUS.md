@@ -85,36 +85,59 @@ starting a new frontend framework from scratch.
   three workflows, so a push queues behind any run already in flight. Hub and
   Agent production work remains ordered after core and extension foundation.
 
-## Artifact-generation browser step: measured root cause (2026-09-14)
+## Two separate defects behind the CI red — and a correction
 
-`Browser acceptance: artifact generation` is the only step in the Validate
-workflow that has not passed. Evidence:
+**Correction (2026-09-14, later the same day).** An earlier revision of this
+file asserted that host memory was *not* the cause of the
+`Browser acceptance: artifact generation` kill. That claim does not hold and is
+withdrawn. Step-level evidence collected afterwards shows the runner host
+killing jobs at arbitrary points, so the artifact step's `cancelled`
+conclusion is **not** established to be the assertion defect described below.
 
-- It was **skipped** in the two green Validate runs `34864197586` and
-  `34864802615`, and its step conclusion is `cancelled` inside the failed jobs
-  `34870765349` and `34871356002` — every other step in those jobs passed,
-  including `cargo test --workspace --locked`, `audit`, and `release-bundle`.
-- The kill is not host memory. Reproduced locally on Node 22.22.3:
-  `assert.deepEqual` on two **differing** Buffers renders a byte-by-byte diff
-  synchronously. At 4,096 differing bytes the message is 57,405 characters and
-  RSS reaches 572 MB; from 16,384 bytes the process is SIGKILLed (exit 137).
-  The committed baselines are 107,596 and 74,089 bytes, and a frozen event loop
-  is exactly why the 5-second `generate-ui=heartbeat` line stopped appearing.
-- `Eco 100K Summarize acceptance` keeps Chromium resident through the same
-  49,998-item run and passes, which is why the earlier browser-memory theories
-  (resident Chromium, JS heap cap, smaller item count) did not change the
-  outcome.
+**Defect 1 — real, locally reproduced, fixed.** `assert.deepEqual` on two
+differing Buffers renders a byte-by-byte diff synchronously. Measured on Node
+22.22.3: 4,096 differing bytes produce a 57,405-character message at 572 MB
+RSS, and from 16,384 bytes the process is SIGKILLed (exit 137) with the event
+loop frozen. The committed baselines are 107,596 and 74,089 bytes. This is a
+genuine bug regardless of CI: a visual mismatch could never be reported. Fix is
+`editor/tests/lib/visual-baseline.mjs` (`Buffer#equals`, retain
+`<name>.actual.png`, bounded message); red/green was demonstrated by restoring
+the old comparison, under which the regression test dies with
+`signal: 'SIGKILL'`.
 
-Fix: `editor/tests/lib/visual-baseline.mjs` compares with `Buffer#equals`,
-retains the rendered image as `<name>.actual.png`, and fails with a bounded
-message (byte lengths, sha256 prefixes, first differing offset). The Validate
-workflow uploads those images on failure. Red/green was demonstrated by
-restoring the old comparison: the regression test file dies with
-`signal: 'SIGKILL'`, and with the bounded comparison all five tests pass.
+**Defect 2 — the dominant one, infrastructure.** The self-hosted VPS is being
+oversubscribed and killing runner agents. Observed on heads `913b9b3` and
+`864a825`:
 
-If the step now fails with a readable mismatch instead, that is a real visual
-difference on the runner: review the uploaded `.actual.png` and approve it with
-`UPDATE_VISUAL_BASELINE=1` in a deliberate commit.
+| run | job | step where it died |
+| --- | --- | --- |
+| 34893577745 | validate | `Set up job` (only step recorded) |
+| 34893577745 | release-bundle | failure with **zero** steps recorded |
+| 34893577745 | audit | `Audit npm and Rust dependencies` |
+| 34893577904 | if-runtime | `Run public If acceptance` |
+| 34893577863 | eco-acceptance | `Install pinned Node toolchain` |
+| 34888651861 | validate | `Run Rust tests` |
+
+Five unrelated steps plus a job with no steps at all is the runner dying, not a
+test failing. Contributing load: `validate` ran three cargo-heavy jobs in
+parallel, `if-acceptance` and `eco-acceptance` from the same push ran beside
+them, and every push queued a `push` twin and a `pull_request` twin of all
+three workflows.
+
+The Owner's commit `b96ce5c` addresses this by collapsing the three workflow
+files into one `validate.yml` with five jobs (`validate`, `if-runtime`,
+`eco-acceptance`, `audit`, `release-bundle`), fanning `release-bundle` in
+behind all four, dropping the duplicate `push: arena/**` trigger, and adding
+`workflow_dispatch`. That removes the twin runs and the cross-workflow
+collisions. Whether the four fan-out jobs fit the host at once depends on how
+many self-hosted runners are registered — this sandbox cannot read
+`/actions/runners` (HTTP 403), so that is **unverified here**.
+
+One genuine test failure is also on record and still unexplained: run
+`34888653360` (head `864a825`), step `Run Eco browser/API acceptance`,
+conclusion `failure`, annotation "Process completed with exit code 1". Its log
+was unreachable, which is why both browser steps now tee their output into the
+check-run summary.
 
 ## Last verified in this checkout
 
