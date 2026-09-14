@@ -5,7 +5,7 @@ on:
     branches: ["arena/**"]
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   diagnostic:
@@ -32,6 +32,7 @@ jobs:
         working-directory: editor
         run: npx playwright install --with-deps chromium
       - name: Capture browser diagnostics
+        continue-on-error: true
         run: |
           sed -i 's/stdio: \["ignore", "pipe", "pipe"\]/stdio: ["ignore", "inherit", "inherit"]/' editor/tests/run-trace.mjs
           mkdir -p .scratch
@@ -39,9 +40,11 @@ jobs:
           (cd editor && npm run test:browser) > .scratch/current-browser-test.log 2>&1
           status=$?
           printf '\nbrowser-test-exit=%s\n' "$status" >> .scratch/current-browser-test.log
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add .scratch/current-browser-test.log
-          git commit -m "chore: record temporary browser diagnostics"
-          git push origin "HEAD:${GITHUB_REF_NAME}"
           exit 0
+      - name: Upload browser diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: browser-diagnostics
+          path: .scratch/current-browser-test.log
+          if-no-files-found: error
