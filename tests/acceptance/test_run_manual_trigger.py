@@ -71,7 +71,7 @@ class Daemon:
             stderr=subprocess.PIPE,
             text=True,
         )
-        for _ in range(400):
+        for _ in range(1200):
             try:
                 if api(self.origin, "/health/live")[0] == 200:
                     return
