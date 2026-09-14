@@ -132,16 +132,22 @@ try {
 
   console.log("::notice::generate-artifact:relaunch-browser");
   browser = await chromium.launch({ headless: true });
+  console.log("::notice::generate-artifact:browser-launched");
   context = await browser.newContext({ viewport: { width: 1280, height: 1050 }, locale: "en-US", timezoneId: "UTC", colorScheme: "dark", reducedMotion: "reduce", bypassCSP: true });
   page = await context.newPage();
+  console.log("::notice::generate-artifact:page-created");
   await page.goto(origin);
+  console.log("::notice::generate-artifact:page-loaded");
   await page.getByTestId("email").fill("owner@example.test");
   await page.getByTestId("password").fill("correct horse battery staple");
   await page.getByTestId("sign-in").click();
   await page.waitForFunction(() => Boolean(sessionStorage.getItem("canopy-editor-session-v1")));
   await page.waitForFunction(() => Boolean(localStorage.getItem("canopy-owner-session-v1")));
+  console.log("::notice::generate-artifact:second-login-complete");
   await page.goto(`${origin}/?workflow=${publication.workflowId}&run=${encodeURIComponent(runId)}`);
+  console.log("::notice::generate-artifact:run-page-loaded");
   await page.getByTestId("generation-progress").waitFor({ timeout: 30_000 });
+  console.log("::notice::generate-artifact:progress-visible");
   await waitAttribute(page.getByTestId("run-durable-state"), "data-state", "succeeded", 900);
   const progressText = await page.getByTestId("generation-progress").textContent();
   assert.match(progressText ?? "", /Generated 49,998 items/);
