@@ -142,6 +142,12 @@ try {
   console.log("::notice::generate-artifact:second-login-complete");
   await page.goto(`${origin}/?workflow=${publication.workflowId}&run=${encodeURIComponent(runId)}`);
   console.log("::notice::generate-artifact:run-page-loaded");
+  const runProbe = await page.evaluate(async (id) => {
+    const response = await fetch(`/api/v1/runs/${encodeURIComponent(id)}`);
+    const value = await response.json();
+    return { status: response.status, durable: value.durable?.state, terminal: value.durable?.terminal, generation: Boolean(value.generation) };
+  }, runId);
+  console.log(`::notice::generate-artifact:run-probe:${JSON.stringify(runProbe)}`);
   await page.getByTestId("generation-progress").waitFor({ timeout: 30_000 });
   console.log("::notice::generate-artifact:progress-visible");
   await waitAttribute(page.getByTestId("run-durable-state"), "data-state", "succeeded", 900);
