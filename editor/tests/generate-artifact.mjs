@@ -111,7 +111,10 @@ try {
   // the runner's memory budget.
   console.log("generate-ui=waiting-for-terminal");
   const cookies = (await context.cookies(origin)).map(({ name, value }) => `${name}=${value}`).join("; ");
-  await browser.close();
+  console.log("generate-ui=closing-browser");
+  await boundedClose(page?.close({ runBeforeUnload: false }), 2_000);
+  await boundedClose(context?.close(), 2_000);
+  await boundedClose(browser?.close(), 3_000);
   browser = undefined;
   context = undefined;
   page = undefined;
@@ -167,17 +170,16 @@ try {
   console.log("generate-ui=passed lazy-preview-bytes=4 axe-serious=0 desktop-visual=passed mobile-visual=passed mobile-overflow=0");
 } finally {
   await stopDaemon(daemon);
-  if (browser) {
-    try {
-      await Promise.race([
-        browser.close(),
-        new Promise((resolve) => setTimeout(resolve, 5_000)),
-      ]);
-    } catch {
-      // The daemon has already been stopped; do not let a browser teardown race mask the test result.
-    }
-  }
+  await boundedClose(browser?.close(), 5_000);
   await rm(root, { recursive: true, force: true });
+}
+
+async function boundedClose(operation, timeoutMs) {
+  if (!operation) return;
+  await Promise.race([
+    operation.catch(() => undefined),
+    new Promise((resolve) => setTimeout(resolve, timeoutMs)),
+  ]);
 }
 
 async function stopDaemon(child) {
