@@ -2,20 +2,18 @@ name: Validate Rust workflow platform
 
 on:
   push:
-    branches: ["main", "arena/**"]
+    branches: ["main"]
   pull_request:
+    branches: ["main"]
+  workflow_dispatch:
 
 permissions:
   contents: read
-  # The browser acceptance log is republished into the check-run output because
-  # the Actions log host is not reachable from every agent sandbox.
   checks: write
 
 concurrency:
   group: validate-${{ github.workflow }}-${{ github.head_ref || github.ref_name }}
-  # Serial single-VPS runner: cancelling in-progress runs killed the audit
-  # job mid-download. Let runs finish; queue depth is bounded by pushes.
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   validate:
@@ -38,8 +36,6 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version-file: editor/.nvmrc
-          cache: npm
-          cache-dependency-path: editor/package-lock.json
 
       - name: Build editor assets
         working-directory: editor
@@ -59,24 +55,14 @@ jobs:
 
       - name: Run dependency-free editor tests
         working-directory: editor
-        # Node's built-in runner over editor/tests/lib; no daemon or browser.
         run: npm run test:node
 
       - name: Install Chromium for browser acceptance
         working-directory: editor
-        # Self-hosted: browsers persist in ~/.cache/ms-playwright, so this is a
-        # no-op after the first run. --with-deps needs passwordless sudo once.
         run: npx playwright install --with-deps chromium
 
       - name: "Browser acceptance: artifact generation"
         working-directory: editor
-        # Measured root cause of the earlier exit 137: the visual-baseline
-        # comparison handed two ~100 KiB PNG buffers to assert.deepEqual, whose
-        # byte-by-byte diff is built synchronously (Node heartbeat frozen) and
-        # is OOM-killed from ~16 KiB of differing input upwards. compareOrWrite
-        # now compares with Buffer#equals and reports a bounded message; see
-        # editor/tests/lib/visual-baseline.test.mjs. The RSS sampler stays so a
-        # memory regression on the 2 GB host is still attributable.
         run: |
           ( while true; do
               printf 'mem %s | ' "$(free -m | awk '/Mem:/{print $3"/"$2"MB"}')"
@@ -150,10 +136,165 @@ jobs:
               });
             }
 
+  if-runtime:
+    runs-on: self-hosted
+    timeout-minutes: 20
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Host prerequisites (self-hosted VPS)
+        uses: ./.github/actions/host-prereqs
+
+      - name: Install pinned Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.85.1
+
+      - name: Install pinned Node toolchain
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: editor/.nvmrc
+
+      - name: Build editor assets
+        working-directory: editor
+        run: |
+          npm ci
+          npm run build
+
+      - name: Build workflow daemon
+        run: cargo build -p workflowd --locked
+
+      - name: Run public If acceptance
+        run: python3 -m unittest tests.acceptance.test_if_runtime -v
+
+  eco-acceptance:
+    runs-on: self-hosted
+    timeout-minutes: 45
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Host prerequisites (self-hosted VPS)
+        uses: ./.github/actions/host-prereqs
+
+      - name: Install pinned Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.85.1
+
+      - name: Install pinned Node toolchain
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: editor/.nvmrc
+
+      - name: Build editor assets
+        working-directory: editor
+        run: |
+          npm ci
+          npm run typecheck
+          npm run build
+
+      - name: Build workflow daemon
+        run: cargo build -p workflowd --locked
+
+      - name: Run Eco API acceptance
+        shell: bash
+        run: |
+          set +e
+          python3 -m unittest tests.acceptance.test_if_runtime.IfRuntimeAcceptance.test_eco_100k_summary_is_durable_and_rollback_is_non_destructive -v 2>&1 | tee "$RUNNER_TEMP/eco-api.log"
+          status=${PIPESTATUS[0]}
+          {
+            echo '### Eco API acceptance output'
+            echo '```text'
+            cat "$RUNNER_TEMP/eco-api.log"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          exit "$status"
+
+      - name: Publish Eco API output to check summary
+        if: always()
+        uses: actions/github-script@v7
+        env:
+          API_LOG: ${{ runner.temp }}/eco-api.log
+        with:
+          script: |
+            const fs = require("node:fs");
+            if (!fs.existsSync(process.env.API_LOG)) return;
+            const log = fs.readFileSync(process.env.API_LOG, "utf8");
+            const checks = await github.rest.checks.listForRef({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              ref: context.sha,
+            });
+            const check = checks.data.check_runs
+              .filter((item) => item.name === "eco-acceptance")
+              .sort((left, right) => Date.parse(right.started_at || right.created_at) - Date.parse(left.started_at || left.created_at))[0];
+            if (check) {
+              await github.rest.checks.update({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                check_run_id: check.id,
+                output: {
+                  title: "Eco API acceptance output",
+                  summary: "Eco API acceptance\n\n" + log.slice(-60000),
+                },
+              });
+            }
+
+      - name: Install Chromium for browser acceptance
+        working-directory: editor
+        run: npx playwright install --with-deps chromium
+
+      - name: Run Eco browser/API acceptance
+        working-directory: editor
+        shell: bash
+        run: |
+          set +e
+          npm run test:browser:eco 2>&1 | tee "$RUNNER_TEMP/eco-browser.log"
+          status=${PIPESTATUS[0]}
+          {
+            echo '### Eco browser acceptance output'
+            echo '```text'
+            cat "$RUNNER_TEMP/eco-browser.log"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          exit "$status"
+
+      - name: Publish Eco browser output to check summary
+        if: always()
+        uses: actions/github-script@v7
+        env:
+          API_LOG: ${{ runner.temp }}/eco-api.log
+          BROWSER_LOG: ${{ runner.temp }}/eco-browser.log
+        with:
+          script: |
+            const fs = require("node:fs");
+            if (!fs.existsSync(process.env.API_LOG)) return;
+            const read = (path) => fs.existsSync(path) ? fs.readFileSync(path, "utf8") : "(no log)";
+            const summary = "## Eco API acceptance\n\n```text\n" + read(process.env.API_LOG).slice(-30000)
+              + "\n```\n\n## Eco browser acceptance\n\n```text\n" + read(process.env.BROWSER_LOG).slice(-30000) + "\n```";
+            const checks = await github.rest.checks.listForRef({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              ref: context.sha,
+            });
+            const check = checks.data.check_runs
+              .filter((item) => item.name === "eco-acceptance")
+              .sort((left, right) => Date.parse(right.started_at || right.created_at) - Date.parse(left.started_at || left.created_at))[0];
+            if (check) {
+              await github.rest.checks.update({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                check_run_id: check.id,
+                output: {
+                  title: "Eco acceptance output",
+                  summary: summary,
+                },
+              });
+            }
+
   audit:
-    # Dependency audits are a separate job: they need live advisory data from
-    # npm/RustSec and must not break the hermetic build/test job when a
-    # registry is unreachable.
     runs-on: self-hosted
     timeout-minutes: 15
     steps:
@@ -172,8 +313,6 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version-file: editor/.nvmrc
-          cache: npm
-          cache-dependency-path: editor/package-lock.json
 
       - name: Install cargo-audit (prebuilt; newest source releases need rustc >= 1.88)
         uses: taiki-e/install-action@v2
@@ -184,11 +323,9 @@ jobs:
         run: REQUIRE_CARGO_AUDIT=1 ./scripts/audit-deps.sh
 
   release-bundle:
-    # Ticket 11: verify `make release` produces a reproducible, checksummed
-    # bundle. No runtime patching of scripts: the dependency audit runs in the
-    # separate `audit` job, and build-release.sh is executable in the index.
     runs-on: self-hosted
     timeout-minutes: 25
+    needs: [validate, if-runtime, eco-acceptance, audit]
     steps:
       - name: Check out source
         uses: actions/checkout@v4
@@ -201,17 +338,10 @@ jobs:
         with:
           toolchain: 1.85.1
 
-      - name: Rust cache
-        uses: Swatinem/rust-cache@v2
-        with:
-          cache-all-crates: true
-
       - name: Install pinned Node toolchain
         uses: actions/setup-node@v4
         with:
           node-version-file: editor/.nvmrc
-          cache: npm
-          cache-dependency-path: editor/package-lock.json
 
       - name: Prefetch crates for the offline (--frozen) release build
         run: cargo fetch --locked
