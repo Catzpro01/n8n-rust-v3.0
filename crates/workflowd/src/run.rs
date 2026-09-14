@@ -3198,6 +3198,28 @@ fn generate_failure(code: &str, message: &str) -> GenerateFailure {
     }
 }
 
+fn native_stage_definitions(
+    plan: &ExecutionPlan,
+) -> Result<
+    (
+        Option<(String, Value)>,
+        Option<(String, Value)>,
+        Option<(String, Value)>,
+        Option<(String, Value)>,
+    ),
+    RunError,
+> {
+    if plan.nodes.len() == 1 {
+        // The one-node Manual Trigger lane is validated by run_engine rather
+        // than by the generated Eco topology validator.
+        return Ok((None, None, None, None));
+    }
+    let (_, edit_fields, if_node, merge, summarize) =
+        generation_plan_and_transform(plan)
+            .map_err(|error| RunError::Integrity(error.message))?;
+    Ok((edit_fields, if_node, merge, summarize))
+}
+
 fn apply_edit_fields_batch(
     envelopes: &mut [GeneratedEnvelope],
     configuration: Option<&CompiledConfiguration>,
@@ -4703,9 +4725,8 @@ fn next_candidate(
         let plan: ExecutionPlan = serde_json::from_str(&plan_json).map_err(|error| {
             RunError::Integrity(format!("queued pinned plan is invalid: {error}"))
         })?;
-        let (_, edit_fields_definition, if_definition, merge_definition, summarize_definition) =
-            generation_plan_and_transform(&plan)
-                .map_err(|error| RunError::Integrity(error.message))?;
+        let (edit_fields_definition, if_definition, merge_definition, summarize_definition) =
+            native_stage_definitions(&plan)?;
         let stored_transform_node_id = row.get::<_, Option<String>>(10).map_err(storage_error)?;
         let durable_transformed_count = row
             .get::<_, Option<i64>>(11)
@@ -6195,6 +6216,38 @@ fn parse_cursor(value: &str) -> Option<ParsedCursor> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn one_node_manual_plan_bypasses_generated_topology_validator() {
+        let contract: Value = serde_json::from_str(include_str!(
+            "../../../contracts/manual-trigger.v1alpha1.json"
+        ))
+        .unwrap();
+        let draft = crate::draft::WorkflowDraft {
+            workflow_id: "wf-manual-scheduler".into(),
+            name: "Manual scheduler fixture".into(),
+            draft_version: 1,
+            settings: json!({}),
+            annotation: "".into(),
+            compatibility_metadata: json!({}),
+            nodes: vec![crate::draft::NodeInstance {
+                id: "manual-trigger".into(),
+                name: "Manual Trigger".into(),
+                contract_lock: canopy_node_contract::lock(&contract).unwrap(),
+                configuration: json!({"capture_mode": "manual"}),
+                layout: crate::draft::Layout { x: 0.0, y: 0.0 },
+                annotation: "".into(),
+                compatibility_metadata: json!({}),
+            }],
+            connections: vec![],
+        };
+        let compiled = crate::compiler::compile(draft).unwrap();
+        let definitions = native_stage_definitions(compiled.plan.as_ref().unwrap()).unwrap();
+        assert!(definitions.0.is_none());
+        assert!(definitions.1.is_none());
+        assert!(definitions.2.is_none());
+        assert!(definitions.3.is_none());
+    }
 
     #[test]
     fn artifact_preparation_failure_cannot_strand_a_requested_cancellation() {
