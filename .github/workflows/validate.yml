@@ -58,7 +58,22 @@ jobs:
 
       - name: "Browser acceptance: artifact generation"
         working-directory: editor
-        run: node tests/generate-artifact.mjs
+        # Diagnostic mode: this step dies with exit 137 (OOM) ~60s after
+        # "progress-visible" on both GitHub-hosted (7 GB) and the VPS (2 GB),
+        # with the Node heartbeat silent the whole time. Cap the JS heap so an
+        # in-process blowup surfaces as a JS stack instead of a silent SIGKILL,
+        # and sample per-process RSS so a Chromium/workflowd blowup is visible.
+        run: |
+          ( while true; do
+              printf 'mem %s | ' "$(free -m | awk '/Mem:/{print $3"/"$2"MB"}')"
+              ps -eo rss=,comm= | awk '$2 ~ /node|chrome|headless|workflowd/ {a[$2]+=$1} END {for (k in a) printf "%s=%dMB ", k, a[k]/1024}'
+              echo; sleep 5; done ) & monitor=$!
+          set +e
+          NODE_OPTIONS=--max-old-space-size=768 node tests/generate-artifact.mjs
+          status=$?
+          set -e
+          kill "$monitor" 2>/dev/null || true
+          exit "$status"
 
       - name: "Browser acceptance: two-tab editing"
         working-directory: editor
