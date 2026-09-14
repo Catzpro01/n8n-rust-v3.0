@@ -3,9 +3,9 @@
 ## Branch and push state
 
 - Fixed working branch: `arena/01a09a2a-n8n-rust-v3-0`.
-- Local HEAD: `bbd2351` (`chore: remove temporary artifact diagnostics`).
+- Local tip contains the cleanup/code state `bbd2351` plus this handoff document; inspect `git log -5` for the exact tip.
 - Last remote commit confirmed by a successful push: `021ab46` (`fix: release browser memory during artifact generation`).
-- Commit `bbd2351` is local only because the final `git push` failed after GitHub authentication expired. Reconnect GitHub in Arena, then push this branch.
+- The cleanup and handoff commits are local only because the final `git push` failed after GitHub authentication expired. Reconnect GitHub in Arena, then push this branch.
 - No merge has been performed. Do not merge or close the PR without explicit Owner approval.
 
 ## Current implementation state
