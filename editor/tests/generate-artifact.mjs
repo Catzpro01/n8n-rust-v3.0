@@ -37,6 +37,7 @@ daemon.stderr.resume();
 let browser;
 let context;
 let page;
+const heartbeat = setInterval(() => console.log("generate-ui=heartbeat"), 5_000);
 try {
   await ready(origin);
   const setup = await fetch(`${origin}/api/v1/setup`, {
@@ -121,12 +122,7 @@ try {
   context = undefined;
   page = undefined;
   console.log("::notice::generate-artifact:terminal-polling");
-  const heartbeat = setInterval(() => console.log("generate-ui=waiting-for-terminal"), 5_000);
-  try {
-    assert.equal(await waitForTerminal(origin, runId, cookies), "succeeded");
-  } finally {
-    clearInterval(heartbeat);
-  }
+  assert.equal(await waitForTerminal(origin, runId, cookies), "succeeded");
   console.log("::notice::generate-artifact:terminal");
   console.log("generate-ui=terminal");
 
@@ -180,6 +176,7 @@ try {
   await compareOrWrite("generate-progress.mobile.png", mobile);
   console.log("generate-ui=passed lazy-preview-bytes=4 axe-serious=0 desktop-visual=passed mobile-visual=passed mobile-overflow=0");
 } finally {
+  clearInterval(heartbeat);
   await stopDaemon(daemon);
   await boundedClose(browser?.close(), 5_000);
   await rm(root, { recursive: true, force: true });
