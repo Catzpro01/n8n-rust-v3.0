@@ -337,12 +337,19 @@ jobs:
           set +e
           python3 -m unittest tests.acceptance.test_if_runtime.IfRuntimeAcceptance.test_eco_100k_summary_is_durable_and_rollback_is_non_destructive -v 2>&1 | tee "$RUNNER_TEMP/eco-api.log"
           status=${PIPESTATUS[0]}
+          set -e
           {
             echo '### Eco API acceptance output'
             echo '```text'
             cat "$RUNNER_TEMP/eco-api.log"
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
+          if [ "$status" -ne 0 ]; then
+            # Annotations are the only diagnostic channel readable without the
+            # runner log, which is not reachable from outside the VPS.
+            tail -n 20 "$RUNNER_TEMP/eco-api.log" \
+              | sed -e 's/%/%25/g' -e 's/\r/%0D/g' -e 's/^/::error::/'
+          fi
           exit "$status"
 
       - name: Install Chromium for browser acceptance

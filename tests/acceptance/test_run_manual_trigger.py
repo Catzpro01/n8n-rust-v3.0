@@ -77,12 +77,24 @@ class Daemon:
                     return
             except (URLError, ConnectionError):
                 pass
+            if self.process.poll() is not None:
+                # The daemon is already gone. Polling out the remaining budget
+                # can only bury the reason it died under a 20s timeout.
+                break
             time.sleep(0.05)
         if self.process.poll() is None:
             self.process.terminate()
             self.process.wait(8)
         stderr = self.process.stderr.read() if self.process.stderr else ""
-        raise AssertionError(f"daemon did not start: {stderr}")
+        if self.process.stderr:
+            self.process.stderr.close()
+        exit_code = self.process.poll()
+        outcome = (
+            f"exited with code {exit_code}"
+            if exit_code is not None
+            else "still running when the 20s health budget expired"
+        )
+        raise AssertionError(f"daemon did not start ({outcome}): {stderr}")
 
     def stop(self) -> None:
         if self.process.poll() is None:

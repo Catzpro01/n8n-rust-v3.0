@@ -80,11 +80,20 @@ class Daemon:
                     return
             except (URLError, ConnectionError):
                 pass
+            if self.process.poll() is not None:
+                # Already dead: report now instead of burning the 20s budget.
+                break
             time.sleep(0.05)
         if self.process.poll() is None:
             self.process.terminate()
             self.process.wait(8)
-        raise AssertionError("daemon did not start")
+            raise AssertionError("daemon did not start")
+        # stderr is DEVNULL here to avoid filling a pipe nobody drains, so the
+        # exit code is the only signal available: 137/-9 means the kernel killed
+        # it, anything else means the daemon rejected its own startup.
+        raise AssertionError(
+            f"daemon did not start (exited with code {self.process.poll()})"
+        )
 
     def stop(self) -> None:
         if self.process.poll() is None:
