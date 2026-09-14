@@ -17,3 +17,7 @@ cache.kv.tmp
 # Reconstructed archive artifact; the four uploaded split parts remain the
 # provenance source, but the combined archive must not enter Git.
 /workspace-split.zip
+
+# Rendered images written by the browser acceptance tests when a visual
+# baseline mismatches; they are review evidence, never committed baselines.
+/editor/tests/baselines/*.actual.png

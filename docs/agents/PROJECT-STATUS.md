@@ -2,8 +2,9 @@
 
 **Last updated:** 2026-09-14
 **Stage:** recovered implementation baseline; full platform expansion mapped
-**Current branch:** `arena/01a09a2a-n8n-rust-v3-0`
-**Current PR:** [#1](https://github.com/Catzpro01/n8n-rust-v3.0/pull/1)
+**Current branch:** `arena/01a0a14f-n8n-rust-v3-0`
+**Current PR:** none open yet for this branch; the merged predecessor is
+[#15](https://github.com/Catzpro01/n8n-rust-v3.0/pull/15)
 **Recovered source baseline:** Canopy Workbench / `workflow-rust`
 
 ## Destination
@@ -38,14 +39,16 @@ profile.
 Tickets 01–07 in `.scratch/eco-100k-first-runnable/` are recorded as complete
 by the recovered session evidence. Ticket 08 is implemented and pinned-verified
 within ADRs 0057 and 0058, including the bounded v1alpha2 integer-label rule.
-Ticket 09's native If slice is complete. Ticket 10's bounded native Merge
-success, empty-branch, Artifact-spooling, cleanup, durable-progress, restart,
-trace, and public acceptance slice is now pinned-verified; dedicated runtime
-fault-injection acceptance remains before claiming the whole ticket complete.
-Ticket 11's compiler topology gate, typed route provenance, aggregate timing,
-retained-segment Causal Trace links, login-race fix, UI, and focused tests are
-implemented in the current working tree, but Ticket 11 remains pending Ticket
-10's fault-injection gate and a fresh pinned Rust/browser run.
+Ticket 09's native If slice is complete. **Ticket 10 is complete**: its bounded
+native success, empty-branch, Artifact-spooling, cleanup, durable-progress,
+restart, and trace slice plus the dedicated runtime cancellation,
+one-branch-failure, and spill/read fault-injection acceptance all passed in the
+pinned `If runtime acceptance` run `34881819422`. Ticket 11's compiler
+topology gate, typed route provenance, aggregate timing, retained-segment
+Causal Trace links, login-race fix, UI, and focused tests are implemented in
+the current working tree; Ticket 11 is now the frontier and only needs the
+pinned full `Validate` gate, including the artifact-generation browser step
+that has never completed in CI (see the next section).
 
 - **Ticket 08:** `08-transform-items-with-edit-fields-and-the-safe-expression-vm.md`
 - **Status:** `implemented-and-pinned-verified`
@@ -72,15 +75,69 @@ starting a new frontend framework from scratch.
 
 - **Owner:** none
 - **Map:** Canopy Workbench full platform expansion, GitHub issue #8.
-- **Frontier:** implementation phase 1, core completion; Ticket 10 has a
-  pinned-verified bounded Merge slice, with runtime fault-injection coverage
-  still outstanding. The expansion decision map (#9–#14) is resolved locally
-  through ADRs 0059–0063 and the external-adapter research note.
+- **Frontier:** implementation phase 1, core completion; Ticket 11 needs one
+  pinned `Validate Rust workflow platform` run whose `Browser acceptance:
+  artifact generation` step completes. The expansion decision map (#9–#14) is
+  resolved locally through ADRs 0059–0063 and the external-adapter research
+  note.
 - **Blockers:** local Cargo remains unavailable, so pinned GitHub CI is the Rust
-  verification environment; Hub and Agent production work remains ordered after
-  core and extension foundation.
+  verification environment; the single self-hosted VPS runner serializes the
+  three workflows, so a push queues behind any run already in flight. Hub and
+  Agent production work remains ordered after core and extension foundation.
+
+## Artifact-generation browser step: measured root cause (2026-09-14)
+
+`Browser acceptance: artifact generation` is the only step in the Validate
+workflow that has not passed. Evidence:
+
+- It was **skipped** in the two green Validate runs `34864197586` and
+  `34864802615`, and its step conclusion is `cancelled` inside the failed jobs
+  `34870765349` and `34871356002` — every other step in those jobs passed,
+  including `cargo test --workspace --locked`, `audit`, and `release-bundle`.
+- The kill is not host memory. Reproduced locally on Node 22.22.3:
+  `assert.deepEqual` on two **differing** Buffers renders a byte-by-byte diff
+  synchronously. At 4,096 differing bytes the message is 57,405 characters and
+  RSS reaches 572 MB; from 16,384 bytes the process is SIGKILLed (exit 137).
+  The committed baselines are 107,596 and 74,089 bytes, and a frozen event loop
+  is exactly why the 5-second `generate-ui=heartbeat` line stopped appearing.
+- `Eco 100K Summarize acceptance` keeps Chromium resident through the same
+  49,998-item run and passes, which is why the earlier browser-memory theories
+  (resident Chromium, JS heap cap, smaller item count) did not change the
+  outcome.
+
+Fix: `editor/tests/lib/visual-baseline.mjs` compares with `Buffer#equals`,
+retains the rendered image as `<name>.actual.png`, and fails with a bounded
+message (byte lengths, sha256 prefixes, first differing offset). The Validate
+workflow uploads those images on failure. Red/green was demonstrated by
+restoring the old comparison: the regression test file dies with
+`signal: 'SIGKILL'`, and with the bounded comparison all five tests pass.
+
+If the step now fails with a readable mismatch instead, that is a real visual
+difference on the runner: review the uploaded `.actual.png` and approve it with
+`UPDATE_VISUAL_BASELINE=1` in a deliberate commit.
 
 ## Last verified in this checkout
+
+Fresh on branch `arena/01a0a14f-n8n-rust-v3-0` (2026-09-14):
+
+- `cd editor && npm ci --ignore-scripts` — succeeded against the lockfile.
+- `npm run test:node` — 5/5 pass (`editor/tests/lib/visual-baseline.test.mjs`).
+- `npm run typecheck` — exit 0.
+- `npm run build` — exit 0.
+- `node --check editor/tests/generate-artifact.mjs` — passed.
+- `python3 -m unittest discover -s tests -v` — 3 tests OK.
+- All three workflow YAMLs and `host-prereqs/action.yml` parse; the new
+  `Run dependency-free editor tests` and `Upload rendered images for visual
+  baseline review` steps are present in the Validate job.
+- `git diff --check` — clean.
+- Red/green proof for the fix: with the previous `assert.deepEqual` body
+  restored, the new test file exits with `signal: 'SIGKILL'`; with the bounded
+  comparison it passes.
+- Not verifiable here: `cargo`, `rustc`, and `rustfmt` are absent and
+  `crates.io`/`static.rust-lang.org` are unreachable from this sandbox, so the
+  Rust gates and the browser acceptance suite remain CI-only claims.
+
+Earlier evidence retained below.
 
 - Combined four-part archive: `unzip -t` passed for the outer and inner ZIPs.
 - `python3 tools/codebase_index.py index` — 218 documents indexed.
@@ -106,6 +163,11 @@ starting a new frontend framework from scratch.
   dependency-free repository tests) passed; `34779941770` independently passed
   rustfmt before the temporary helper was removed.
 - `git diff --check` — clean before this status update.
+- Pinned `If runtime acceptance` run `34881819422` (job `if-runtime`, head
+  `46f675b`, 18:42:49Z–19:01:13Z) passed the whole public If/Merge module,
+  including Ticket 10's runtime cancellation, one-branch-failure, and
+  spill/read fault-injection cases; `Eco 100K Summarize acceptance` run
+  `34871356127` (head `7cc727c`) passed every step, API and browser.
 - The historical Ticket 07 full gate is recorded in
   `docs/legacy/session-archive/VERIFICATION.md`; it has not been re-claimed as
   a fresh local result.

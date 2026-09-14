@@ -54,6 +54,11 @@ jobs:
       - name: Build all workspace binaries for acceptance tests
         run: cargo build --workspace --locked
 
+      - name: Run dependency-free editor tests
+        working-directory: editor
+        # Node's built-in runner over editor/tests/lib; no daemon or browser.
+        run: npm run test:node
+
       - name: Install Chromium for browser acceptance
         working-directory: editor
         # Self-hosted: browsers persist in ~/.cache/ms-playwright, so this is a
@@ -62,11 +67,13 @@ jobs:
 
       - name: "Browser acceptance: artifact generation"
         working-directory: editor
-        # Diagnostic mode: this step dies with exit 137 (OOM) ~60s after
-        # "progress-visible" on both GitHub-hosted (7 GB) and the VPS (2 GB),
-        # with the Node heartbeat silent the whole time. Cap the JS heap so an
-        # in-process blowup surfaces as a JS stack instead of a silent SIGKILL,
-        # and sample per-process RSS so a Chromium/workflowd blowup is visible.
+        # Measured root cause of the earlier exit 137: the visual-baseline
+        # comparison handed two ~100 KiB PNG buffers to assert.deepEqual, whose
+        # byte-by-byte diff is built synchronously (Node heartbeat frozen) and
+        # is OOM-killed from ~16 KiB of differing input upwards. compareOrWrite
+        # now compares with Buffer#equals and reports a bounded message; see
+        # editor/tests/lib/visual-baseline.test.mjs. The RSS sampler stays so a
+        # memory regression on the 2 GB host is still attributable.
         run: |
           ( while true; do
               printf 'mem %s | ' "$(free -m | awk '/Mem:/{print $3"/"$2"MB"}')"
@@ -78,6 +85,14 @@ jobs:
           set -e
           kill "$monitor" 2>/dev/null || true
           exit "$status"
+
+      - name: Upload rendered images for visual baseline review
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: visual-baseline-actual-${{ github.sha }}
+          path: editor/tests/baselines/*.actual.png
+          if-no-files-found: ignore
 
       - name: "Browser acceptance: two-tab editing"
         working-directory: editor
