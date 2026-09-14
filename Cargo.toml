@@ -39,11 +39,11 @@ tracing-subscriber = { version = "=0.3.23", default-features = false, features =
 # and C++ bindings out of the tree.
 backoff = "=0.4.0"
 governor = "=0.10.4"
-moka = "=0.12.16"
+moka = { version = "=0.12.16", features = ["future"] }
 reqwest = { version = "=0.12.12", default-features = false, features = ["rustls-tls"] }
 reqwest-middleware = "=0.4.1"
 reqwest-retry = "=0.7.0"
-scraper = "=0.27.0"
+scraper = "=0.23.1"
 tokio-cron-scheduler = "=0.15.1"
 # Transitive pins: without these, url pulls idna 1.1.0 -> icu 2.3.0, which
 # requires Rust 1.88 and breaks the workspace MSRV.
