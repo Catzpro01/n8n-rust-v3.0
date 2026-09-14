@@ -38,7 +38,7 @@ jobs:
         run: |
           mkdir -p .scratch
           set +e
-          timeout --signal=TERM --kill-after=5s 110s bash -c 'cd editor && node tests/generate-artifact.mjs' > .scratch/current-browser-test.log 2>&1
+          timeout --foreground --signal=TERM --kill-after=5s 90s bash -c 'cd editor && node tests/generate-artifact.mjs' > .scratch/current-browser-test.log 2>&1
           printf '\ngenerate-artifact-test-exit=%s\n' "$?" >> .scratch/current-browser-test.log
       - name: Publish browser diagnostics to check
         if: always()
