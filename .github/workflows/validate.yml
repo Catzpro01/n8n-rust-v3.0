@@ -6,6 +6,11 @@ on:
   pull_request:
     branches: ["main"]
   workflow_dispatch:
+    inputs:
+      update_visual_baseline:
+        description: "Regenerate editor/tests/baselines on the runner and upload them"
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -63,6 +68,8 @@ jobs:
 
       - name: "Browser acceptance: artifact generation"
         working-directory: editor
+        env:
+          UPDATE_VISUAL_BASELINE: ${{ inputs.update_visual_baseline && '1' || '0' }}
         run: |
           ( while true; do
               printf 'mem %s | ' "$(free -m | awk '/Mem:/{print $3"/"$2"MB"}')"
@@ -73,7 +80,23 @@ jobs:
           status=${PIPESTATUS[0]}
           set -e
           kill "$monitor" 2>/dev/null || true
+          if [ "$status" -ne 0 ]; then
+            # Annotations are the only failure channel readable from a sandbox
+            # that can reach api.github.com but not the Actions log or artifact
+            # blob hosts. One ::error:: per line keeps them individually visible.
+            tail -n 20 "$RUNNER_TEMP/artifact-browser.log" \
+              | grep -v '^generate-ui=heartbeat$' \
+              | sed -e 's/%/%25/g' -e 's/\r/%0D/g' -e 's/^/::error::/'
+          fi
           exit "$status"
+
+      - name: Upload regenerated visual baselines
+        if: ${{ inputs.update_visual_baseline }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: visual-baselines-regenerated-${{ github.sha }}
+          path: editor/tests/baselines/*.png
+          if-no-files-found: error
 
       - name: Upload rendered images for visual baseline review
         if: failure()
