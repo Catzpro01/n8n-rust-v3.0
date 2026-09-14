@@ -115,6 +115,13 @@ function App() {
     if (!owner || !activeRunId) { setStreamState("idle"); return; }
     let active = true;
     let source: EventSource | undefined;
+    let poller: number | undefined;
+    const stopPolling = () => {
+      if (poller !== undefined) {
+        window.clearInterval(poller);
+        poller = undefined;
+      }
+    };
     const refresh = async () => {
       const current = await requestJson<RunView>(`/api/v1/runs/${encodeURIComponent(activeRunId)}`);
       if (!active) return;
@@ -124,6 +131,7 @@ function App() {
         if (active) {
           setTrace(evidence);
           setStreamState("complete");
+          stopPolling();
           source?.close();
         }
       }
@@ -131,6 +139,7 @@ function App() {
     setStreamState("connecting");
     void refresh().catch(showError);
     source = new EventSource(`/api/v1/runs/${encodeURIComponent(activeRunId)}/events`);
+    poller = window.setInterval(() => { void refresh().catch(showError); }, 1_000);
     source.onopen = () => { if (active) setStreamState("connected"); };
     const update = (event: Event) => {
       if (!active) return;
@@ -156,7 +165,7 @@ function App() {
     source.addEventListener("gap", (event) => { if (active) setStreamState("gap"); update(event); });
     source.addEventListener("resync", (event) => { if (active) setStreamState("resynced"); update(event); });
     source.onerror = () => { if (active) setStreamState("disconnected"); };
-    return () => { active = false; source.close(); };
+    return () => { active = false; stopPolling(); source.close(); };
   }, [owner?.csrf_token, activeRunId]);
 
   useEffect(() => {

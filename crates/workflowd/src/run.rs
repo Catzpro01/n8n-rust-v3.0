@@ -528,7 +528,6 @@ impl RunService {
                 result.run.durable.checkpoint_sequence,
                 if terminal { "terminal" } else { "durable" },
                 stream_payload(&result.run, "durable", &result.run.durable.state, terminal),
-                terminal,
             );
         }
         result.run.live = self.live.snapshot(run_id);
@@ -4387,7 +4386,6 @@ fn scheduler_loop(context: SchedulerContext) {
                                 &run.durable.state,
                                 run.durable.terminal,
                             ),
-                            true,
                         ),
                         Ok(_) => error!(event = "run_preparation_wrong_writer_reply"),
                         Err(error) => {
@@ -4435,7 +4433,6 @@ fn scheduler_loop(context: SchedulerContext) {
                                 "durable_checkpoint_sequence": checkpoint,
                                 "terminal": false
                             }),
-                            false,
                         );
                         dispatched = true;
                     }
@@ -4590,7 +4587,6 @@ fn handle_generated_batch(
             "backpressure_observed": observed_backpressure,
             "terminal": false
         }),
-        false,
     );
     if !(count_due || bytes_due || time_due) {
         return;
@@ -4640,7 +4636,6 @@ fn handle_generated_batch(
                 run.durable.checkpoint_sequence,
                 "checkpoint",
                 stream_payload(&run, "durable", &run.durable.state, false),
-                true,
             );
         }
         Ok(_) => error!(event = "run_generation_checkpoint_wrong_writer_reply"),
@@ -4693,7 +4688,6 @@ fn finish_executor_terminal(
             run.durable.checkpoint_sequence,
             "terminal",
             stream_payload(&run, "durable", &run.durable.state, true),
-            true,
         ),
         Ok(_) => error!(event = "run_checkpoint_wrong_writer_reply"),
         Err(reason) => error!(event = "run_checkpoint_failed", run_id, reason = ?reason),
@@ -5979,8 +5973,8 @@ impl LiveHub {
         durable_sequence: u64,
         event: &str,
         payload: Value,
-        terminal: bool,
     ) {
+        let terminal = payload.get("terminal").and_then(Value::as_bool).unwrap_or(false);
         let Ok(data) = canonical_text(&payload) else {
             return;
         };
@@ -6462,7 +6456,6 @@ mod tests {
                     "durability": "speculative",
                     "sequence": sequence
                 }),
-                false,
             );
         }
         let snapshot = RunView {
