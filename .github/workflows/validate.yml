@@ -107,3 +107,49 @@ jobs:
 
       - name: Audit npm and Rust dependencies
         run: REQUIRE_CARGO_AUDIT=1 ./scripts/audit-deps.sh
+
+  release-bundle:
+    # Ticket 11: verify `make release` produces a reproducible, checksummed
+    # bundle. No runtime patching of scripts: the dependency audit runs in the
+    # separate `audit` job, and build-release.sh is executable in the index.
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Install pinned Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.85.1
+
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          cache-all-crates: true
+
+      - name: Install pinned Node toolchain
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: editor/.nvmrc
+          cache: npm
+          cache-dependency-path: editor/package-lock.json
+
+      - name: Build release bundle
+        run: make release
+
+      - name: Verify bundle
+        run: |
+          ls -lh out/tracer-bundle/usr/bin/workflowd out/tracer-bundle.tar.gz
+          head -20 out/tracer-bundle/checksums.sha256
+          test -f out/tracer-bundle/usr/share/doc/workflowd/LICENSE
+          python3 -m unittest tests/acceptance/test_release_bundle.py
+
+      - name: Upload release artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: tracer-bundle-${{ github.sha }}
+          path: |
+            out/tracer-bundle.tar.gz
+            out/tracer-bundle/checksums.sha256
+          if-no-files-found: error
