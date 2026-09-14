@@ -8,6 +8,7 @@ on:
 permissions:
   contents: read
   checks: write
+  issues: write
 
 concurrency:
   group: validate-${{ github.workflow }}-${{ github.head_ref || github.ref_name }}
@@ -87,18 +88,15 @@ jobs:
             const fs = require("node:fs");
             if (!fs.existsSync(process.env.ARTIFACT_BROWSER_LOG)) return;
             const log = fs.readFileSync(process.env.ARTIFACT_BROWSER_LOG, "utf8");
-            await github.rest.checks.create({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              name: "artifact-browser-diagnostic",
-              head_sha: context.sha,
-              status: "completed",
-              conclusion: "neutral",
-              output: {
-                title: "Temporary artifact browser output",
-                summary: log.slice(-60000),
-              },
-            });
+            const body = `<!-- temporary-artifact-browser-diagnostic -->\n### Temporary artifact browser output\n\n\`\`\`text\n${log.slice(-30000)}\n\`\`\``;
+            if (context.payload.pull_request) {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.payload.pull_request.number,
+                body,
+              });
+            }
 
       - name: "Browser acceptance: two-tab editing"
         working-directory: editor
