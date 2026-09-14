@@ -49,27 +49,27 @@ jobs:
         working-directory: editor
         run: npx playwright install --with-deps chromium
 
-      - name: Browser acceptance: two-tab editing
+      - name: "Browser acceptance: two-tab editing"
         working-directory: editor
         run: node tests/two-tab.mjs
 
-      - name: Browser acceptance: publish rollback
+      - name: "Browser acceptance: publish rollback"
         working-directory: editor
         run: node tests/publish-rollback.mjs
 
-      - name: Browser acceptance: run trace
+      - name: "Browser acceptance: run trace"
         working-directory: editor
         run: node tests/run-trace.mjs
 
-      - name: Browser acceptance: artifact generation
+      - name: "Browser acceptance: artifact generation"
         working-directory: editor
         run: node tests/generate-artifact.mjs
 
-      - name: Browser acceptance: field editing and run
+      - name: "Browser acceptance: field editing and run"
         working-directory: editor
         run: node tests/edit-fields-run.mjs
 
-      - name: Browser acceptance: Eco summarize
+      - name: "Browser acceptance: Eco summarize"
         working-directory: editor
         run: node tests/eco-summarize.mjs
 
