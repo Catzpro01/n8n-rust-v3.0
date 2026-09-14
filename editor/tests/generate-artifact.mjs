@@ -90,6 +90,7 @@ try {
   });
   assert.ok(publication.published);
   await page.goto(`${origin}/?workflow=${publication.workflowId}`);
+  await page.getByTestId("current-publication").getByText("Revision 1", { exact: true }).waitFor({ timeout: 30_000 });
   await page.getByTestId("start-run").click();
   await page.getByTestId("generation-progress").waitFor({ timeout: 30_000 });
   await waitAttribute(page.getByTestId("run-durable-state"), "data-state", "succeeded", 900);
