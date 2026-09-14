@@ -122,10 +122,26 @@ try {
   await compareOrWrite("generate-progress.mobile.png", mobile);
   console.log("generate-ui=passed lazy-preview-bytes=4 axe-serious=0 desktop-visual=passed mobile-visual=passed mobile-overflow=0");
 } finally {
-  if (browser) await browser.close();
-  daemon.kill("SIGTERM");
-  await new Promise((resolve) => daemon.once("exit", resolve));
+  await stopDaemon(daemon);
+  if (browser) {
+    try {
+      await Promise.race([
+        browser.close(),
+        new Promise((resolve) => setTimeout(resolve, 5_000)),
+      ]);
+    } catch {
+      // The daemon has already been stopped; do not let a browser teardown race mask the test result.
+    }
+  }
   await rm(root, { recursive: true, force: true });
+}
+
+async function stopDaemon(child) {
+  if (child.exitCode !== null || child.signalCode !== null) return;
+  const exited = new Promise((resolve) => child.once("exit", resolve));
+  child.kill("SIGTERM");
+  await Promise.race([exited, new Promise((resolve) => setTimeout(resolve, 2_000))]);
+  if (child.exitCode === null && child.signalCode === null) child.kill("SIGKILL");
 }
 
 async function compareOrWrite(name, actual) {
