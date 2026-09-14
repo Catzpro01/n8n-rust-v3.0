@@ -9,6 +9,14 @@ permissions:
   contents: read
   checks: write
 
+# Same normalized branch group as validate.yml. The self-hosted runner is
+# single-concurrency, so a push and its pull_request twin used to queue as two
+# full runs of the same content. These jobs have no long-lived download step,
+# so a superseded run is cancelled instead of queued.
+concurrency:
+  group: eco-acceptance-${{ github.workflow }}-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: true
+
 jobs:
   eco-acceptance:
     runs-on: self-hosted
