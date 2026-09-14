@@ -32,18 +32,19 @@ jobs:
       - name: Install Chromium
         working-directory: editor
         run: npx playwright install --with-deps chromium
-      - name: Capture generate artifact diagnostics
+      - name: Run generate artifact diagnostics
+        continue-on-error: true
         run: |
           mkdir -p .scratch
           set +e
           timeout --signal=TERM --kill-after=10s 150s bash -c 'cd editor && node tests/generate-artifact.mjs' > .scratch/current-browser-test.log 2>&1
-          status=$?
+          printf '\ngenerate-artifact-test-exit=%s\n' "$?" >> .scratch/current-browser-test.log
+      - name: Persist browser diagnostics
+        if: always()
+        run: |
           pkill -TERM -x workflowd || true
-          printf '\ngenerate-artifact-test-exit=%s\n' "$status" >> .scratch/current-browser-test.log
-          cat .scratch/current-browser-test.log
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add .scratch/current-browser-test.log
           git commit -m "chore: record temporary browser diagnostics"
           git push origin "HEAD:${GITHUB_REF_NAME}"
-          exit 0
