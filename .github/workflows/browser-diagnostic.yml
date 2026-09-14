@@ -1,0 +1,50 @@
+name: Temporary browser diagnostic
+
+on:
+  push:
+    branches: ["arena/**"]
+
+permissions:
+  contents: write
+
+jobs:
+  diagnostic:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+      - name: Install pinned Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.85.1
+      - name: Install pinned Node toolchain
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: editor/.nvmrc
+          cache: npm
+          cache-dependency-path: editor/package-lock.json
+      - name: Build editor assets
+        working-directory: editor
+        run: npm ci && npm run build
+      - name: Build workflow daemon
+        run: cargo build -p workflowd --locked
+      - name: Install Chromium
+        working-directory: editor
+        run: npx playwright install --with-deps chromium
+      - name: Capture browser diagnostics
+        run: |
+          find editor/tests -name '*.mjs' -type f -exec sed -i 's/stdio: \["ignore", "pipe", "pipe"\]/stdio: ["ignore", "inherit", "inherit"]/g' {} +
+          mkdir -p .scratch
+          set +e
+          timeout --signal=TERM --kill-after=10s 300s bash -c 'cd editor && npm run test:browser' > .scratch/current-browser-test.log 2>&1
+          status=$?
+          pkill -TERM -x workflowd || true
+          printf '\nbrowser-test-exit=%s\n' "$status" >> .scratch/current-browser-test.log
+          cat .scratch/current-browser-test.log
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add .scratch/current-browser-test.log
+          git commit -m "chore: record temporary browser diagnostics"
+          git push origin "HEAD:${GITHUB_REF_NAME}"
+          exit 0
