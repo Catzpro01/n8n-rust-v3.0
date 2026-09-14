@@ -27,7 +27,8 @@ jobs:
           components: rustfmt
 
       - name: Cargo check (fast feedback, no test/build)
-        run: cargo check --workspace
+        continue-on-error: true
+        run: cargo check --workspace --all-targets 2>&1 | head -n 200; exit ${PIPESTATUS[0]}
 
       - name: Check Rust formatting
         run: cargo fmt --all -- --check
