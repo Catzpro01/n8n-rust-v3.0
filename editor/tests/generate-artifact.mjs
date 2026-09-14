@@ -111,21 +111,26 @@ try {
   // the runner's memory budget.
   console.log("generate-ui=waiting-for-terminal");
   const cookies = (await context.cookies(origin)).map(({ name, value }) => `${name}=${value}`).join("; ");
+  console.log("::notice::generate-artifact:closing-browser");
   console.log("generate-ui=closing-browser");
   await boundedClose(page?.close({ runBeforeUnload: false }), 2_000);
   await boundedClose(context?.close(), 2_000);
   await boundedClose(browser?.close(), 3_000);
+  console.log("::notice::generate-artifact:browser-closed");
   browser = undefined;
   context = undefined;
   page = undefined;
+  console.log("::notice::generate-artifact:terminal-polling");
   const heartbeat = setInterval(() => console.log("generate-ui=waiting-for-terminal"), 5_000);
   try {
     assert.equal(await waitForTerminal(origin, runId, cookies), "succeeded");
   } finally {
     clearInterval(heartbeat);
   }
+  console.log("::notice::generate-artifact:terminal");
   console.log("generate-ui=terminal");
 
+  console.log("::notice::generate-artifact:relaunch-browser");
   browser = await chromium.launch({ headless: true });
   context = await browser.newContext({ viewport: { width: 1280, height: 1050 }, locale: "en-US", timezoneId: "UTC", colorScheme: "dark", reducedMotion: "reduce", bypassCSP: true });
   page = await context.newPage();
