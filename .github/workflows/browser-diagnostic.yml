@@ -32,19 +32,30 @@ jobs:
       - name: Install Chromium
         working-directory: editor
         run: npx playwright install --with-deps chromium
-      - name: Run generate artifact diagnostics
-        continue-on-error: true
+      - name: Capture generate artifact diagnostics
         run: |
           mkdir -p .scratch
-          set +e
-          timeout --signal=TERM --kill-after=10s 150s bash -c 'cd editor && node tests/generate-artifact.mjs' > .scratch/current-browser-test.log 2>&1
-          printf '\ngenerate-artifact-test-exit=%s\n' "$?" >> .scratch/current-browser-test.log
-      - name: Persist browser diagnostics
-        if: always()
-        run: |
-          pkill -TERM -x workflowd || true
+          : > .scratch/current-browser-test.log
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          setsid bash -c 'cd editor && node tests/generate-artifact.mjs' > .scratch/current-browser-test.log 2>&1 &
+          pid=$!
+          for snapshot in $(seq 1 12); do
+            sleep 15
+            git add .scratch/current-browser-test.log
+            git commit -m "chore: record temporary browser diagnostic snapshot" || true
+            git push origin "HEAD:${GITHUB_REF_NAME}" || true
+            if ! kill -0 "$pid" 2>/dev/null; then
+              break
+            fi
+          done
+          if kill -0 "$pid" 2>/dev/null; then
+            kill -TERM -- "-$pid" 2>/dev/null || true
+            sleep 5
+            kill -KILL -- "-$pid" 2>/dev/null || true
+          fi
+          wait "$pid" 2>/dev/null || true
+          printf '\ngenerate-artifact-diagnostic-finished\n' >> .scratch/current-browser-test.log
           git add .scratch/current-browser-test.log
-          git commit -m "chore: record temporary browser diagnostics"
-          git push origin "HEAD:${GITHUB_REF_NAME}"
+          git commit -m "chore: record final temporary browser diagnostics" || true
+          git push origin "HEAD:${GITHUB_REF_NAME}" || true
