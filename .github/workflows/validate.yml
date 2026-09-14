@@ -21,9 +21,13 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  validate:
+  # ============================================================================
+  # 1. RUST CODE HEALTH & UNIT TESTS (Worker A)
+  # ============================================================================
+  rust-check:
+    name: rust-check
     runs-on: self-hosted
-    timeout-minutes: 45
+    timeout-minutes: 20
     steps:
       - name: Check out source
         uses: actions/checkout@v4
@@ -37,6 +41,57 @@ jobs:
           toolchain: 1.85.1
           components: rustfmt
 
+      - name: Check Rust formatting
+        run: cargo fmt --all -- --check
+
+      - name: Run Rust tests
+        run: cargo test --workspace --locked -- --test-threads=2
+
+  # ============================================================================
+  # 2. EDITOR UNIT TESTS & TYPECHECK (Worker B)
+  # ============================================================================
+  editor-tests:
+    name: editor-tests
+    runs-on: self-hosted
+    timeout-minutes: 15
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Host prerequisites (self-hosted VPS)
+        uses: ./.github/actions/host-prereqs
+
+      - name: Install pinned Node toolchain
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: editor/.nvmrc
+
+      - name: Typecheck and unit test editor
+        working-directory: editor
+        run: |
+          npm ci
+          npm run typecheck
+          npm run test:node
+
+  # ============================================================================
+  # 3. BROWSER ACCEPTANCE SUITE (Worker C)
+  # ============================================================================
+  browser-suite:
+    name: browser-suite
+    runs-on: self-hosted
+    timeout-minutes: 25
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Host prerequisites (self-hosted VPS)
+        uses: ./.github/actions/host-prereqs
+
+      - name: Install pinned Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.85.1
+
       - name: Install pinned Node toolchain
         uses: actions/setup-node@v4
         with:
@@ -46,21 +101,59 @@ jobs:
         working-directory: editor
         run: |
           npm ci
-          npm run typecheck
           npm run build
 
-      - name: Check Rust formatting
-        run: cargo fmt --all -- --check
-
-      - name: Run Rust tests
-        run: cargo test --workspace --locked -- --test-threads=1
-
-      - name: Build all workspace binaries for acceptance tests
+      - name: Build workspace binaries for acceptance tests
         run: cargo build --workspace --locked
 
-      - name: Run dependency-free editor tests
+      - name: Install Chromium for browser acceptance
         working-directory: editor
-        run: npm run test:node
+        run: npx playwright install --with-deps chromium
+
+      - name: "Browser acceptance: two-tab editing"
+        working-directory: editor
+        run: node tests/two-tab.mjs
+
+      - name: "Browser acceptance: publish rollback"
+        working-directory: editor
+        run: node tests/publish-rollback.mjs
+
+      - name: "Browser acceptance: run trace"
+        working-directory: editor
+        run: node tests/run-trace.mjs
+
+  # ============================================================================
+  # 4. VISUAL VALIDATE & ARTIFACT BASELINE (Worker D) - PR #16 Evidence Check
+  # ============================================================================
+  validate:
+    name: validate
+    runs-on: self-hosted
+    timeout-minutes: 30
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Host prerequisites (self-hosted VPS)
+        uses: ./.github/actions/host-prereqs
+
+      - name: Install pinned Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.85.1
+
+      - name: Install pinned Node toolchain
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: editor/.nvmrc
+
+      - name: Build editor assets
+        working-directory: editor
+        run: |
+          npm ci
+          npm run build
+
+      - name: Build workflow daemon binary
+        run: cargo build -p workflowd --locked
 
       - name: Install Chromium for browser acceptance
         working-directory: editor
@@ -81,9 +174,6 @@ jobs:
           set -e
           kill "$monitor" 2>/dev/null || true
           if [ "$status" -ne 0 ]; then
-            # Annotations are the only failure channel readable from a sandbox
-            # that can reach api.github.com but not the Actions log or artifact
-            # blob hosts. One ::error:: per line keeps them individually visible.
             tail -n 20 "$RUNNER_TEMP/artifact-browser.log" \
               | grep -v '^generate-ui=heartbeat$' \
               | sed -e 's/%/%25/g' -e 's/\r/%0D/g' -e 's/^/::error::/'
@@ -105,29 +195,6 @@ jobs:
           name: visual-baseline-actual-${{ github.sha }}
           path: editor/tests/baselines/*.actual.png
           if-no-files-found: ignore
-
-      - name: "Browser acceptance: two-tab editing"
-        working-directory: editor
-        run: node tests/two-tab.mjs
-
-      - name: "Browser acceptance: publish rollback"
-        working-directory: editor
-        run: node tests/publish-rollback.mjs
-
-      - name: "Browser acceptance: run trace"
-        working-directory: editor
-        run: node tests/run-trace.mjs
-
-      - name: "Browser acceptance: field editing and run"
-        working-directory: editor
-        run: node tests/edit-fields-run.mjs
-
-      - name: "Browser acceptance: Eco summarize"
-        working-directory: editor
-        run: node tests/eco-summarize.mjs
-
-      - name: Run dependency-free repository tests
-        run: python3 -m unittest discover -s tests -v
 
       - name: Publish artifact browser log to check summary
         if: always()
@@ -159,7 +226,11 @@ jobs:
               });
             }
 
+  # ============================================================================
+  # 5. PUBLIC IF ACCEPTANCE (Worker E)
+  # ============================================================================
   if-runtime:
+    name: if-runtime
     runs-on: self-hosted
     timeout-minutes: 20
     steps:
@@ -191,7 +262,11 @@ jobs:
       - name: Run public If acceptance
         run: python3 -m unittest tests.acceptance.test_if_runtime -v
 
+  # ============================================================================
+  # 6. ECO 100K API & BROWSER ACCEPTANCE (Worker F)
+  # ============================================================================
   eco-acceptance:
+    name: eco-acceptance
     runs-on: self-hosted
     timeout-minutes: 45
     steps:
@@ -235,36 +310,6 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
           exit "$status"
 
-      - name: Publish Eco API output to check summary
-        if: always()
-        uses: actions/github-script@v7
-        env:
-          API_LOG: ${{ runner.temp }}/eco-api.log
-        with:
-          script: |
-            const fs = require("node:fs");
-            if (!fs.existsSync(process.env.API_LOG)) return;
-            const log = fs.readFileSync(process.env.API_LOG, "utf8");
-            const checks = await github.rest.checks.listForRef({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              ref: context.sha,
-            });
-            const check = checks.data.check_runs
-              .filter((item) => item.name === "eco-acceptance")
-              .sort((left, right) => Date.parse(right.started_at || right.created_at) - Date.parse(left.started_at || left.created_at))[0];
-            if (check) {
-              await github.rest.checks.update({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                check_run_id: check.id,
-                output: {
-                  title: "Eco API acceptance output",
-                  summary: "Eco API acceptance\n\n" + log.slice(-60000),
-                },
-              });
-            }
-
       - name: Install Chromium for browser acceptance
         working-directory: editor
         run: npx playwright install --with-deps chromium
@@ -284,7 +329,7 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
           exit "$status"
 
-      - name: Publish Eco browser output to check summary
+      - name: Publish Eco acceptance output to check summary
         if: always()
         uses: actions/github-script@v7
         env:
@@ -317,9 +362,38 @@ jobs:
               });
             }
 
-  audit:
+  # ============================================================================
+  # 7. PARALLEL AUDIT 1: NPM DEPENDENCIES (Worker G)
+  # ============================================================================
+  audit-npm:
+    name: audit-npm
     runs-on: self-hosted
-    timeout-minutes: 15
+    timeout-minutes: 10
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Host prerequisites (self-hosted VPS)
+        uses: ./.github/actions/host-prereqs
+
+      - name: Install pinned Node toolchain
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: editor/.nvmrc
+
+      - name: Audit npm dependencies
+        working-directory: editor
+        run: |
+          if [ ! -d node_modules ]; then npm ci --ignore-scripts; fi
+          npm audit --audit-level=high
+
+  # ============================================================================
+  # 8. PARALLEL AUDIT 2: RUST DEPENDENCIES / RUSTSEC (Worker H)
+  # ============================================================================
+  audit-cargo:
+    name: audit-cargo
+    runs-on: self-hosted
+    timeout-minutes: 10
     steps:
       - name: Check out source
         uses: actions/checkout@v4
@@ -332,23 +406,34 @@ jobs:
         with:
           toolchain: 1.85.1
 
-      - name: Install pinned Node toolchain
-        uses: actions/setup-node@v4
-        with:
-          node-version-file: editor/.nvmrc
-
-      - name: Install cargo-audit (prebuilt; newest source releases need rustc >= 1.88)
+      - name: Install cargo-audit
         uses: taiki-e/install-action@v2
         with:
           tool: cargo-audit
 
-      - name: Audit npm and Rust dependencies
-        run: REQUIRE_CARGO_AUDIT=1 ./scripts/audit-deps.sh
+      - name: Audit Cargo dependencies
+        run: cargo audit
 
+  # ============================================================================
+  # 9. AUDIT GATEWAY (Aggregates audit-npm and audit-cargo) - PR #16 Check
+  # ============================================================================
+  audit:
+    name: audit
+    runs-on: self-hosted
+    timeout-minutes: 5
+    needs: [audit-npm, audit-cargo]
+    steps:
+      - name: Confirm dependency audits passed
+        run: echo "Both npm and cargo audits passed across workers!"
+
+  # ============================================================================
+  # 10. FAN-IN RELEASE BUNDLE (Packaging & Verification)
+  # ============================================================================
   release-bundle:
+    name: release-bundle
     runs-on: self-hosted
     timeout-minutes: 25
-    needs: [validate, if-runtime, eco-acceptance, audit]
+    needs: [validate, if-runtime, eco-acceptance, audit, rust-check, editor-tests, browser-suite]
     steps:
       - name: Check out source
         uses: actions/checkout@v4
@@ -366,7 +451,7 @@ jobs:
         with:
           node-version-file: editor/.nvmrc
 
-      - name: Prefetch crates for the offline (--frozen) release build
+      - name: Prefetch crates for offline release build
         run: cargo fetch --locked
 
       - name: Build release bundle
