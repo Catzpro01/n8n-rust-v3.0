@@ -107,7 +107,7 @@ try {
   // large artifact is generated. The final state is rendered through the same
   // browser contract after a bounded browser-side API wait.
   console.log("generate-ui=waiting-for-terminal");
-  await page.goto(origin);
+  await page.goto(`${origin}/health/live`);
   const heartbeat = setInterval(() => console.log("generate-ui=waiting-for-terminal"), 5_000);
   try {
     assert.equal(await waitForTerminal(page, runId), "succeeded");
