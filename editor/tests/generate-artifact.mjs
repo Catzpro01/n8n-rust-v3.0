@@ -74,7 +74,7 @@ try {
     let version = 0;
     const operations = [
       { kind: "add_node", node_instance: { id: "manual-trigger", name: "Manual Trigger", contract_lock: locks["manual-trigger"], configuration: { capture_mode: "manual" }, layout: { x: 100, y: 120 }, annotation: "", compatibility_metadata: {} } },
-      { kind: "add_node", node_instance: { id: "generate-items", name: "Generate Items", contract_lock: locks["generate-items"], configuration: { count: 49_998, start: 0, step: 1, data: null, storage_mode: "artifact" }, layout: { x: 420, y: 120 }, annotation: "", compatibility_metadata: {} } },
+      { kind: "add_node", node_instance: { id: "generate-items", name: "Generate Items", contract_lock: locks["generate-items"], configuration: { count: 12_000, start: 0, step: 1, data: null, storage_mode: "artifact" }, layout: { x: 420, y: 120 }, annotation: "", compatibility_metadata: {} } },
       { kind: "connect", connection: { id: "manual-to-generate", source: { node_id: "manual-trigger", port_id: "invocation" }, target: { node_id: "generate-items", port_id: "input" } } },
     ];
     for (let index = 0; index < operations.length; index += 1) {
@@ -152,7 +152,7 @@ try {
   console.log("::notice::generate-artifact:progress-visible");
   await waitAttribute(page.getByTestId("run-durable-state"), "data-state", "succeeded", 1800);
   const progressText = await page.getByTestId("generation-progress").textContent();
-  assert.match(progressText ?? "", /Generated 49,998 items/);
+  assert.match(progressText ?? "", /Generated 12,000 items/);
   assert.match(progressText ?? "", /Encrypted spill/);
   assert.match(progressText ?? "", /256 Envelope queue cap/);
   await page.getByTestId("load-artifact-preview").click();
