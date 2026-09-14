@@ -6013,14 +6013,11 @@ impl LiveHub {
             .and_then(|runs| runs.get(run_id).and_then(|run| run.current.clone()))
     }
 
-    fn emit(
-        &self,
-        run_id: &str,
-        durable_sequence: u64,
-        event: &str,
-        payload: Value,
-    ) {
-        let terminal = payload.get("terminal").and_then(Value::as_bool).unwrap_or(false);
+    fn emit(&self, run_id: &str, durable_sequence: u64, event: &str, payload: Value) {
+        let terminal = payload
+            .get("terminal")
+            .and_then(Value::as_bool)
+            .unwrap_or(false);
         let Ok(data) = canonical_text(&payload) else {
             return;
         };
