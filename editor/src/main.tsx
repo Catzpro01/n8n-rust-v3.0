@@ -116,25 +116,38 @@ function App() {
     let active = true;
     let source: EventSource | undefined;
     let poller: number | undefined;
+    let refreshPromise: Promise<void> | undefined;
+    let refreshAgain = false;
     const stopPolling = () => {
       if (poller !== undefined) {
         window.clearInterval(poller);
         poller = undefined;
       }
     };
-    const refresh = async () => {
-      const current = await requestJson<RunView>(`/api/v1/runs/${encodeURIComponent(activeRunId)}`);
-      if (!active) return;
-      setRun(current);
-      if (current.durable.terminal) {
-        const evidence = await requestJson<TraceView>(`/api/v1/runs/${encodeURIComponent(activeRunId)}/trace`);
-        if (active) {
-          setTrace(evidence);
-          setStreamState("complete");
-          stopPolling();
-          source?.close();
+    const refresh = () => {
+      refreshAgain = true;
+      if (refreshPromise) return refreshPromise;
+      refreshPromise = (async () => {
+        while (active && refreshAgain) {
+          refreshAgain = false;
+          const current = await requestJson<RunView>(`/api/v1/runs/${encodeURIComponent(activeRunId)}`);
+          if (!active) return;
+          setRun(current);
+          if (current.durable.terminal) {
+            const evidence = await requestJson<TraceView>(`/api/v1/runs/${encodeURIComponent(activeRunId)}/trace`);
+            if (active) {
+              setTrace(evidence);
+              setStreamState("complete");
+              stopPolling();
+              source?.close();
+            }
+            return;
+          }
         }
-      }
+      })().finally(() => {
+        refreshPromise = undefined;
+      });
+      return refreshPromise;
     };
     setStreamState("connecting");
     void refresh().catch(showError);
