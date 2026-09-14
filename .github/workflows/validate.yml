@@ -79,3 +79,31 @@ jobs:
 
       - name: Run dependency-free repository tests
         run: python3 -m unittest discover -s tests -v
+
+  audit:
+    # Dependency audits are a separate job: they need live advisory data from
+    # npm/RustSec and must not break the hermetic build/test job when a
+    # registry is unreachable.
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Install pinned Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.85.1
+
+      - name: Install pinned Node toolchain
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: editor/.nvmrc
+          cache: npm
+          cache-dependency-path: editor/package-lock.json
+
+      - name: Install cargo-audit
+        run: cargo install cargo-audit --locked
+
+      - name: Audit npm and Rust dependencies
+        run: REQUIRE_CARGO_AUDIT=1 ./scripts/audit-deps.sh

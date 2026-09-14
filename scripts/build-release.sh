@@ -20,7 +20,10 @@ esac
 rm -rf -- "$bundle"
 mkdir -p -- "$bundle"
 
-(cd editor && npm ci && npm run typecheck && npm run build && npm audit --audit-level=high)
+# Dependency vulnerability audits live in scripts/audit-deps.sh (make audit);
+# they need network access to advisory databases and must not gate the
+# hermetic, reproducible release build.
+(cd editor && npm ci && npm run typecheck && npm run build)
 cargo +1.85.1 build --workspace --release --frozen
 
 install -D -m 0755 target/release/workflowd "$bundle/usr/bin/workflowd"

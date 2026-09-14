@@ -3,7 +3,7 @@
 NODE_HOME ?= $(HOME)/.local/node-v22.19.0-linux-x64
 export PATH := $(HOME)/.cargo/bin:$(NODE_HOME)/bin:$(PATH)
 
-.PHONY: editor browser-test-deps check test build release release-test
+.PHONY: editor browser-test-deps check test build release release-test audit
 
 editor:
 	cd editor && npm ci && npm run typecheck && npm run build
@@ -30,3 +30,6 @@ build: editor
 
 release:
 	./scripts/build-release.sh
+
+audit:
+	./scripts/audit-deps.sh
