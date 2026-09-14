@@ -78,3 +78,22 @@ those two lines from the member manifest silently reopens the
 
 Issue 02 now has a dependency behind all four modes. Issue 01 stays
 in-progress until `rust-check` is green on a commit that contains these pins.
+
+## Blocker: Cargo.lock is stale and rust-check runs --locked
+
+Run 34909285703, job rust-check, failed at `Run Rust tests` with exit 101.
+`Check Rust formatting` passed, so this is not formatting.
+
+`crates/workflowd` now declares 13 crates that have **zero** entries in
+`Cargo.lock`, and the job runs `cargo test --workspace --locked`. With
+`--locked`, cargo refuses to write the lockfile and aborts before compiling, so
+the pins above have still never been resolved by a toolchain.
+
+Regenerating `Cargo.lock` needs cargo, which does not exist outside the VPS.
+Until someone commits an updated lockfile, no pin in this ticket can be
+validated and rust-check will stay red.
+
+The `Run Rust tests` step now re-emits its log tail as `::error::` annotations,
+so the next failure states whether it is a stale lockfile, a resolution
+conflict, a compile error or a test failure. exit 101 covers all four and the
+step name alone cannot tell them apart.

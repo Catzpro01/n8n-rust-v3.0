@@ -56,7 +56,19 @@ jobs:
         run: cargo fmt --all -- --check
 
       - name: Run Rust tests
-        run: cargo test --workspace --locked -- --test-threads=1
+        run: |
+          set +e
+          cargo test --workspace --locked -- --test-threads=1 2>&1 | tee "$RUNNER_TEMP/rust-tests.log"
+          status=${PIPESTATUS[0]}
+          set -e
+          if [ "$status" -ne 0 ]; then
+            # exit 101 covers a stale lockfile, a resolution conflict, a compile
+            # error and a test failure alike. Annotations are the only channel
+            # readable without the runner log, so surface the tail.
+            tail -n 30 "$RUNNER_TEMP/rust-tests.log" \
+              | sed -e 's/%/%25/g' -e 's/\r/%0D/g' -e 's/^/::error::/'
+          fi
+          exit "$status"
 
   # ============================================================================
   # 2. EDITOR UNIT TESTS & TYPECHECK (Worker 2)
