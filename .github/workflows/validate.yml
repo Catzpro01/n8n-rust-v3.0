@@ -102,8 +102,10 @@ jobs:
           cache: npm
           cache-dependency-path: editor/package-lock.json
 
-      - name: Install cargo-audit
-        run: cargo install cargo-audit --locked
+      - name: Install cargo-audit (prebuilt; newest source releases need rustc >= 1.88)
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-audit
 
       - name: Audit npm and Rust dependencies
         run: REQUIRE_CARGO_AUDIT=1 ./scripts/audit-deps.sh
@@ -134,6 +136,9 @@ jobs:
           node-version-file: editor/.nvmrc
           cache: npm
           cache-dependency-path: editor/package-lock.json
+
+      - name: Prefetch crates for the offline (--frozen) release build
+        run: cargo fetch --locked
 
       - name: Build release bundle
         run: make release
