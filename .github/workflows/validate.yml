@@ -22,12 +22,12 @@ concurrency:
 
 jobs:
   # ============================================================================
-  # 1. RUST CODE HEALTH & UNIT TESTS (Worker A)
+  # 1. RUST CODE HEALTH & UNIT TESTS (Worker 1)
   # ============================================================================
   rust-check:
     name: rust-check
     runs-on: self-hosted
-    timeout-minutes: 20
+    timeout-minutes: 25
     steps:
       - name: Check out source
         uses: actions/checkout@v4
@@ -41,14 +41,25 @@ jobs:
           toolchain: 1.85.1
           components: rustfmt
 
+      - name: Install pinned Node toolchain
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: editor/.nvmrc
+
+      - name: Build editor assets for workflowd
+        working-directory: editor
+        run: |
+          npm ci
+          npm run build
+
       - name: Check Rust formatting
         run: cargo fmt --all -- --check
 
       - name: Run Rust tests
-        run: cargo test --workspace --locked -- --test-threads=2
+        run: cargo test --workspace --locked -- --test-threads=1
 
   # ============================================================================
-  # 2. EDITOR UNIT TESTS & TYPECHECK (Worker B)
+  # 2. EDITOR UNIT TESTS & TYPECHECK (Worker 2)
   # ============================================================================
   editor-tests:
     name: editor-tests
@@ -74,7 +85,7 @@ jobs:
           npm run test:node
 
   # ============================================================================
-  # 3. BROWSER ACCEPTANCE SUITE (Worker C)
+  # 3. BROWSER ACCEPTANCE SUITE (Worker 3)
   # ============================================================================
   browser-suite:
     name: browser-suite
@@ -123,7 +134,7 @@ jobs:
         run: node tests/run-trace.mjs
 
   # ============================================================================
-  # 4. VISUAL VALIDATE & ARTIFACT BASELINE (Worker D) - PR #16 Evidence Check
+  # 4. VISUAL VALIDATE & ARTIFACT BASELINE (Worker 4) - PR #16 Evidence Check
   # ============================================================================
   validate:
     name: validate
@@ -227,7 +238,7 @@ jobs:
             }
 
   # ============================================================================
-  # 5. PUBLIC IF ACCEPTANCE (Worker E)
+  # 5. PUBLIC IF ACCEPTANCE (Worker 5)
   # ============================================================================
   if-runtime:
     name: if-runtime
@@ -263,7 +274,7 @@ jobs:
         run: python3 -m unittest tests.acceptance.test_if_runtime -v
 
   # ============================================================================
-  # 6. ECO 100K API & BROWSER ACCEPTANCE (Worker F)
+  # 6. ECO 100K API & BROWSER ACCEPTANCE (Worker 6)
   # ============================================================================
   eco-acceptance:
     name: eco-acceptance
@@ -363,7 +374,7 @@ jobs:
             }
 
   # ============================================================================
-  # 7. PARALLEL AUDIT 1: NPM DEPENDENCIES (Worker G)
+  # 7. PARALLEL AUDIT 1: NPM DEPENDENCIES (Worker 7)
   # ============================================================================
   audit-npm:
     name: audit-npm
@@ -388,7 +399,7 @@ jobs:
           npm audit --audit-level=high
 
   # ============================================================================
-  # 8. PARALLEL AUDIT 2: RUST DEPENDENCIES / RUSTSEC (Worker H)
+  # 8. PARALLEL AUDIT 2: RUST DEPENDENCIES / RUSTSEC (Worker 8)
   # ============================================================================
   audit-cargo:
     name: audit-cargo
