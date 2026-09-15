@@ -30,10 +30,19 @@ const daemon = spawn(binary, ["serve"], {
   stdio: ["ignore", "pipe", "pipe"],
 });
 daemon.stdout.resume();
-daemon.stderr.resume();
+// Keep a bounded tail of the daemon's stderr. Discarding it is what made a
+// startup failure report nothing but "daemon did not start" (run 34920215184;
+// the same bare message came back in runs 34954379976 and 34955243839).
+const daemonStderr = [];
+let daemonStderrBytes = 0;
+daemon.stderr.on("data", (chunk) => {
+  if (daemonStderrBytes >= 65_536) return;
+  daemonStderr.push(chunk);
+  daemonStderrBytes += chunk.length;
+});
 let browser;
 try {
-  await ready(origin);
+  await ready(origin, daemon, daemonStderr);
   const setup = await fetch(`${origin}/api/v1/setup`, {
     method: "POST",
     headers: { origin, "content-type": "application/json" },
@@ -198,7 +207,13 @@ try {
 } finally {
   if (browser) await browser.close();
   daemon.kill("SIGTERM");
-  await new Promise((resolvePromise) => daemon.once("exit", resolvePromise));
+  // kill() on an already-exited daemon never emits another "exit", and
+  // awaiting one unconditionally turns the failure being reported into an
+  // unsettled top-level await (Node exit 13, no message).
+  await new Promise((resolve) => {
+    if (daemon.exitCode !== null || daemon.signalCode !== null) resolve();
+    else daemon.once("exit", resolve);
+  });
   await rm(root, { recursive: true, force: true });
 }
 
@@ -211,16 +226,28 @@ async function freePort() {
   return port;
 }
 
-async function ready(base) {
-  for (let attempt = 0; attempt < 400; attempt += 1) {
+async function ready(base, daemon, stderrChunks) {
+  // 1200 * 50ms = 60s: the same health budget the Python acceptance Daemon
+  // allows, sized for a cold debug binary starting behind the other jobs of a
+  // shared self-hosted runner.
+  for (let attempt = 0; attempt < 1200; attempt += 1) {
     try {
       if ((await fetch(`${base}/health/live`)).ok) return;
     } catch {
       // Startup race.
     }
-    await new Promise((resolvePromise) => setTimeout(resolvePromise, 50));
+    // The daemon is already gone: polling out the budget only buries the reason.
+    if (daemon.exitCode !== null || daemon.signalCode !== null) break;
+    await new Promise((resolve) => setTimeout(resolve, 50));
   }
-  throw new Error("daemon did not start");
+  const outcome =
+    daemon.exitCode !== null
+      ? `exited with code ${daemon.exitCode}`
+      : daemon.signalCode !== null
+        ? `killed by ${daemon.signalCode}`
+        : "still running when the 60s health budget expired";
+  const reason = stderrChunks.map((chunk) => chunk.toString()).join("").trim();
+  throw new Error(`daemon did not start (${outcome}): ${reason || "no stderr captured"}`);
 }
 
 async function waitText(locator, text, attempts) {

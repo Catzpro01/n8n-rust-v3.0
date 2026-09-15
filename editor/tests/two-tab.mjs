@@ -211,7 +211,13 @@ try {
 } finally {
   if (browser) await browser.close();
   daemon.kill("SIGTERM");
-  await new Promise((resolve) => daemon.once("exit", resolve));
+  // kill() on an already-exited daemon never emits another "exit", and
+  // awaiting one unconditionally turns the failure being reported into an
+  // unsettled top-level await (Node exit 13, no message).
+  await new Promise((resolve) => {
+    if (daemon.exitCode !== null || daemon.signalCode !== null) resolve();
+    else daemon.once("exit", resolve);
+  });
   await rm(root, { recursive: true, force: true });
 }
 
@@ -224,7 +230,7 @@ async function freePort() {
   return port;
 }
 async function ready(origin, daemon, stderrChunks) {
-  for (let attempt = 0; attempt < 400; attempt += 1) {
+  for (let attempt = 0; attempt < 1200; attempt += 1) {
     try {
       if ((await fetch(`${origin}/health/live`)).ok) return;
     } catch {
@@ -239,7 +245,7 @@ async function ready(origin, daemon, stderrChunks) {
       ? `exited with code ${daemon.exitCode}`
       : daemon.signalCode !== null
         ? `killed by ${daemon.signalCode}`
-        : "still running when the 20s health budget expired";
+        : "still running when the 60s health budget expired";
   const reason = stderrChunks.map((chunk) => chunk.toString()).join("").trim();
   throw new Error(`daemon did not start (${outcome}): ${reason || "no stderr captured"}`);
 }

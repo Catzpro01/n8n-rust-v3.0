@@ -221,7 +221,24 @@ jobs:
           npm run build
 
       - name: Build workflow daemon binary
-        run: cargo build -p workflowd --locked
+        run: |
+          set +e
+          cargo build -p workflowd --locked 2>&1 | tee "$RUNNER_TEMP/daemon-build.log"
+          status=${PIPESTATUS[0]}
+          set -e
+          if [ "$status" -ne 0 ]; then
+            # Run 34955243839 lost this step to a bare exit 101 on one runner
+            # while rust-check passed cargo test --workspace --locked on the
+            # same SHA elsewhere, and the runner log was unreadable from the
+            # sandbox (blob EOF). Annotations are the only channel that stays
+            # readable, so lead with the exit status, host memory and disk,
+            # then the first error lines.
+            echo "::error::cargo build exited ${status}; host $(free -m | awk '/Mem:/{print "mem "$3"/"$2"MB'}), $(df -m . | awk 'NR==2{print $4"MB free"}')"
+            grep -nE 'error(\[E[0-9]+\])?:|panicked at|Killed|signal: 9|No space left' \
+              "$RUNNER_TEMP/daemon-build.log" | head -n 5 \
+              | sed -e 's/%/%25/g' -e 's/\r/%0D/g' -e 's/^/::error::'
+          fi
+          exit "$status"
 
       - uses: ./.github/actions/install-chromium
 
@@ -298,7 +315,12 @@ jobs:
   if-runtime:
     name: if-runtime
     runs-on: self-hosted
-    timeout-minutes: 20
+    # The recorded pinned pass of this job took 18m24s (run 34881819422), and
+    # run 34954379976 was killed by the previous 20m cap with the suite still
+    # working - a cap 8% above the best case is a flake generator on a shared,
+    # serialized runner. 40m matches the headroom the eco-acceptance job (45m)
+    # already has for a comparable workload.
+    timeout-minutes: 40
     steps:
       - name: Check out source
         uses: actions/checkout@v4

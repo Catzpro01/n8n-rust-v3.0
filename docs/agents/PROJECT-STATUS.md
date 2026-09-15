@@ -1,10 +1,11 @@
 # Project status
 
-**Last updated:** 2026-09-15
+**Last updated:** 2026-09-15 (later: acceptance-harness hardening)
 **Stage:** recovered implementation baseline; full platform expansion mapped
-**Current branch:** `arena/01a0a352-n8n-rust-v3-0`
-**Current PR:** none open yet for this branch; the merged predecessor is
-[#16](https://github.com/Catzpro01/n8n-rust-v3.0/pull/16)
+**Current branch:** `arena/01a0a488-n8n-rust-v3-0`
+**Current PR:** none open yet at the time of this commit; the merged
+predecessors are [#17](https://github.com/Catzpro01/n8n-rust-v3.0/pull/17)
+and [#16](https://github.com/Catzpro01/n8n-rust-v3.0/pull/16)
 **Recovered source baseline:** Canopy Workbench / `workflow-rust`
 
 ## Destination
@@ -71,19 +72,56 @@ reversible audit/reconciliation of the recovered Rust + connected Preact
 baseline. It does not authorize throwing away the existing implementation or
 starting a new frontend framework from scratch.
 
+## CI failure decomposition and acceptance-harness hardening (2026-09-15)
+
+After main went green with run `34926933956` (03:57Z), every subsequent
+`Validate Rust workflow platform` run failed. Job-step timestamps, check-run
+annotations, and the workflow's own summary tees decompose the red into four
+unrelated causes; none is a product regression:
+
+| Evidence | Failure | Cause | Disposition |
+| --- | --- | --- | --- |
+| run `34954379976` eco-acceptance; run `34955243839` eco-acceptance | `subprocess.TimeoutExpired: ... 'serve' timed out after 8 seconds` inside `Daemon.__init__` | The Python harness reads stderr only **after** startup: an undrained stderr PIPE fills its 64 KiB kernel buffer, the daemon blocks in a logging write and can neither become healthy nor honour SIGTERM; the diagnostic then leaks as a raw `TimeoutExpired` from `wait(8)`. Reproduced locally with a fake daemon before the fix (red), and the fixed path raises the informative `AssertionError` with the stderr tail (green). | Fixed: stderr is drained from a daemon thread keeping a bounded tail; SIGTERM escalates to SIGKILL after the grace period; `AssertionError` carries the tail. |
+| runs `34954379976` and `34955243839` browser-suite (`publish-rollback`, `run trace`) | `Error: daemon did not start` (bare) | The four `.mjs` harnesses still had the pre-hardening 20 s budget with `stderr.resume()` discarding the reason — two-tab.mjs got the hardened pattern in run `34920215184`'s aftermath, the others did not. | Fixed: the two-tab pattern (bounded stderr tail, exit short-circuit, informative error) propagated to all five; budget raised 20 s → 60 s to match the Python Daemon, which sized it for a shared runner. Teardown also no longer awaits an `exit` event that already fired (that swallowed the error into an unsettled top-level await, Node exit 13, no message). |
+| run `34954379976` if-runtime (20m28s) and run `34955243839` if-runtime (20m28s) | `The job has exceeded the maximum execution time of 20m0s` | The recorded pinned pass took 18m24s; a cap 8 % above the best case on a serialized, shared runner is a flake generator. Killed twice in a row. | Fixed: `timeout-minutes: 20 → 40`, matching eco-acceptance's headroom (45m) for a comparable workload. |
+| run `34954379976` validate | `generate-progress.mobile.png changed geometry` — baseline 340x545 vs actual 340x546 | Same editor sources passed the same comparison at 03:57Z (run `34926933956`), and nothing since touched `editor/` (PR #17 files: workflow, Rust crate, docs, status). Desktop rendered same-geometry in the failing run. This is runner-side rendering drift against the hard geometry gate, not a layout regression in code. | **Unresolved by design**: geometry is the deliberate hard gate and is not weakened here. Review the uploaded `visual-baseline-actual-*` artifact; if confirmed as drift, regenerate deliberately via `workflow_dispatch` `update_visual_baseline=1` and commit the uploaded baselines. Artifact download currently fails from the Arena sandbox (blob endpoint EOF), so the Owner or a runner-side step must do the visual review. |
+
+Also on record: run `34955243839` validate died in `Build workflow daemon
+binary` after exactly 4m00s with exit 101 while `rust-check` passed
+`cargo test --workspace --locked` on the same SHA on another runner — host
+state on one visual runner, not source. That step had no diagnostics and the
+runner's log endpoint (`productionresultssa*.blob.core.windows.net`) is
+unreachable from the Arena sandbox (EOF on every log/artifact fetch), so the
+step now tees its log and emits exit status, host memory, disk free, and the
+first error lines as annotations (the rust-check pattern).
+
+**Verification in this checkout (no cargo — Rust gates remain CI-only):**
+fake-daemon red/green for the Python `Daemon` (red reproduced the exact CI
+`TimeoutExpired`, green raises the informative assertion in ~2 s, both the
+SIGKILL-escalation and the EOF-lags-kill cases); fake-daemon proof for
+`publish-rollback.mjs`/`run-trace.mjs` (full reason surfaced:
+`daemon did not start (exited with code 1): listen: address already in use`);
+`node --check` on all six touched `.mjs` files; `py_compile` and
+`python3 -m unittest discover -s tests` (3 OK); `npm ci --ignore-scripts`,
+`npm run test:node`, `npm run typecheck` in `editor/`; YAML parse of
+`validate.yml` (10 jobs intact).
+
 ## Active work
 
 - **Owner:** none
 - **Map:** Canopy Workbench full platform expansion, GitHub issue #8.
 - **Frontier:** implementation phase 1, core completion; Ticket 11 needs one
   pinned `Validate Rust workflow platform` run whose `Browser acceptance:
-  artifact generation` step completes. The expansion decision map (#9–#14) is
-  resolved locally through ADRs 0059–0063 and the external-adapter research
-  note.
-- **Blockers:** local Cargo remains unavailable, so pinned GitHub CI is the Rust
-  verification environment; the single self-hosted VPS runner serializes the
-  three workflows, so a push queues behind any run already in flight. Hub and
-  Agent production work remains ordered after core and extension foundation.
+  artifact generation` step completes. The harness hardening above exists
+  exactly to let that step survive a loaded runner; the mobile visual
+  baseline question in the table is the remaining known gate.
+- **Blockers:** local Cargo remains unavailable, so pinned GitHub CI is the
+  Rust verification environment; the runner hosts serialize the workflow's
+  jobs, so pushes queue behind runs in flight, and the runner log/artifact
+  blob endpoint is currently unreachable from the Arena sandbox (EOF), which
+  makes the check-summary and annotation tees the only readable evidence
+  channel. Hub and Agent production work remains ordered after core and
+  extension foundation.
 
 ## Universal Scraper engine (2026-09-15)
 
