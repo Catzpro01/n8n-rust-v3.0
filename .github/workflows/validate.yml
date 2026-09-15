@@ -281,7 +281,10 @@ jobs:
   if-runtime:
     name: if-runtime
     needs: [select-runner]
-    runs-on: ${{ fromJson(needs.select-runner.outputs.runner) }}
+    # Keep the public API proof independent from the long Rust/visual builds on
+    # the legacy self-hosted pool; under contention its compile can otherwise
+    # consume this job's entire timeout before the acceptance test starts.
+    runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
       - name: Check out source
