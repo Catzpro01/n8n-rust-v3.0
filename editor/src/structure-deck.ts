@@ -36,6 +36,8 @@ export class StructureDeck {
   private groups: TopologyGroup[] = [];
   private nodes: TopologyNode[] = [];
   private groupNodes = new Map<string, TopologyNode[]>();
+  onSelectNode: ((id: string) => void) | null = null;
+  onToggleGroup: ((id: string) => void) | null = null;
 
   constructor(container: HTMLElement) {
     this.container = container;
@@ -150,10 +152,16 @@ export class StructureDeck {
         const label = document.createElement("span");
         label.textContent = `${row.label} (${row.nodeCount ?? 0})`;
         li.appendChild(label);
-        li.addEventListener("click", () => this.toggleGroup(row.id));
+        li.addEventListener("click", () => {
+          this.toggleGroup(row.id);
+          this.onToggleGroup?.(row.id);
+        });
       } else {
         li.textContent = row.label;
-        li.addEventListener("click", () => this.selectOnlyNode(row.id));
+        li.addEventListener("click", () => {
+          this.selectOnlyNode(row.id);
+          this.onSelectNode?.(row.id);
+        });
       }
       list.appendChild(li);
     }

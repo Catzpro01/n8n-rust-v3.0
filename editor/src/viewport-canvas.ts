@@ -113,11 +113,18 @@ export class ViewportCanvas {
     return Array.from(this.selected).map((i) => topology.sections.nodes[i].id);
   }
 
+  /** Expose the last draw's counters for the HUD; zero until first draw. */
+  lastStats(): RenderStats {
+    return { ...this.lastStats_ };
+  }
+
+  private lastStats_: RenderStats = { nodesInViewport: 0, connectionsInViewport: 0, drawCalls: 0 };
+
   private requestDraw() {
     if (this.rafId !== null || !this.dirty) return;
     this.rafId = requestAnimationFrame(() => {
       this.rafId = null;
-      this.draw();
+      this.lastStats_ = this.draw();
     });
   }
 
@@ -259,6 +266,7 @@ export class BoundedResultList {
   private items: Array<{ index: number; node: TopologyNode }> = [];
   private maxVisible = 12;
   private rowHeight = 32;
+  onSelect: ((nodeId: string, index: number) => void) | null = null;
 
   constructor(container: HTMLElement) {
     this.container = container;
@@ -288,6 +296,9 @@ export class BoundedResultList {
       li.style.color = "#e2e8f0";
       li.style.cursor = "pointer";
       li.textContent = `${item.node.name} — ${item.node.id}`;
+      li.addEventListener("click", () => {
+        this.onSelect?.(item.node.id, item.index);
+      });
       ul.appendChild(li);
     }
     this.container.appendChild(ul);

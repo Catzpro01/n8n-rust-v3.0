@@ -31,7 +31,7 @@ type State =
   | { phase: "idle" }
   | { phase: "loading" }
   | { phase: "progress"; progress: LoadProgress }
-  | { phase: "ready"; topology: PackedTopology; stats: RenderStats }
+  | { phase: "ready"; topology: PackedTopology }
   | { phase: "error"; message: string };
 
 const WORKER_CHUNK = 2_000;
@@ -52,6 +52,7 @@ export function LargeEditor({ workflowId }: Props) {
   const [state, setState] = useState<State>({ phase: "idle" });
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
+  const [renderStats, setRenderStats] = useState<RenderStats>({ nodesInViewport: 0, connectionsInViewport: 0, drawCalls: 0 });
 
   // Mount: create viewport/deck/results instances and the Web Worker.
   useEffect(() => {
@@ -63,8 +64,10 @@ export function LargeEditor({ workflowId }: Props) {
     const viewport = new ViewportCanvas(canvas);
     viewportRef.current = viewport;
     const deck = new StructureDeck(deckHost);
+    deck.onSelectNode = (id) => focusNodeById(id);
     deckInstRef.current = deck;
     const results = new BoundedResultList(searchHost);
+    results.onSelect = (id) => focusNodeById(id);
     resultsRef.current = results;
 
     const onResize = () => viewport.resize();
@@ -167,20 +170,14 @@ export function LargeEditor({ workflowId }: Props) {
       if (cancelled || reqId !== requestIdRef.current) return;
       viewportRef.current?.setTopology(topology);
       deckInstRef.current?.setData(topology.sections.groups, topology.sections.nodes);
-      // Re-run search against new data.
       if (searchQuery.trim()) {
         const results = searchNodes(topology.sections.nodes, searchQuery);
         resultsRef.current?.setItems(results);
       } else {
         resultsRef.current?.setItems([]);
       }
-      // Schedule a stats tick by forcing a redraw.
       viewportRef.current?.setViewport({});
-      setState({
-        phase: "ready",
-        topology,
-        stats: { nodesInViewport: 0, connectionsInViewport: 0, drawCalls: 0 },
-      });
+      setState({ phase: "ready", topology });
     };
 
     const fallbackParse = (buffer: ArrayBuffer, digestHeader: string | null) => {
@@ -268,28 +265,24 @@ export function LargeEditor({ workflowId }: Props) {
     resultsRef.current?.setItems(results);
   }, [searchQuery, state]);
 
-  // Periodic render stats tick (draws after pan/zoom happen via requestAnimationFrame
-  // inside ViewportCanvas; we just sample back the counters for the HUD).
+  // Periodic render stats tick: after each animation-frame draw, sample the
+  // counters and refresh the HUD.
   useEffect(() => {
     if (state.phase !== "ready") return;
     if (statsIntervalRef.current) window.clearInterval(statsIntervalRef.current);
-    statsIntervalRef.current = window.setInterval(() => {
-      // Force a redraw so we read up-to-date counters.
+    const tick = () => {
       viewportRef.current?.setViewport({});
-      // Stats are captured on next draw; we approximate by re-rendering with
-      // previously-captured values. The HUD only needs bounded visibility.
-      setState((prev) => {
-        if (prev.phase !== "ready") return prev;
-        return { ...prev };
-      });
-    }, 500);
+      setRenderStats(viewportRef.current?.lastStats() ?? { nodesInViewport: 0, connectionsInViewport: 0, drawCalls: 0 });
+    };
+    tick();
+    statsIntervalRef.current = window.setInterval(tick, 400);
     return () => {
       if (statsIntervalRef.current) window.clearInterval(statsIntervalRef.current);
       statsIntervalRef.current = null;
     };
   }, [state.phase]);
 
-  const focusNode = (nodeId: string) => {
+  const focusNodeById = (nodeId: string) => {
     if (state.phase !== "ready") return;
     const idx = state.topology.nodeIdToIndex.get(nodeId);
     if (idx === undefined) return;
@@ -332,6 +325,7 @@ export function LargeEditor({ workflowId }: Props) {
               <span>{totalNodes.toLocaleString()} nodes</span>
               <span>{totalConnections.toLocaleString()} edges</span>
               <span>{totalGroups.toLocaleString()} groups</span>
+              <span data-testid="viewport-cull">{renderStats.nodesInViewport.toLocaleString()} drawn</span>
               <span data-testid="dom-note">DOM rows ≤ {PAGE_SIZE}</span>
             </>
           )}
