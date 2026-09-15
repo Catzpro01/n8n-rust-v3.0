@@ -281,16 +281,9 @@ impl Governor {
         now: Instant,
     ) -> GovernorDecision {
         let elapsed_micros = now.duration_since(start).as_micros().max(1) as u64;
-        let wall_delta_micros = now
-            .checked_duration_since(if previous.initialized {
-                // We don't track last wall delta explicitly; reconstruct it
-                // conservatively as the cgroup sample interval.
-                now.checked_sub(SAMPLE_INTERVAL).unwrap_or(start)
-            } else {
-                start
-            })
-            .map(|d| d.as_micros().max(1) as u64)
-            .unwrap_or(SAMPLE_INTERVAL.as_micros() as u64);
+        // We don't track last wall delta explicitly; reconstruct it
+        // conservatively as the cgroup sample interval.
+        let wall_delta_micros = SAMPLE_INTERVAL.as_micros().max(1) as u64;
 
         // CPU view
         let quota_cores = sample.cpu.quota_cores;
