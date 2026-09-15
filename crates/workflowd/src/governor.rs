@@ -25,12 +25,9 @@
 //! published revisions. It only shapes *how much* work is dispatched in each
 //! tick and when new work is admitted.
 
-use crate::cgroup::{
-    self, CpuSample, DiskSample, IoSample, MemorySample, PidsSample, PressureSample,
-    ResourceSample, DISK_SAMPLE_INTERVAL, SAMPLE_INTERVAL,
-};
+use crate::cgroup::{self, ResourceSample, DISK_SAMPLE_INTERVAL, SAMPLE_INTERVAL};
 use serde::Serialize;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
