@@ -5,9 +5,10 @@ use crate::{
         ApplyForkRequest, CreateWorkflow, DraftCommand, DraftError, EditingQuery, OpenEditing,
         ReconcileRequest, SessionOnly, TakeoverRequest, TakeoverResponse,
     },
-    owner_http,
+    owner_http, topology,
 };
 use axum::{
+    body::Bytes,
     extract::{Path, Query, State},
     http::{HeaderMap, StatusCode},
     response::{IntoResponse, Response},
@@ -294,10 +295,69 @@ pub async fn editor_session(
         request.search_query,
     );
     let drafts = state.drafts.clone();
-    match tokio::task::spawn_blocking(move||drafts.load(&workflow_id)).await{
-        Ok(Ok(value))=>Json(json!({"workflow_id":value.workflow_id,"draft_version":value.draft_version,"stored":false})).into_response(),
-        Ok(Err(error))=>problem(error),Err(_)=>problem(DraftError::Storage("worker".into())),
+    match tokio::task::spawn_blocking(move || drafts.load(&workflow_id)).await {
+        Ok(Ok(value)) => Json(json!({"workflow_id":value.workflow_id,"draft_version":value.draft_version,"stored":false})).into_response(),
+        Ok(Err(error)) => problem(error),
+        Err(_) => problem(DraftError::Storage("worker".into())),
     }
+}
+
+pub async fn packed_topology(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(workflow_id): Path<String>,
+) -> Response {
+    if let Err(error) = read_auth(&state, &headers).await {
+        return error;
+    }
+    let drafts = state.drafts.clone();
+    match tokio::task::spawn_blocking(move || {
+        let draft = drafts.load(&workflow_id)?;
+        topology::pack(&draft).map_err(|e| DraftError::Storage(format!("topology pack: {e:?}")))
+    })
+    .await
+    {
+        Ok(Ok(packed)) => {
+            let verify = topology::verify(&packed.packed_bytes);
+            if !verify.valid {
+                return problem(DraftError::Storage(format!(
+                    "topology verification failed: {:?}",
+                    verify.error
+                )));
+            }
+            let mut response = (StatusCode::OK, Bytes::from(packed.packed_bytes)).into_response();
+            response.headers_mut().insert(
+                axum::http::header::CONTENT_TYPE,
+                "application/vnd.canopy.topology+v1"
+                    .parse()
+                    .expect("static header"),
+            );
+            if let Ok(value) = packed.topology_digest.parse() {
+                response
+                    .headers_mut()
+                    .insert("x-canopy-topology-digest", value);
+            }
+            if let Ok(value) = packed.node_count.to_string().parse() {
+                response
+                    .headers_mut()
+                    .insert("x-canopy-topology-node-count", value);
+            }
+            response
+        }
+        Ok(Err(error)) => problem(error),
+        Err(_) => problem(DraftError::Storage("worker".into())),
+    }
+}
+
+pub async fn verify_topology_blob(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    body: Bytes,
+) -> Response {
+    if let Err(error) = read_auth(&state, &headers).await {
+        return error;
+    }
+    Json(json!(topology::verify(&body))).into_response()
 }
 
 async fn run<T, F>(operation: F, status: StatusCode) -> Response

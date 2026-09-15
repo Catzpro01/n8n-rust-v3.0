@@ -90,6 +90,14 @@ pub fn router(state: AppState) -> Router {
         .route("/api/v1/workflows", post(draft_http::create))
         .route("/api/v1/workflows/{id}", get(draft_http::load))
         .route(
+            "/api/v1/workflows/{id}/topology",
+            get(draft_http::packed_topology),
+        )
+        .route(
+            "/api/v1/topology/verify",
+            post(draft_http::verify_topology_blob),
+        )
+        .route(
             "/api/v1/workflows/{id}/draft-commands",
             post(draft_http::command),
         )

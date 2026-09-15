@@ -27,6 +27,7 @@ mod run_engine;
 mod run_http;
 mod security;
 mod summarize;
+mod topology;
 // Issue 04 wires the scraper engine into the run dispatch and the acceptance
 // suite. Until then the engine is exercised by its own lib tests, so the
 // binary would otherwise report its public surface as dead code.
@@ -65,8 +66,9 @@ fn dispatch() -> Result<(), AppError> {
             Ok(())
         }
         Some("benchmark-manifest") => benchmark_manifest(),
+        Some("generate-100k-fixture") => generate_100k_fixture_command(),
         Some(command) => Err(AppError::Configuration(format!(
-            "unknown command {command:?}; expected serve, benchmark-manifest, or version"
+            "unknown command {command:?}; expected serve, benchmark-manifest, generate-100k-fixture, or version"
         ))),
     }
 }
@@ -116,6 +118,73 @@ fn benchmark_manifest() -> Result<(), AppError> {
         serde_json::json!({
             "event": "benchmark_manifest_written",
             "path": path.display().to_string()
+        })
+    );
+    Ok(())
+}
+
+fn generate_100k_fixture_command() -> Result<(), AppError> {
+    let draft = topology::generate_100k_fixture();
+    let packed = topology::pack(&draft).map_err(|e| {
+        AppError::Runtime(format!("cannot pack 100k fixture topology: {e:?}"))
+    })?;
+    let verify = topology::verify(&packed.packed_bytes);
+    if !verify.valid {
+        return Err(AppError::Runtime(format!(
+            "100k fixture failed self-verification: {:?}",
+            verify.error
+        )));
+    }
+    let out_dir = std::env::var("CANOPY_FIXTURE_DIR")
+        .unwrap_or_else(|_| "editor/tests/fixtures".into());
+    let out_dir = std::path::PathBuf::from(out_dir);
+    std::fs::create_dir_all(&out_dir)
+        .map_err(|e| AppError::Runtime(format!("cannot create fixture dir: {e}")))?;
+    let draft_path = out_dir.join("eco-100k-editor-fixture.json");
+    let binary_path = out_dir.join("eco-100k-editor-fixture.cwbt");
+    let manifest_path = out_dir.join("eco-100k-editor-fixture.manifest.json");
+    std::fs::write(
+        &draft_path,
+        serde_json::to_vec(&draft)
+            .map_err(|e| AppError::Runtime(format!("serialize draft: {e}")))?,
+    )
+    .map_err(|e| AppError::Runtime(format!("write draft: {e}")))?;
+    std::fs::write(&binary_path, &packed.packed_bytes)
+        .map_err(|e| AppError::Runtime(format!("write binary: {e}")))?;
+    let manifest = serde_json::json!({
+        "schema": "canopy.editor-fixture/v1alpha1",
+        "fixture_id": "eco-100k-editor-seam/v1",
+        "node_count": packed.node_count,
+        "connection_count": packed.connection_count,
+        "group_count": packed.group_count,
+        "packed_bytes": packed.packed_bytes.len(),
+        "draft_bytes": std::fs::metadata(&draft_path).map(|m| m.len()).unwrap_or(0),
+        "topology_digest": packed.topology_digest,
+        "topology_version": packed.version,
+        "magic": packed.magic,
+        "acceptance": {
+            "exactly_100_000_nodes": packed.node_count == 100_000,
+            "bounded_dom_required": true,
+            "worker_indexed_incrementally": true,
+            "viewport_virtualization_required": true,
+        }
+    });
+    std::fs::write(
+        &manifest_path,
+        serde_json::to_vec_pretty(&manifest)
+            .map_err(|e| AppError::Runtime(format!("serialize manifest: {e}")))?,
+    )
+    .map_err(|e| AppError::Runtime(format!("write manifest: {e}")))?;
+    println!(
+        "{}",
+        serde_json::json!({
+            "event": "fixture_100k_written",
+            "draft_path": draft_path.display().to_string(),
+            "binary_path": binary_path.display().to_string(),
+            "manifest_path": manifest_path.display().to_string(),
+            "node_count": packed.node_count,
+            "packed_bytes": packed.packed_bytes.len(),
+            "topology_digest": packed.topology_digest
         })
     );
     Ok(())
