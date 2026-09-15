@@ -1,12 +1,14 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import net from "node:net";
 import os from "node:os";
 import { join, resolve } from "node:path";
 import { spawn } from "node:child_process";
 import { chromium } from "playwright";
+
+import { compareAll } from "./lib/visual-baseline.mjs";
 
 const require = createRequire(import.meta.url);
 const repo = resolve(import.meta.dirname, "../..");
@@ -178,8 +180,15 @@ try {
   await page.setViewportSize({ width: 390, height: 900 });
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true, "generated progress must fit 390px");
   const mobile = await page.getByTestId("generation-progress").screenshot({ animations: "disabled", caret: "hide", scale: "css" });
-  await compareOrWrite("generate-progress.desktop.png", desktop);
-  await compareOrWrite("generate-progress.mobile.png", mobile);
+  // Both viewports are rendered before either is compared, so one run reports
+  // every baseline that drifted instead of one per pipeline round trip.
+  await compareAll([
+    ["generate-progress.desktop.png", desktop],
+    ["generate-progress.mobile.png", mobile],
+  ], {
+    baselineDir: baselines,
+    update: process.env.UPDATE_VISUAL_BASELINE === "1",
+  });
   console.log("generate-ui=passed lazy-preview-bytes=4 axe-serious=0 desktop-visual=passed mobile-visual=passed mobile-overflow=0");
 } finally {
   clearInterval(heartbeat);
@@ -204,16 +213,6 @@ async function stopDaemon(child) {
   if (child.exitCode === null && child.signalCode === null) child.kill("SIGKILL");
 }
 
-async function compareOrWrite(name, actual) {
-  await mkdir(baselines, { recursive: true });
-  const path = join(baselines, name);
-  if (process.env.UPDATE_VISUAL_BASELINE === "1") {
-    await writeFile(path, actual);
-    return;
-  }
-  const expected = await readFile(path);
-  assert.deepEqual(actual, expected, `${name} differs; review and run UPDATE_VISUAL_BASELINE=1 only to approve it`);
-}
 async function freePort() {
   const server = net.createServer();
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));

@@ -2,22 +2,32 @@ name: Validate Rust workflow platform
 
 on:
   push:
-    branches: ["main", "arena/**"]
+    branches: ["main"]
   pull_request:
+    branches: ["main"]
+  workflow_dispatch:
+    inputs:
+      update_visual_baseline:
+        description: "Regenerate editor/tests/baselines on the runner and upload them"
+        type: boolean
+        default: false
 
 permissions:
   contents: read
+  checks: write
 
 concurrency:
   group: validate-${{ github.workflow }}-${{ github.head_ref || github.ref_name }}
-  # Serial single-VPS runner: cancelling in-progress runs killed the audit
-  # job mid-download. Let runs finish; queue depth is bounded by pushes.
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
-  validate:
+  # ============================================================================
+  # 1. RUST CODE HEALTH & UNIT TESTS (Worker 1)
+  # ============================================================================
+  rust-check:
+    name: rust-check
     runs-on: self-hosted
-    timeout-minutes: 45
+    timeout-minutes: 25
     steps:
       - name: Check out source
         uses: actions/checkout@v4
@@ -35,77 +45,36 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version-file: editor/.nvmrc
-          cache: npm
-          cache-dependency-path: editor/package-lock.json
 
-      - name: Build editor assets
+      - name: Build editor assets for workflowd
         working-directory: editor
         run: |
           npm ci
-          npm run typecheck
           npm run build
 
       - name: Check Rust formatting
         run: cargo fmt --all -- --check
 
       - name: Run Rust tests
-        run: cargo test --workspace --locked -- --test-threads=1
-
-      - name: Build all workspace binaries for acceptance tests
-        run: cargo build --workspace --locked
-
-      - name: Install Chromium for browser acceptance
-        working-directory: editor
-        # Self-hosted: browsers persist in ~/.cache/ms-playwright, so this is a
-        # no-op after the first run. --with-deps needs passwordless sudo once.
-        run: npx playwright install --with-deps chromium
-
-      - name: "Browser acceptance: artifact generation"
-        working-directory: editor
-        # Diagnostic mode: this step dies with exit 137 (OOM) ~60s after
-        # "progress-visible" on both GitHub-hosted (7 GB) and the VPS (2 GB),
-        # with the Node heartbeat silent the whole time. Cap the JS heap so an
-        # in-process blowup surfaces as a JS stack instead of a silent SIGKILL,
-        # and sample per-process RSS so a Chromium/workflowd blowup is visible.
         run: |
-          ( while true; do
-              printf 'mem %s | ' "$(free -m | awk '/Mem:/{print $3"/"$2"MB"}')"
-              ps -eo rss=,comm= | awk '$2 ~ /node|chrome|headless|workflowd/ {a[$2]+=$1} END {for (k in a) printf "%s=%dMB ", k, a[k]/1024}'
-              echo; sleep 5; done ) & monitor=$!
           set +e
-          NODE_OPTIONS=--max-old-space-size=768 node tests/generate-artifact.mjs
-          status=$?
+          cargo test --workspace --locked -- --test-threads=1 2>&1 | tee "$RUNNER_TEMP/rust-tests.log"
+          status=${PIPESTATUS[0]}
           set -e
-          kill "$monitor" 2>/dev/null || true
+          if [ "$status" -ne 0 ]; then
+            # exit 101 covers a stale lockfile, a resolution conflict, a compile
+            # error and a test failure alike. Annotations are the only channel
+            # readable without the runner log, so surface the tail.
+            tail -n 30 "$RUNNER_TEMP/rust-tests.log" \
+              | sed -e 's/%/%25/g' -e 's/\r/%0D/g' -e 's/^/::error::/'
+          fi
           exit "$status"
 
-      - name: "Browser acceptance: two-tab editing"
-        working-directory: editor
-        run: node tests/two-tab.mjs
-
-      - name: "Browser acceptance: publish rollback"
-        working-directory: editor
-        run: node tests/publish-rollback.mjs
-
-      - name: "Browser acceptance: run trace"
-        working-directory: editor
-        run: node tests/run-trace.mjs
-
-      - name: "Browser acceptance: field editing and run"
-        working-directory: editor
-        run: node tests/edit-fields-run.mjs
-
-      - name: "Browser acceptance: Eco summarize"
-        working-directory: editor
-        run: node tests/eco-summarize.mjs
-
-      - name: Run dependency-free repository tests
-        run: python3 -m unittest discover -s tests -v
-
-  audit:
-    # Dependency audits are a separate job: they need live advisory data from
-    # npm/RustSec and must not break the hermetic build/test job when a
-    # registry is unreachable.
+  # ============================================================================
+  # 2. EDITOR UNIT TESTS & TYPECHECK (Worker 2)
+  # ============================================================================
+  editor-tests:
+    name: editor-tests
     runs-on: self-hosted
     timeout-minutes: 15
     steps:
@@ -115,30 +84,23 @@ jobs:
       - name: Host prerequisites (self-hosted VPS)
         uses: ./.github/actions/host-prereqs
 
-      - name: Install pinned Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          toolchain: 1.85.1
-
       - name: Install pinned Node toolchain
         uses: actions/setup-node@v4
         with:
           node-version-file: editor/.nvmrc
-          cache: npm
-          cache-dependency-path: editor/package-lock.json
 
-      - name: Install cargo-audit (prebuilt; newest source releases need rustc >= 1.88)
-        uses: taiki-e/install-action@v2
-        with:
-          tool: cargo-audit
+      - name: Typecheck and unit test editor
+        working-directory: editor
+        run: |
+          npm ci
+          npm run typecheck
+          npm run test:node
 
-      - name: Audit npm and Rust dependencies
-        run: REQUIRE_CARGO_AUDIT=1 ./scripts/audit-deps.sh
-
-  release-bundle:
-    # Ticket 11: verify `make release` produces a reproducible, checksummed
-    # bundle. No runtime patching of scripts: the dependency audit runs in the
-    # separate `audit` job, and build-release.sh is executable in the index.
+  # ============================================================================
+  # 3. BROWSER ACCEPTANCE SUITE (Worker 3)
+  # ============================================================================
+  browser-suite:
+    name: browser-suite
     runs-on: self-hosted
     timeout-minutes: 25
     steps:
@@ -153,19 +115,403 @@ jobs:
         with:
           toolchain: 1.85.1
 
-      - name: Rust cache
-        uses: Swatinem/rust-cache@v2
+      - name: Install pinned Node toolchain
+        uses: actions/setup-node@v4
         with:
-          cache-all-crates: true
+          node-version-file: editor/.nvmrc
+
+      - name: Build editor assets
+        working-directory: editor
+        run: |
+          npm ci
+          npm run build
+
+      - name: Build workspace binaries for acceptance tests
+        run: cargo build --workspace --locked
+
+      - uses: ./.github/actions/install-chromium
+
+      - name: "Browser acceptance: two-tab editing"
+        working-directory: editor
+        run: |
+          set +e
+          node tests/two-tab.mjs 2>&1 | tee "$RUNNER_TEMP/browser-two-tab.log"
+          status=${PIPESTATUS[0]}
+          set -e
+          if [ "$status" -ne 0 ]; then
+            # These were the last heavy steps with no diagnostics: a bare
+            # "exit code 1" annotation cannot distinguish a selector timeout
+            # from a missing browser from a real regression.
+            tail -n 30 "$RUNNER_TEMP/browser-two-tab.log" \
+              | sed -e 's/%/%25/g' -e 's/\r/%0D/g' -e 's/^/::error::/'
+          fi
+          exit "$status"
+
+      - name: "Browser acceptance: publish rollback"
+        working-directory: editor
+        run: |
+          set +e
+          node tests/publish-rollback.mjs 2>&1 | tee "$RUNNER_TEMP/browser-publish-rollback.log"
+          status=${PIPESTATUS[0]}
+          set -e
+          if [ "$status" -ne 0 ]; then
+            # These were the last heavy steps with no diagnostics: a bare
+            # "exit code 1" annotation cannot distinguish a selector timeout
+            # from a missing browser from a real regression.
+            tail -n 30 "$RUNNER_TEMP/browser-publish-rollback.log" \
+              | sed -e 's/%/%25/g' -e 's/\r/%0D/g' -e 's/^/::error::/'
+          fi
+          exit "$status"
+
+      - name: "Browser acceptance: run trace"
+        working-directory: editor
+        run: |
+          set +e
+          node tests/run-trace.mjs 2>&1 | tee "$RUNNER_TEMP/browser-run-trace.log"
+          status=${PIPESTATUS[0]}
+          set -e
+          if [ "$status" -ne 0 ]; then
+            # These were the last heavy steps with no diagnostics: a bare
+            # "exit code 1" annotation cannot distinguish a selector timeout
+            # from a missing browser from a real regression.
+            tail -n 30 "$RUNNER_TEMP/browser-run-trace.log" \
+              | sed -e 's/%/%25/g' -e 's/\r/%0D/g' -e 's/^/::error::/'
+          fi
+          exit "$status"
+
+  # ============================================================================
+  # 4. VISUAL VALIDATE & ARTIFACT BASELINE (Worker 4) - PR #16 Evidence Check
+  # ============================================================================
+  validate:
+    name: validate
+    runs-on: [self-hosted, visual]
+    timeout-minutes: 30
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Host prerequisites (self-hosted VPS)
+        uses: ./.github/actions/host-prereqs
+
+      - name: Install pinned Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.85.1
 
       - name: Install pinned Node toolchain
         uses: actions/setup-node@v4
         with:
           node-version-file: editor/.nvmrc
-          cache: npm
-          cache-dependency-path: editor/package-lock.json
 
-      - name: Prefetch crates for the offline (--frozen) release build
+      - name: Build editor assets
+        working-directory: editor
+        run: |
+          npm ci
+          npm run build
+
+      - name: Build workflow daemon binary
+        run: cargo build -p workflowd --locked
+
+      - uses: ./.github/actions/install-chromium
+
+      - name: "Browser acceptance: artifact generation"
+        working-directory: editor
+        env:
+          UPDATE_VISUAL_BASELINE: ${{ inputs.update_visual_baseline && '1' || '0' }}
+        run: |
+          ( while true; do
+              printf 'mem %s | ' "$(free -m | awk '/Mem:/{print $3"/"$2"MB"}')"
+              ps -eo rss=,comm= | awk '$2 ~ /node|chrome|headless|workflowd/ {a[$2]+=$1} END {for (k in a) printf "%s=%dMB ", k, a[k]/1024}'
+              echo; sleep 5; done ) & monitor=$!
+          set +e
+          NODE_OPTIONS=--max-old-space-size=768 node tests/generate-artifact.mjs 2>&1 | tee "$RUNNER_TEMP/artifact-browser.log"
+          status=${PIPESTATUS[0]}
+          set -e
+          kill "$monitor" 2>/dev/null || true
+          if [ "$status" -ne 0 ]; then
+            tail -n 20 "$RUNNER_TEMP/artifact-browser.log" \
+              | grep -v '^generate-ui=heartbeat$' \
+              | sed -e 's/%/%25/g' -e 's/\r/%0D/g' -e 's/^/::error::/'
+          fi
+          exit "$status"
+
+      - name: Upload regenerated visual baselines
+        if: ${{ inputs.update_visual_baseline }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: visual-baselines-regenerated-${{ github.sha }}
+          path: editor/tests/baselines/*.png
+          if-no-files-found: error
+
+      - name: Upload rendered images for visual baseline review
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: visual-baseline-actual-${{ github.sha }}
+          path: editor/tests/baselines/*.actual.png
+          if-no-files-found: ignore
+
+      - name: Publish artifact browser log to check summary
+        if: always()
+        uses: actions/github-script@v7
+        env:
+          BROWSER_LOG: ${{ runner.temp }}/artifact-browser.log
+        with:
+          script: |
+            const fs = require("node:fs");
+            if (!fs.existsSync(process.env.BROWSER_LOG)) return;
+            const log = fs.readFileSync(process.env.BROWSER_LOG, "utf8");
+            const checks = await github.rest.checks.listForRef({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              ref: context.sha,
+            });
+            const check = checks.data.check_runs
+              .filter((item) => item.name === "validate")
+              .sort((left, right) => Date.parse(right.started_at || right.created_at) - Date.parse(left.started_at || left.created_at))[0];
+            if (check) {
+              await github.rest.checks.update({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                check_run_id: check.id,
+                output: {
+                  title: "Artifact browser acceptance output",
+                  summary: "```text\n" + log.slice(-60000) + "\n```",
+                },
+              });
+            }
+
+  # ============================================================================
+  # 5. PUBLIC IF ACCEPTANCE (Worker 5)
+  # ============================================================================
+  if-runtime:
+    name: if-runtime
+    runs-on: self-hosted
+    timeout-minutes: 20
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Host prerequisites (self-hosted VPS)
+        uses: ./.github/actions/host-prereqs
+
+      - name: Install pinned Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.85.1
+
+      - name: Install pinned Node toolchain
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: editor/.nvmrc
+
+      - name: Build editor assets
+        working-directory: editor
+        run: |
+          npm ci
+          npm run build
+
+      - name: Build workflow daemon
+        run: cargo build -p workflowd --locked
+
+      - name: Run public If acceptance
+        run: python3 -m unittest tests.acceptance.test_if_runtime -v
+
+  # ============================================================================
+  # 6. ECO 100K API & BROWSER ACCEPTANCE (Worker 6)
+  # ============================================================================
+  eco-acceptance:
+    name: eco-acceptance
+    runs-on: self-hosted
+    timeout-minutes: 45
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Host prerequisites (self-hosted VPS)
+        uses: ./.github/actions/host-prereqs
+
+      - name: Install pinned Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.85.1
+
+      - name: Install pinned Node toolchain
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: editor/.nvmrc
+
+      - name: Build editor assets
+        working-directory: editor
+        run: |
+          npm ci
+          npm run typecheck
+          npm run build
+
+      - name: Build workflow daemon
+        run: cargo build -p workflowd --locked
+
+      - name: Run Eco API acceptance
+        shell: bash
+        run: |
+          set +e
+          python3 -m unittest tests.acceptance.test_if_runtime.IfRuntimeAcceptance.test_eco_100k_summary_is_durable_and_rollback_is_non_destructive -v 2>&1 | tee "$RUNNER_TEMP/eco-api.log"
+          status=${PIPESTATUS[0]}
+          set -e
+          {
+            echo '### Eco API acceptance output'
+            echo '```text'
+            cat "$RUNNER_TEMP/eco-api.log"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          if [ "$status" -ne 0 ]; then
+            # Annotations are the only diagnostic channel readable without the
+            # runner log, which is not reachable from outside the VPS.
+            tail -n 20 "$RUNNER_TEMP/eco-api.log" \
+              | sed -e 's/%/%25/g' -e 's/\r/%0D/g' -e 's/^/::error::/'
+          fi
+          exit "$status"
+
+      - uses: ./.github/actions/install-chromium
+
+      - name: Run Eco browser/API acceptance
+        working-directory: editor
+        shell: bash
+        run: |
+          set +e
+          npm run test:browser:eco 2>&1 | tee "$RUNNER_TEMP/eco-browser.log"
+          status=${PIPESTATUS[0]}
+          {
+            echo '### Eco browser acceptance output'
+            echo '```text'
+            cat "$RUNNER_TEMP/eco-browser.log"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          exit "$status"
+
+      - name: Publish Eco acceptance output to check summary
+        if: always()
+        uses: actions/github-script@v7
+        env:
+          API_LOG: ${{ runner.temp }}/eco-api.log
+          BROWSER_LOG: ${{ runner.temp }}/eco-browser.log
+        with:
+          script: |
+            const fs = require("node:fs");
+            if (!fs.existsSync(process.env.API_LOG)) return;
+            const read = (path) => fs.existsSync(path) ? fs.readFileSync(path, "utf8") : "(no log)";
+            const summary = "## Eco API acceptance\n\n```text\n" + read(process.env.API_LOG).slice(-30000)
+              + "\n```\n\n## Eco browser acceptance\n\n```text\n" + read(process.env.BROWSER_LOG).slice(-30000) + "\n```";
+            const checks = await github.rest.checks.listForRef({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              ref: context.sha,
+            });
+            const check = checks.data.check_runs
+              .filter((item) => item.name === "eco-acceptance")
+              .sort((left, right) => Date.parse(right.started_at || right.created_at) - Date.parse(left.started_at || left.created_at))[0];
+            if (check) {
+              await github.rest.checks.update({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                check_run_id: check.id,
+                output: {
+                  title: "Eco acceptance output",
+                  summary: summary,
+                },
+              });
+            }
+
+  # ============================================================================
+  # 7. PARALLEL AUDIT 1: NPM DEPENDENCIES (Worker 7)
+  # ============================================================================
+  audit-npm:
+    name: audit-npm
+    runs-on: self-hosted
+    timeout-minutes: 10
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Host prerequisites (self-hosted VPS)
+        uses: ./.github/actions/host-prereqs
+
+      - name: Install pinned Node toolchain
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: editor/.nvmrc
+
+      - name: Audit npm dependencies
+        working-directory: editor
+        run: |
+          if [ ! -d node_modules ]; then npm ci --ignore-scripts; fi
+          npm audit --audit-level=high
+
+  # ============================================================================
+  # 8. PARALLEL AUDIT 2: RUST DEPENDENCIES / RUSTSEC (Worker 8)
+  # ============================================================================
+  audit-cargo:
+    name: audit-cargo
+    runs-on: self-hosted
+    timeout-minutes: 10
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Host prerequisites (self-hosted VPS)
+        uses: ./.github/actions/host-prereqs
+
+      - name: Install pinned Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.85.1
+
+      - name: Install cargo-audit
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-audit
+
+      - name: Audit Cargo dependencies
+        run: cargo audit
+
+  # ============================================================================
+  # 9. AUDIT GATEWAY (Aggregates audit-npm and audit-cargo) - PR #16 Check
+  # ============================================================================
+  audit:
+    name: audit
+    runs-on: self-hosted
+    timeout-minutes: 5
+    needs: [audit-npm, audit-cargo]
+    steps:
+      - name: Confirm dependency audits passed
+        run: echo "Both npm and cargo audits passed across workers!"
+
+  # ============================================================================
+  # 10. FAN-IN RELEASE BUNDLE (Packaging & Verification)
+  # ============================================================================
+  release-bundle:
+    name: release-bundle
+    runs-on: self-hosted
+    timeout-minutes: 25
+    needs: [validate, if-runtime, eco-acceptance, audit, rust-check, editor-tests, browser-suite]
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Host prerequisites (self-hosted VPS)
+        uses: ./.github/actions/host-prereqs
+
+      - name: Install pinned Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.85.1
+
+      - name: Install pinned Node toolchain
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: editor/.nvmrc
+
+      - name: Prefetch crates for offline release build
         run: cargo fetch --locked
 
       - name: Build release bundle

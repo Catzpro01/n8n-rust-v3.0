@@ -1,0 +1,21 @@
+name: Install Chromium for browser acceptance
+description: >-
+  Install Chromium into the runner user's shared ~/.cache/ms-playwright,
+  serialized host-wide so concurrent jobs on the same VPS cannot corrupt each
+  other's partial downloads. --with-deps is deliberately absent: self-hosted
+  runners must not drive apt (see 8fecc63).
+runs:
+  using: composite
+  steps:
+    - name: Install Chromium
+      shell: bash
+      working-directory: editor
+      run: |
+        set -euo pipefail
+        exec 9>/tmp/n8n-playwright-install.lock
+        if command -v flock >/dev/null 2>&1; then
+          flock 9
+        else
+          echo "::warning::flock unavailable; Chromium install is not serialized"
+        fi
+        npx playwright install chromium

@@ -71,18 +71,30 @@ class Daemon:
             stderr=subprocess.PIPE,
             text=True,
         )
-        for _ in range(400):
+        for _ in range(1200):
             try:
                 if api(self.origin, "/health/live")[0] == 200:
                     return
             except (URLError, ConnectionError):
                 pass
+            if self.process.poll() is not None:
+                # The daemon is already gone. Polling out the remaining budget
+                # can only bury the reason it died under the health budget.
+                break
             time.sleep(0.05)
         if self.process.poll() is None:
             self.process.terminate()
             self.process.wait(8)
         stderr = self.process.stderr.read() if self.process.stderr else ""
-        raise AssertionError(f"daemon did not start: {stderr}")
+        if self.process.stderr:
+            self.process.stderr.close()
+        exit_code = self.process.poll()
+        outcome = (
+            f"exited with code {exit_code}"
+            if exit_code is not None
+            else f"still running when the {1200 * 0.05:.0f}s health budget expired"
+        )
+        raise AssertionError(f"daemon did not start ({outcome}): {stderr}")
 
     def stop(self) -> None:
         if self.process.poll() is None:
