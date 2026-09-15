@@ -10,6 +10,7 @@ use crate::{
         self, GenerateFailure, GenerateResume, GenerateSession, GenerateStart, GenerateSummary,
         GeneratedEnvelope,
     },
+    governor::{self, Governor, RunWorkClass},
     if_node, merge,
     run_engine::{self, ActivationOutcome, ManualActivationInput, ManualActivationResult},
     summarize,
@@ -376,6 +377,9 @@ pub enum RunError {
     StalePublication,
     RequestIdentityConflict,
     AdmissionFull,
+    /// Resource governor is shedding load; caller should retry after the
+    /// provided number of seconds.
+    AdmissionPressure { retry_after_seconds: u64 },
     SubscriberFull,
     Invalid(&'static str),
     TooLarge(&'static str),
@@ -402,6 +406,7 @@ pub struct RunService {
     controls: Arc<Mutex<HashMap<String, Arc<AtomicBool>>>>,
     live: Arc<LiveHub>,
     subscriber_slots: Arc<Semaphore>,
+    governor: Arc<Governor>,
     scheduler_thread: Mutex<Option<JoinHandle<()>>>,
     executor_thread: Mutex<Option<JoinHandle<()>>>,
     writer_thread: Mutex<Option<JoinHandle<()>>>,
@@ -411,16 +416,21 @@ impl RunService {
     pub fn initialize(
         config: &ServeConfig,
         artifacts: Arc<ArtifactService>,
+        governor: Arc<Governor>,
     ) -> Result<Self, String> {
         let database = config.state_dir.join("workflow.sqlite3");
         let (writer, writer_thread) = start_writer(database.clone())?;
         let live = Arc::new(LiveHub::new());
         let controls = Arc::new(Mutex::new(HashMap::new()));
-        let ready_budget = Arc::new(ByteBudget::new(READY_QUEUE_BYTES));
+        // Initial queue sizes come from the current governor decision so the
+        // bounded channels start with the correct cgroup-shaped capacity.
+        let decision = governor.decision();
+        let ready_budget = Arc::new(ByteBudget::new(decision.max_ready_queue_bytes));
         let result_budget = Arc::new(ByteBudget::new(RESULT_QUEUE_BYTES));
-        let (ready_sender, ready_receiver) = mpsc::sync_channel(READY_QUEUE_COUNT);
+        let (ready_sender, ready_receiver) = mpsc::sync_channel(decision.max_ready_queue_count);
         let (result_sender, result_receiver) = mpsc::sync_channel(RESULT_QUEUE_COUNT);
-        let (envelope_sender, envelope_receiver) = mpsc::sync_channel(ENVELOPE_BATCH_SLOTS);
+        let envelope_slots = ENVELOPE_QUEUE_COUNT / decision.envelope_micro_batch_count;
+        let (envelope_sender, envelope_receiver) = mpsc::sync_channel(envelope_slots.max(1));
         let (wake_sender, wake_receiver) = mpsc::sync_channel(1);
 
         let executor_thread = start_executor(
@@ -442,6 +452,7 @@ impl RunService {
             artifacts: artifacts.clone(),
             controls: controls.clone(),
             live: live.clone(),
+            governor: governor.clone(),
         })?;
         let service = Self {
             database,
@@ -450,6 +461,7 @@ impl RunService {
             controls,
             live,
             subscriber_slots: Arc::new(Semaphore::new(MAX_SSE_SUBSCRIBERS)),
+            governor,
             scheduler_thread: Mutex::new(Some(scheduler_thread)),
             executor_thread: Mutex::new(Some(executor_thread)),
             writer_thread: Mutex::new(Some(writer_thread)),
@@ -504,6 +516,16 @@ impl RunService {
             .map_err(|_| RunError::Invalid("captured_invocation"))?;
         if invocation_bytes.len() > MAX_INVOCATION_BYTES {
             return Err(RunError::TooLarge("captured_invocation"));
+        }
+        // Shed load before durable admission so rejected callers do not occupy
+        // a nonterminal Run slot or force the writer to roll back. Idempotent
+        // replay requests (existing_admission already handled by the caller)
+        // bypass this check because they don't add load.
+        let decision = self.governor.decision();
+        if !decision.admission_open {
+            return Err(RunError::AdmissionPressure {
+                retry_after_seconds: decision.admission_retry_after_seconds,
+            });
         }
         let weight = invocation_bytes.len().saturating_add(4 * 1024);
         let result = self.writer.call(
@@ -3034,6 +3056,7 @@ struct SchedulerContext {
     artifacts: Arc<ArtifactService>,
     controls: Arc<Mutex<HashMap<String, Arc<AtomicBool>>>>,
     live: Arc<LiveHub>,
+    governor: Arc<Governor>,
 }
 
 enum SchedulerSignal {
@@ -4730,8 +4753,10 @@ fn scheduler_loop(context: SchedulerContext) {
         }
 
         let mut dispatched = false;
+        let governor_decision = context.governor.decision();
+        let allowed_slots = governor_decision.allowed_hot_run_slots.min(MAX_HOT_RUNS);
         if scan_requested && Instant::now() >= scan_after {
-            while active.len() < MAX_HOT_RUNS {
+            while active.len() < allowed_slots {
                 let mut candidate = match next_candidate(&connection, &active) {
                     Ok(Some(candidate)) => candidate,
                     Ok(None) => {
