@@ -199,6 +199,11 @@ jobs:
           npm run build
 
       - name: Build workflow daemon binary
+        # The legacy Actions workers share one host-level sccache daemon. A
+        # concurrent job can recycle it mid-compile, so visual validation uses
+        # rustc directly; the serialized bare-metal gate retains sccache.
+        env:
+          RUSTC_WRAPPER: ""
         run: cargo build -p workflowd --locked
 
       - uses: ./.github/actions/install-chromium
