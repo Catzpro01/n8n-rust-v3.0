@@ -62,7 +62,7 @@ pub struct PackedNodeEntry {
     pub id: String,
     pub name: String,
     pub contract: String, // namespace/name@version
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub group_id: Option<String>,
     pub x: f64,
     pub y: f64,

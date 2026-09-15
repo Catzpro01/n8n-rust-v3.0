@@ -10,7 +10,10 @@ use crate::{
 use axum::{
     body::Bytes,
     extract::{Path, Query, State},
-    http::{HeaderMap, StatusCode},
+    http::{
+        header::{self, HeaderName},
+        HeaderMap, HeaderValue, StatusCode,
+    },
     response::{IntoResponse, Response},
     Json,
 };
@@ -327,20 +330,20 @@ pub async fn packed_topology(
             }
             let mut response = (StatusCode::OK, Bytes::from(packed.packed_bytes)).into_response();
             response.headers_mut().insert(
-                axum::http::header::CONTENT_TYPE,
-                "application/vnd.canopy.topology+v1"
-                    .parse()
-                    .expect("static header"),
+                header::CONTENT_TYPE,
+                HeaderValue::from_static("application/vnd.canopy.topology+v1"),
             );
-            if let Ok(value) = packed.topology_digest.parse() {
-                response
-                    .headers_mut()
-                    .insert("x-canopy-topology-digest", value);
+            if let Ok(value) = HeaderValue::from_str(&packed.topology_digest) {
+                response.headers_mut().insert(
+                    HeaderName::from_static("x-canopy-topology-digest"),
+                    value,
+                );
             }
-            if let Ok(value) = packed.node_count.to_string().parse() {
-                response
-                    .headers_mut()
-                    .insert("x-canopy-topology-node-count", value);
+            if let Ok(value) = HeaderValue::from_str(&packed.node_count.to_string()) {
+                response.headers_mut().insert(
+                    HeaderName::from_static("x-canopy-topology-node-count"),
+                    value,
+                );
             }
             response
         }
