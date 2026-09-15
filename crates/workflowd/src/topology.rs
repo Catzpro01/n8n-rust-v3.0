@@ -31,7 +31,8 @@
 //! truncated snapshot can be rejected before JSON parsing.
 
 use crate::canonical::{bytes as canonical_bytes, digest};
-use crate::draft::{NodeInstance, WorkflowDraft, Layout};
+use crate::draft::{Layout, NodeInstance, WorkflowDraft};
+use canopy_node_contract::NodeContractLock;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::BTreeMap;
@@ -261,8 +262,9 @@ pub fn verify(packed: &[u8]) -> TopologyVerify {
     if digest_end > packed.len() {
         return err("digest length exceeds blob");
     }
-    let _ = std::str::from_utf8(&packed[digest_start..digest_end])
-        .map_err(|_| err("digest is not utf8"));
+    if std::str::from_utf8(&packed[digest_start..digest_end]).is_err() {
+        return err("digest is not utf8");
+    }
     let mut offset = digest_end;
     let mut node_count = 0u32;
     let mut connection_count = 0u32;
@@ -402,9 +404,6 @@ fn build_searchable_text(node: &NodeInstance) -> String {
 /// The digest of the returned draft is stable across platforms because ids
 /// are deterministic and layout is computed from integer ids.
 pub fn generate_100k_fixture() -> WorkflowDraft {
-    use crate::draft::NodeContractLock;
-    let mut nodes: Vec<NodeInstance> = Vec::with_capacity(100_000);
-    let mut connections: Vec<Value> = Vec::with_capacity(100_000 + 16);
     let make_node = |id: &str,
                      name: &str,
                      contract_namespace: &str,

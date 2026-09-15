@@ -61,6 +61,8 @@ export interface TopologyVerify {
 }
 
 export interface LoadProgress {
+  /** Opaque request id for correlating progress to a caller. */
+  id?: string;
   phase: "fetch" | "verify" | "index" | "complete";
   bytesLoaded: number;
   totalBytes: number;
