@@ -4,7 +4,7 @@
 
 **Blocked by:** 10: Merge closed branch streams without unbounded memory
 
-**Status:** implementation-complete-pending-the-pinned-validate-gate
+**Status:** complete - the pinned validate gate went green on run 34917759414
 
 Ticket 10's runtime fault-injection acceptance is now pinned-verified (see that
 ticket's evidence section), so Ticket 10 is no longer the upstream barrier. The

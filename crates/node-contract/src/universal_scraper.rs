@@ -11,8 +11,6 @@
 
 use serde_json::Value;
 
-pub const NODE_NAMESPACE: &str = "8n-nodes-base";
-pub const NODE_NAME: &str = "universalScraper";
 pub const MODE_DEFAULT_KEY: &str = "mode";
 
 /// Output port every mode must declare. The scraper engine hands tabular rows
