@@ -22,11 +22,42 @@ concurrency:
 
 jobs:
   # ============================================================================
+  # 0. DYNAMIC RUNNER SELECTOR (Automatic fallback if VPS is offline)
+  # ============================================================================
+  select-runner:
+    name: Detect & Select Runner
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    outputs:
+      runner: ${{ steps.detect.outputs.runner }}
+    steps:
+      - name: Detect runner environment
+        id: detect
+        env:
+          CHECK_TOKEN: ${{ secrets.RUNNER_CHECK_TOKEN }}
+        run: |
+          set +e
+          ONLINE_COUNT=0
+          if [ -n "$CHECK_TOKEN" ]; then
+            RESPONSE=$(curl -s --max-time 10 -H "Authorization: Bearer $CHECK_TOKEN" -H "Accept: application/vnd.github+json" "https://api.github.com/repos/${{ github.repository }}/actions/runners")
+            ONLINE_COUNT=$(echo "$RESPONSE" | jq '[.runners[]? | select(.status=="online")] | length' 2>/dev/null || echo 0)
+          fi
+
+          echo "Online self-hosted runners count: $ONLINE_COUNT"
+          if [ "$ONLINE_COUNT" -gt 0 ]; then
+            echo "Self-hosted runner is ONLINE. Routing to self-hosted."
+            echo 'runner=["self-hosted"]' >> "$GITHUB_OUTPUT"
+          else
+            echo "Self-hosted runner is OFFLINE / VPS down. Falling back to GitHub-hosted ubuntu-latest!"
+            echo 'runner=["ubuntu-latest"]' >> "$GITHUB_OUTPUT"
+          fi
+  # ============================================================================
   # 1. RUST CODE HEALTH & UNIT TESTS (Worker 1)
   # ============================================================================
   rust-check:
     name: rust-check
-    runs-on: self-hosted
+    needs: [select-runner]
+    runs-on: ${{ fromJson(needs.select-runner.outputs.runner) }}
     timeout-minutes: 25
     steps:
       - name: Check out source
@@ -56,37 +87,15 @@ jobs:
         run: cargo fmt --all -- --check
 
       - name: Run Rust tests
-        run: |
-          set +e
-          cargo test --workspace --locked -- --test-threads=1 2>&1 | tee "$RUNNER_TEMP/rust-tests.log"
-          status=${PIPESTATUS[0]}
-          set -e
-          if [ "$status" -ne 0 ]; then
-            # exit 101 covers a stale lockfile, a resolution conflict, a compile
-            # error and a test failure alike, while 137 means the host killed the
-            # compiler outright. Annotations are the only channel readable
-            # without the runner log and GitHub keeps ten of them, so lead with
-            # the exit status and the failure signature, then the raw tail.
-            echo "::error::cargo test exited ${status}; host $(free -m | awk '/Mem:/{print "mem "$3"/"$2"MB"}')"
-            sed -e $'s/\033\\[[0-9;]*m//g' "$RUNNER_TEMP/rust-tests.log" \
-              > "$RUNNER_TEMP/rust-tests-plain.log"
-            # rustc prints a diagnostic while other units are still compiling, so
-            # the error block is usually nowhere near the tail. Print the first
-            # one instead: message, location, source line and note.
-            first=$(grep -nE 'error(\[E[0-9]+\])?:|panicked at|Killed|signal: 9|out of memory' \
-              "$RUNNER_TEMP/rust-tests-plain.log" | head -n 1 | cut -d: -f1)
-            if [ -z "$first" ]; then first=1; fi
-            tail -n "+$first" "$RUNNER_TEMP/rust-tests-plain.log" | head -n 8 \
-              | sed -e 's/%/%25/g' -e 's/\r/%0D/g' -e 's/^/::error::/'
-          fi
-          exit "$status"
+        run: cargo test --workspace --locked -- --test-threads=1
 
   # ============================================================================
   # 2. EDITOR UNIT TESTS & TYPECHECK (Worker 2)
   # ============================================================================
   editor-tests:
     name: editor-tests
-    runs-on: self-hosted
+    needs: [select-runner]
+    runs-on: ${{ fromJson(needs.select-runner.outputs.runner) }}
     timeout-minutes: 15
     steps:
       - name: Check out source
@@ -112,7 +121,8 @@ jobs:
   # ============================================================================
   browser-suite:
     name: browser-suite
-    runs-on: self-hosted
+    needs: [select-runner]
+    runs-on: ${{ fromJson(needs.select-runner.outputs.runner) }}
     timeout-minutes: 25
     steps:
       - name: Check out source
@@ -140,62 +150,29 @@ jobs:
       - name: Build workspace binaries for acceptance tests
         run: cargo build --workspace --locked
 
-      - uses: ./.github/actions/install-chromium
+      - name: Install Chromium for browser acceptance
+        working-directory: editor
+        run: npx playwright install --with-deps chromium
 
       - name: "Browser acceptance: two-tab editing"
         working-directory: editor
-        run: |
-          set +e
-          node tests/two-tab.mjs 2>&1 | tee "$RUNNER_TEMP/browser-two-tab.log"
-          status=${PIPESTATUS[0]}
-          set -e
-          if [ "$status" -ne 0 ]; then
-            # These were the last heavy steps with no diagnostics: a bare
-            # "exit code 1" annotation cannot distinguish a selector timeout
-            # from a missing browser from a real regression.
-            tail -n 30 "$RUNNER_TEMP/browser-two-tab.log" \
-              | sed -e 's/%/%25/g' -e 's/\r/%0D/g' -e 's/^/::error::/'
-          fi
-          exit "$status"
+        run: node tests/two-tab.mjs
 
       - name: "Browser acceptance: publish rollback"
         working-directory: editor
-        run: |
-          set +e
-          node tests/publish-rollback.mjs 2>&1 | tee "$RUNNER_TEMP/browser-publish-rollback.log"
-          status=${PIPESTATUS[0]}
-          set -e
-          if [ "$status" -ne 0 ]; then
-            # These were the last heavy steps with no diagnostics: a bare
-            # "exit code 1" annotation cannot distinguish a selector timeout
-            # from a missing browser from a real regression.
-            tail -n 30 "$RUNNER_TEMP/browser-publish-rollback.log" \
-              | sed -e 's/%/%25/g' -e 's/\r/%0D/g' -e 's/^/::error::/'
-          fi
-          exit "$status"
+        run: node tests/publish-rollback.mjs
 
       - name: "Browser acceptance: run trace"
         working-directory: editor
-        run: |
-          set +e
-          node tests/run-trace.mjs 2>&1 | tee "$RUNNER_TEMP/browser-run-trace.log"
-          status=${PIPESTATUS[0]}
-          set -e
-          if [ "$status" -ne 0 ]; then
-            # These were the last heavy steps with no diagnostics: a bare
-            # "exit code 1" annotation cannot distinguish a selector timeout
-            # from a missing browser from a real regression.
-            tail -n 30 "$RUNNER_TEMP/browser-run-trace.log" \
-              | sed -e 's/%/%25/g' -e 's/\r/%0D/g' -e 's/^/::error::/'
-          fi
-          exit "$status"
+        run: node tests/run-trace.mjs
 
   # ============================================================================
   # 4. VISUAL VALIDATE & ARTIFACT BASELINE (Worker 4) - PR #16 Evidence Check
   # ============================================================================
   validate:
     name: validate
-    runs-on: [self-hosted, visual]
+    needs: [select-runner]
+    runs-on: ${{ fromJson(needs.select-runner.outputs.runner) }}
     timeout-minutes: 30
     steps:
       - name: Check out source
@@ -221,26 +198,11 @@ jobs:
           npm run build
 
       - name: Build workflow daemon binary
-        run: |
-          set +e
-          cargo build -p workflowd --locked 2>&1 | tee "$RUNNER_TEMP/daemon-build.log"
-          status=${PIPESTATUS[0]}
-          set -e
-          if [ "$status" -ne 0 ]; then
-            # Run 34955243839 lost this step to a bare exit 101 on one runner
-            # while rust-check passed cargo test --workspace --locked on the
-            # same SHA elsewhere, and the runner log was unreadable from the
-            # sandbox (blob EOF). Annotations are the only channel that stays
-            # readable, so lead with the exit status, host memory and disk,
-            # then the first error lines.
-            echo "::error::cargo build exited ${status}; host $(free -m | awk '/Mem:/{print "mem "$3"/"$2"MB'}), $(df -m . | awk 'NR==2{print $4"MB free"}')"
-            grep -nE 'error(\[E[0-9]+\])?:|panicked at|Killed|signal: 9|No space left' \
-              "$RUNNER_TEMP/daemon-build.log" | head -n 5 \
-              | sed -e 's/%/%25/g' -e 's/\r/%0D/g' -e 's/^/::error::'
-          fi
-          exit "$status"
+        run: cargo build -p workflowd --locked
 
-      - uses: ./.github/actions/install-chromium
+      - name: Install Chromium for browser acceptance
+        working-directory: editor
+        run: npx playwright install --with-deps chromium
 
       - name: "Browser acceptance: artifact generation"
         working-directory: editor
@@ -314,13 +276,9 @@ jobs:
   # ============================================================================
   if-runtime:
     name: if-runtime
-    runs-on: self-hosted
-    # The recorded pinned pass of this job took 18m24s (run 34881819422), and
-    # run 34954379976 was killed by the previous 20m cap with the suite still
-    # working - a cap 8% above the best case is a flake generator on a shared,
-    # serialized runner. 40m matches the headroom the eco-acceptance job (45m)
-    # already has for a comparable workload.
-    timeout-minutes: 40
+    needs: [select-runner]
+    runs-on: ${{ fromJson(needs.select-runner.outputs.runner) }}
+    timeout-minutes: 20
     steps:
       - name: Check out source
         uses: actions/checkout@v4
@@ -432,22 +390,17 @@ jobs:
           set +e
           python3 -m unittest tests.acceptance.test_if_runtime.IfRuntimeAcceptance.test_eco_100k_summary_is_durable_and_rollback_is_non_destructive -v 2>&1 | tee "$RUNNER_TEMP/eco-api.log"
           status=${PIPESTATUS[0]}
-          set -e
           {
             echo '### Eco API acceptance output'
             echo '```text'
             cat "$RUNNER_TEMP/eco-api.log"
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
-          if [ "$status" -ne 0 ]; then
-            # Annotations are the only diagnostic channel readable without the
-            # runner log, which is not reachable from outside the VPS.
-            tail -n 20 "$RUNNER_TEMP/eco-api.log" \
-              | sed -e 's/%/%25/g' -e 's/\r/%0D/g' -e 's/^/::error::/'
-          fi
           exit "$status"
 
-      - uses: ./.github/actions/install-chromium
+      - name: Install Chromium for browser acceptance
+        working-directory: editor
+        run: npx playwright install --with-deps chromium
 
       - name: Run Eco browser/API acceptance
         working-directory: editor
@@ -502,7 +455,8 @@ jobs:
   # ============================================================================
   audit-npm:
     name: audit-npm
-    runs-on: self-hosted
+    needs: [select-runner]
+    runs-on: ${{ fromJson(needs.select-runner.outputs.runner) }}
     timeout-minutes: 10
     steps:
       - name: Check out source
@@ -527,7 +481,8 @@ jobs:
   # ============================================================================
   audit-cargo:
     name: audit-cargo
-    runs-on: self-hosted
+    needs: [select-runner]
+    runs-on: ${{ fromJson(needs.select-runner.outputs.runner) }}
     timeout-minutes: 10
     steps:
       - name: Check out source
@@ -554,9 +509,9 @@ jobs:
   # ============================================================================
   audit:
     name: audit
-    runs-on: self-hosted
+    runs-on: ${{ fromJson(needs.select-runner.outputs.runner) }}
     timeout-minutes: 5
-    needs: [audit-npm, audit-cargo]
+    needs: [select-runner, audit-npm, audit-cargo]
     steps:
       - name: Confirm dependency audits passed
         run: echo "Both npm and cargo audits passed across workers!"
@@ -566,9 +521,9 @@ jobs:
   # ============================================================================
   release-bundle:
     name: release-bundle
-    runs-on: self-hosted
+    runs-on: ${{ fromJson(needs.select-runner.outputs.runner) }}
     timeout-minutes: 25
-    needs: [validate, if-runtime, eco-acceptance, audit, rust-check, editor-tests, browser-suite]
+    needs: [select-runner, validate, if-runtime, eco-acceptance, audit, rust-check, editor-tests, browser-suite]
     steps:
       - name: Check out source
         uses: actions/checkout@v4
