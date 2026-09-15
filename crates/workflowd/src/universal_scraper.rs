@@ -1606,8 +1606,11 @@ mod tests {
         let transport = Arc::new(FakeTransport::new());
         let mut broken = settings(ScraperMode::FastHttp);
         broken.row_selector = "tr[".to_owned();
-        let error =
-            UniversalScraper::new(broken, &resources(Some(2.0)), transport.clone(), 4).unwrap_err();
+        let error = match UniversalScraper::new(broken, &resources(Some(2.0)), transport.clone(), 4)
+        {
+            Err(error) => error,
+            Ok(_) => panic!("an invalid row selector must be refused before any request"),
+        };
         assert_eq!(error.code, CODE_INVALID_SELECTOR);
 
         let scraper = engine(settings(ScraperMode::FastHttp), &transport, 2.0, 4);
