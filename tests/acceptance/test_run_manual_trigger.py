@@ -140,6 +140,14 @@ class Daemon:
         if self._drain.is_alive():
             self._drain.join(self.TERMINATION_GRACE_SECONDS)
 
+    def kill(self) -> None:
+        """Crash the installed daemon process without running its shutdown path."""
+        if self.process.poll() is None:
+            self.process.kill()
+            self.process.wait(self.TERMINATION_GRACE_SECONDS)
+        if self._drain.is_alive():
+            self._drain.join(self.TERMINATION_GRACE_SECONDS)
+
     def stop(self) -> None:
         self._terminate()
 

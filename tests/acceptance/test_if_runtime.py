@@ -6,6 +6,7 @@ from __future__ import annotations
 import json
 import os
 from pathlib import Path
+import sqlite3
 import tempfile
 import time
 import unittest
@@ -756,6 +757,157 @@ class IfRuntimeAcceptance(unittest.TestCase):
         self.assertEqual(reread[0], 200, reread[2])
         self.assertEqual(reread[2]["durable"]["state"], "succeeded")
         self.assertEqual(reread[2]["generation"]["merge"]["output_count"], 12)
+
+    def test_eco_100k_recovers_after_two_ungraceful_kills(self):
+        publication = self.publish_workflow(
+            include_merge=True,
+            include_summary=True,
+            eco_fixture=True,
+            item_count=49_998,
+        )
+        current = publication["current_published"]
+        event = publication["current_event"]["envelope"]
+        admitted = api(
+            self.daemon.origin,
+            "/api/v1/workflows/wf-if-runtime/runs",
+            "POST",
+            {
+                "run_request_id": "run-eco-100k-recovery",
+                "publication_event_id": event["event_id"],
+                "revision_id": current["revision_id"],
+                "plan_digest": current["plan_digest"],
+                "captured_invocation": {
+                    "manual": True,
+                    "fixture": "eco-100k-recovery",
+                },
+            },
+            self.mutation,
+        )
+        self.assertEqual(admitted[0], 201, admitted[2])
+        run_id = admitted[2]["run"]["run_id"]
+        killed_windows = []
+
+        # Each crash is delivered only after the public status seam proves that
+        # live/speculative generation is ahead of a known Durable Checkpoint.
+        # The two thresholds straddle ordinary checkpoint and Artifact-segment
+        # boundaries without using a graceful shutdown path.
+        for attempt, durable_threshold in enumerate((1_024, 36_000), start=1):
+            observed = None
+            for _ in range(30_000):
+                response = api(
+                    self.daemon.origin,
+                    f"/api/v1/runs/{run_id}",
+                    headers=self.auth,
+                )
+                self.assertEqual(response[0], 200, response[2])
+                status = response[2]
+                durable_count = status.get("generation", {}).get("generated_count", 0)
+                live_count = (status.get("live") or {}).get("generated_count", 0)
+                if durable_count >= durable_threshold and live_count > durable_count:
+                    observed = (durable_count, live_count)
+                    break
+                time.sleep(0.002)
+            self.assertIsNotNone(observed, f"no speculative window before kill {attempt}")
+            self.assertLessEqual(observed[1] - observed[0], 1_024)
+            killed_windows.append(observed)
+
+            old_daemon = self.daemon
+            old_daemon.kill()  # SIGKILL: do not run workflowd's shutdown path.
+            restart_started = time.monotonic()
+            self.daemon = Daemon(
+                self.state,
+                self.key,
+                extra_environment={"WORKFLOWD_TEST_FAULTS": "1"},
+            )
+            self.addCleanup(self.daemon.stop)
+            self.auth, self.mutation = login(self.daemon.origin)
+            restarted = api(
+                self.daemon.origin,
+                f"/api/v1/runs/{run_id}",
+                headers=self.auth,
+            )
+            self.assertEqual(restarted[0], 200, restarted[2])
+            recovery = restarted[2]["recovery"]
+            self.assertEqual(recovery["attempt"], attempt)
+            self.assertIn(recovery["state"], ("recovering", "replaying", "running"))
+            self.assertGreaterEqual(recovery["resume_cursor"], observed[0])
+            self.assertLessEqual(recovery["resume_cursor"], observed[1] + 1_024)
+            self.assertEqual(
+                recovery["replay_window"]["first_ordinal"],
+                recovery["resume_cursor"],
+            )
+            self.assertLessEqual(recovery["replay_window"]["maximum_items"], 1_024)
+            self.assertEqual(recovery["pinned_revision_id"], current["revision_id"])
+            self.assertEqual(recovery["pinned_plan_digest"], current["plan_digest"])
+            self.assertEqual(recovery["sqlite"]["journal_mode"], "wal")
+            self.assertEqual(recovery["sqlite"]["synchronous"], "full")
+            self.assertLess(time.monotonic() - restart_started, 60)
+
+        terminal = self.wait_terminal(run_id, attempts=30_000)
+        self.assertEqual(terminal["durable"]["state"], "succeeded")
+        self.assertEqual(terminal["correctness"]["attempted"], 100_000)
+        self.assertEqual(terminal["correctness"]["succeeded"], 100_000)
+        self.assertEqual(terminal["correctness"]["output_count"], 49_998)
+        self.assertEqual(terminal["generation"]["branch"]["true_count"], 24_999)
+        self.assertEqual(terminal["generation"]["branch"]["false_count"], 24_999)
+        self.assertEqual(terminal["generation"]["merge"]["output_count"], 49_998)
+        self.assertEqual(
+            terminal["generation"]["summary"]["output_digest"],
+            "sha256:56193dff07ac42baab1774fc9f25ce52dd527a5c14a59ac083b372b0ff402e55",
+        )
+        recovery = terminal["recovery"]
+        self.assertEqual(recovery["attempt"], 2)
+        self.assertEqual(recovery["state"], "completed")
+        self.assertLessEqual(recovery["replay_window"]["replayed_items"], 1_024)
+        self.assertLess(recovery["restart_elapsed_millis"], 60_000)
+
+        trace_response = api(
+            self.daemon.origin,
+            f"/api/v1/runs/{run_id}/trace",
+            headers=self.auth,
+        )
+        self.assertEqual(trace_response[0], 200, trace_response[2])
+        trace = trace_response[2]
+        self.assertTrue(trace["integrity_verified"])
+        self.assertEqual(
+            [item["event_sequence"] for item in trace["events"]],
+            list(range(1, len(trace["events"]) + 1)),
+        )
+        recovery_events = [
+            item for item in trace["events"] if item["event_type"] == "recovery_started"
+        ]
+        self.assertEqual(len(recovery_events), 2)
+        self.assertTrue(
+            all(
+                item["payload"]["replay_window"]["maximum_items"] <= 1_024
+                for item in recovery_events
+            )
+        )
+        self.assertEqual(
+            recovery["evidence"]["trace_event_count"], len(trace["events"])
+        )
+        self.assertEqual(
+            recovery["evidence"]["checkpoint_commit_count"],
+            len(trace["checkpoints"]),
+        )
+        self.assertGreater(recovery["evidence"]["artifact_bytes_written"], 0)
+        self.assertTrue(all(live > durable for durable, live in killed_windows))
+        with sqlite3.connect(self.state / "workflow.sqlite3") as connection:
+            duplicate_references = connection.execute(
+                "SELECT reference_id,COUNT(*) FROM artifact_references "
+                "WHERE reference_id LIKE ? GROUP BY reference_id HAVING COUNT(*)<>1",
+                (f"run:{run_id}:%",),
+            ).fetchall()
+            committed_sequences = connection.execute(
+                "SELECT checkpoint_sequence FROM run_checkpoints WHERE run_id=? "
+                "ORDER BY checkpoint_sequence",
+                (run_id,),
+            ).fetchall()
+        self.assertEqual(duplicate_references, [])
+        self.assertEqual(
+            [sequence for (sequence,) in committed_sequences],
+            list(range(1, len(committed_sequences) + 1)),
+        )
 
     def test_eco_100k_summary_is_durable_and_rollback_is_non_destructive(self):
         publication = self.publish_workflow(

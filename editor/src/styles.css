@@ -157,8 +157,8 @@ code { font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace; ov
 .run-heading > div:first-child > p:last-child { max-width: 46rem; margin: 0; color: var(--muted); line-height: 1.55; }
 .stream-state { display: inline-flex; align-items: center; gap: .5rem; flex: 0 0 auto; padding: .55rem .7rem; border: 1px solid var(--line); color: var(--muted); font-size: .72rem; font-weight: 800; text-transform: uppercase; }
 .stream-state span { width: .55rem; height: .55rem; border-radius: 50%; background: var(--quiet); }
-.stream-state.connected span, .stream-state.resynced span, .stream-state.complete span { background: var(--mint); }
-.stream-state.connecting span { background: var(--warning); }
+.stream-state.connected span, .stream-state.resynced span, .stream-state.running span, .stream-state.terminal span, .stream-state.complete span { background: var(--mint); }
+.stream-state.connecting span, .stream-state.recovering span, .stream-state.replaying span { background: var(--warning); }
 .stream-state.gap, .stream-state.disconnected { color: #ffe1dc; border-color: #71443e; }
 .stream-state.gap span, .stream-state.disconnected span { background: var(--danger); }
 .run-actions { display: flex; flex-wrap: wrap; align-items: center; gap: .65rem; margin: 1.25rem 0; }
@@ -187,6 +187,14 @@ code { font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace; ov
 .run-states strong, .run-states small { display: block; overflow-wrap: anywhere; }
 .run-states strong { text-transform: capitalize; }
 .run-states small { margin-top: .35rem; color: var(--muted); }
+.recovery-card { display: grid; grid-template-columns: minmax(0, .8fr) minmax(0, 1.2fr); gap: 1rem; padding: 1rem; border-bottom: 1px solid var(--line); background: linear-gradient(135deg, #241b0d 0%, #101913 72%); }
+.recovery-card h4, .recovery-card p { margin: 0; }
+.recovery-card h4 { margin: .2rem 0; color: var(--warning); text-transform: capitalize; }
+.recovery-card small { color: var(--muted); }
+.recovery-card dl { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .55rem; margin: 0; }
+.recovery-card dl div { padding: .55rem; border: 1px solid var(--line); background: #07110e66; }
+.recovery-card dt { color: var(--quiet); font-size: .68rem; font-weight: 800; text-transform: uppercase; }
+.recovery-card dd { margin: .2rem 0 0; color: var(--paper); font-size: .78rem; overflow-wrap: anywhere; }
 .generation-card { padding: 1rem; border-bottom: 1px solid var(--line); background: linear-gradient(135deg, #101d2b 0%, #0d1915 72%); }
 .generation-summary, .artifact-summary, .transform-summary, .artifact-detail > div:first-child { display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
 .generation-summary h4 { margin: 0 0 .25rem; font-size: 1.25rem; }
@@ -247,6 +255,7 @@ code { font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace; ov
   .run-states article + article { border-left: 0; }
   .run-timing { grid-template-columns: 1fr; }
   .run-timing > div + div { border-top: 1px solid var(--line); border-left: 0; }
+  .recovery-card { grid-template-columns: 1fr; }
   .generation-facts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 @media (max-width: 700px) {

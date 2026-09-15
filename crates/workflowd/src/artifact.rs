@@ -465,7 +465,25 @@ impl ArtifactService {
     /// Release all references owned by one runtime attempt. Run/port prefixes
     /// are intentionally narrower than an Owner-wide cleanup operation.
     pub fn release_reference_prefix(&self, prefix: &str) -> Result<u64, ArtifactError> {
+        self.retain_reference_prefix(prefix, &[])
+    }
+
+    /// Keep exactly the checkpoint-bound references below a runtime prefix and
+    /// release any speculative suffix left by an interrupted process. Keeping
+    /// this reconciliation inside the Artifact service prevents Run recovery
+    /// from reaching through its ownership and quarantine invariants.
+    pub fn retain_reference_prefix(
+        &self,
+        prefix: &str,
+        retained_reference_ids: &[String],
+    ) -> Result<u64, ArtifactError> {
         validate_token(prefix, "reference_prefix")?;
+        for reference_id in retained_reference_ids {
+            validate_token(reference_id, "reference_id")?;
+            if !reference_id.starts_with(prefix) {
+                return Err(ArtifactError::Invalid("retained_reference_id"));
+            }
+        }
         let reference_ids = {
             let connection = self.connect().map_err(ArtifactError::Storage)?;
             let mut statement = connection
@@ -480,6 +498,9 @@ impl ArtifactService {
         };
         let mut released = 0_u64;
         for reference_id in reference_ids {
+            if retained_reference_ids.contains(&reference_id) {
+                continue;
+            }
             self.release_reference(&reference_id)?;
             released = released.saturating_add(1);
         }
@@ -1646,6 +1667,61 @@ mod tests {
             )
             .unwrap();
         assert_eq!(remaining, 0);
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn recovery_retains_checkpoint_references_and_releases_only_the_suffix() {
+        let (root, service) = service("retain-prefix");
+        let prefix = "run:r1:merge:m1:";
+        let retained = format!("{prefix}true:segment:0");
+        let speculative = format!("{prefix}true:segment:1");
+        let outside = "run:r2:merge:m1:true:segment:0";
+        service
+            .put(b"durable", "application/x-ndjson", &retained, "segment", 1)
+            .unwrap();
+        service
+            .put(
+                b"speculative",
+                "application/x-ndjson",
+                &speculative,
+                "segment",
+                1,
+            )
+            .unwrap();
+        service
+            .put(b"outside", "application/x-ndjson", outside, "segment", 1)
+            .unwrap();
+
+        assert_eq!(
+            service
+                .retain_reference_prefix(prefix, std::slice::from_ref(&retained))
+                .unwrap(),
+            1
+        );
+        let connection = service.connect().unwrap();
+        let retained_count: i64 = connection
+            .query_row(
+                "SELECT COUNT(*) FROM artifact_references WHERE reference_id=?1",
+                params![retained],
+                |row| row.get(0),
+            )
+            .unwrap();
+        let speculative_count: i64 = connection
+            .query_row(
+                "SELECT COUNT(*) FROM artifact_references WHERE reference_id=?1",
+                params![speculative],
+                |row| row.get(0),
+            )
+            .unwrap();
+        let outside_count: i64 = connection
+            .query_row(
+                "SELECT COUNT(*) FROM artifact_references WHERE reference_id=?1",
+                params![outside],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!((retained_count, speculative_count, outside_count), (1, 0, 1));
         fs::remove_dir_all(root).unwrap();
     }
 
