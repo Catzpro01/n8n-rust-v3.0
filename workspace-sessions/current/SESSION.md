@@ -1,54 +1,39 @@
 # Current session handoff
 
-**Started:** 2026-09-13
-**Branch:** `arena/01a09a2a-n8n-rust-v3-0`
+**Started:** 2026-09-15
+**Branch:** `arena/01a0a352-n8n-rust-v3-0`
 **Previous handoff:** `workspace-sessions/previous/SESSION.md`
-**Active map:** `.scratch/canopy-platform-expansion/map.md`
-**Active phase:** implementation phase 1, core completion (decision issues #9–#14 resolved locally as ADRs 0059–0063/research)
+**Active map:** `.scratch/universal-scraper-engine/map.md`
+**Active ticket:** Issue 03, core engine implementation in `workflowd`
 
 ## Owner direction
 
-- Implement all explicitly recorded workspace designs, not arbitrary full n8n
-  parity.
-- Follow the phase order: core completion; extension foundation;
-  Workflow/Skill Hub; AI Agent platform; production upgrade/recovery; large
-  editor and compatibility.
-- A phase is complete only with production code, versioned contracts, UI where
-  applicable, tests, documentation, and release evidence.
-- Keep the recovered Rust/Preact baseline and do not silently broaden accepted
-  ADRs or Ticket 08.
+- Implement the Universal Scraper effort in the recorded order: Issue 01
+  dependencies, Issue 02 contract, Issue 03 engine, Issue 04 acceptance/CI.
+- Keep the pinned MSRV 1.85.1 stack; do not re-add crates that were dropped for
+  MSRV, and do not weaken the `--locked` gate.
+- Unlock mode 4 (`DataTransform`) only through the recorded sequence: `csv` in
+  `crates/workflowd/Cargo.toml`, `cargo check --workspace`, commit the
+  regenerated `Cargo.lock`, then flip the contract gate.
 
 ## Current state
 
-- The full expansion Wayfinder map is published as GitHub issue #8.
-- Issue #9 is resolved as ADR 0059: Contract, Implementation, Form, and Lane
-  stay separate; Rust is the in-process promotion path; C++ and other languages
-  use the common External Process/WASM boundary; Plans pin exact identities.
-- Issue #10 is resolved as ADR 0060: Workflow/Skill and Skill Package lifecycle
-  uses immutable locks, verified Draft/sandbox flow, explicit scope, reviewed
-  side-by-side updates, and reference-safe retirement.
-- Issue #11 is resolved as ADR 0061: AI Agent turns use durable Activations,
-  explicit six-subport grants, ordered pre-side-effect fallback, typed outcomes,
-  validated output, redacted traces, and locked Agent Blueprints.
-- Issue #12 is resolved as ADR 0062: signed Staging/Current/Previous slots,
-  complete incremental Recovery Sets, traffic-boundary rollback, quarantine,
-  and Recovery Kit/off-site/drill readiness.
-- Research issue #14 is resolved in `docs/research/external-agent-package-
-  adapters-2026-09.md`.
-- Issue #13 is resolved as ADR 0063: the private-first vertical journey,
-  deterministic/external dual evidence lanes, Rust-first resource/trust
-  envelope, and full production-complete gate are accepted.
-- The decision map is complete. Begin core completion using the existing
-  first-runnable implementation tickets; Tickets 01–09 are recorded complete
-  and Ticket 10 (closed branch-stream Merge) is the current core frontier.
-  Preserve the approved order before starting Hub or AI production slices. No
-  production code for Hub, Skill Hub, or AI Agent has been started; the first
-  AI implementation ticket is planned and phase-gated.
+- Issue 01 is complete and Issue 02's contract landed CI-green through PR #16.
+- Issue 03 is implemented as `crates/workflowd/src/universal_scraper.rs` and
+  declared in `crates/workflowd/src/main.rs`. Modes 1 (`FastHttp`) and 2
+  (`DeepCrawl`) execute; modes 3 and 4 are refused by the contract gate and
+  again by the engine.
+- Operational description: `docs/operations/universal-scraper.md`.
+- The sandbox has no Cargo toolchain and cannot reach crates.io, so
+  `cargo test -p workflowd --lib universal_scraper` runs in the pinned
+  `rust-check` job rather than locally. Formatting was checked locally with
+  rustfmt 1.8.0-stable, the formatter shipped with the pinned toolchain.
 
 ## Next action
 
-Implement and verify Ticket 10's bounded Merge contract and runtime seam,
-including Artifact-backed branch spooling, deterministic true-then-false
-ordering, compiler rejection diagnostics, and cancellation/failure evidence.
-Keep the completed Ticket 09 topology and evidence intact while extending the
-core path.
+- Confirm the pinned `rust-check` run is green for this branch and record the
+  run id in the Issue 03 ticket.
+- Then start Issue 04: native acceptance test plus removing the Playwright
+  browser gate from CI.
+- The mode-4 unlock still needs a cargo-enabled host to regenerate
+  `Cargo.lock`; it stays gated until then.

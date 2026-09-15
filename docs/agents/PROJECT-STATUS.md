@@ -1,10 +1,10 @@
 # Project status
 
-**Last updated:** 2026-09-14
+**Last updated:** 2026-09-15
 **Stage:** recovered implementation baseline; full platform expansion mapped
-**Current branch:** `arena/01a0a14f-n8n-rust-v3-0`
+**Current branch:** `arena/01a0a352-n8n-rust-v3-0`
 **Current PR:** none open yet for this branch; the merged predecessor is
-[#15](https://github.com/Catzpro01/n8n-rust-v3.0/pull/15)
+[#16](https://github.com/Catzpro01/n8n-rust-v3.0/pull/16)
 **Recovered source baseline:** Canopy Workbench / `workflow-rust`
 
 ## Destination
@@ -84,6 +84,26 @@ starting a new frontend framework from scratch.
   verification environment; the single self-hosted VPS runner serializes the
   three workflows, so a push queues behind any run already in flight. Hub and
   Agent production work remains ordered after core and extension foundation.
+
+## Universal Scraper engine (2026-09-15)
+
+`.scratch/universal-scraper-engine/` Issue 03 is implemented as
+`crates/workflowd/src/universal_scraper.rs`, declared in
+`crates/workflowd/src/main.rs`, with the operational description in
+`docs/operations/universal-scraper.md`.
+
+- Modes 1 (`FastHttp`) and 2 (`DeepCrawl`) execute: single pass from a
+  response body in RAM to tabular rows, no disk serialization, cgroup-bounded
+  concurrency behind a `governor` token bucket, and exponential-backoff retry
+  on 429/5xx and transport faults with `Retry-After` honoured.
+- Modes 3 (`BrowserHeadless`) and 4 (`DataTransform`) stay refused by both the
+  contract gate and the engine.
+- The mode-4 unlock sequence recorded in the Issue 02 ticket — add `csv` to
+  `crates/workflowd/Cargo.toml`, run `cargo check --workspace`, commit the
+  regenerated `Cargo.lock`, then flip the gate — still needs a cargo-enabled
+  host. This sandbox has no Cargo toolchain and cannot reach crates.io, and
+  editing `Cargo.toml` without a regenerated lockfile breaks
+  `cargo test --workspace --locked`, which is what commit `248fba8` showed.
 
 ## Two separate defects behind the CI red — and a correction
 
