@@ -8,7 +8,7 @@
     "node": ">=22.19.0 <23"
   },
   "scripts": {
-    "build": "node scripts/build.mjs",
+    "build": "npm run generate:fixture --if-present && node scripts/build.mjs",
     "typecheck": "tsc --noEmit",
     "generate:fixture": "node scripts/generate-100k-fixture.mjs",
     "benchmark:topology": "node scripts/benchmark-topology.mjs",
