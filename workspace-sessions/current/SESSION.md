@@ -31,13 +31,19 @@
   formatting" and "Run Rust tests". Formatting was also checked locally with
   rustfmt 1.8.0-stable, the formatter shipped with the pinned toolchain.
 - `if-runtime`, `eco-acceptance`, `editor-tests`, `audit`, `audit-npm` and
-  `audit-cargo` are green in the same run. Two jobs are red for reasons outside
-  this branch: `browser-suite` on the two-tab draft-version race ("expected
-  Draft Version 5; got 4", green one run earlier) and `validate` on the
-  `generate-progress.mobile.png` geometry gate (actual 340x546
-  sha256:3d380bf896d42cb7 against baseline 340x545 sha256:5bbddbc8298f4b18,
-  byte-identical across two runs and both times on `actions-runner-3`). This
-  branch changes no file under `editor/` or `contracts/`.
+  `audit-cargo` are green in the same run. Two jobs are red for reasons the
+  evidence puts outside this branch. `browser-suite` fails differently each time
+  and passed once with this code: "expected Draft Version 5; got 4" on
+  `vps-fern-worker-2`, then "daemon did not start (still running when the 20s
+  health budget expired)" on `vps-fern-worker-5`. `validate` fails identically
+  every time on `generate-progress.mobile.png` (actual 340x546 73391 bytes
+  sha256:3d380bf896d42cb7 against a committed baseline of 340x545 73060 bytes
+  sha256:5bbddbc8298f4b18); that job always lands on `vps-fern-worker-3`, which
+  was green for `main` at 04:13 and red for this branch at 06:23, 08:25 and
+  08:31. The branch diff has no `editor/` or `contracts/` file, the engine module
+  is dead code referenced only by `mod universal_scraper;`, `build.rs` embeds
+  only `editor/dist`, and the card that renders `build_commit` is gated on
+  `{!workflowId && ...}` so it is not in this screenshot.
 
 ## Next action
 

@@ -132,3 +132,28 @@
   file under `editor/` or `contracts/`, so this needs an owner decision: re-run,
   fix the runner's rendering environment, or approve the one-pixel change with
   `UPDATE_VISUAL_BASELINE=1`.
+- Run `34947325495` on `fab5f4b` (the PR head) repeats the picture: `rust-check`,
+  `if-runtime`, `editor-tests`, `audit`, `audit-npm` and `audit-cargo` green;
+  `browser-suite` and `validate` red.
+- Investigated the two reds instead of assuming. `browser-suite` failed with two
+  different messages on two different workers ("expected Draft Version 5; got 4"
+  on `vps-fern-worker-2`; "daemon did not start (still running when the 20s
+  health budget expired)" on `vps-fern-worker-5`) and passed on `34935542196`,
+  which already contained the engine.
+- `validate` fails byte-identically three times (actual 340x546 73391 bytes
+  sha256:3d380bf896d42cb7) while the committed baseline is 340x545 73060 bytes
+  sha256:5bbddbc8298f4b18, verified locally from the PNG IHDR. Every run puts
+  that job on `vps-fern-worker-3`: green for `main` at 04:13, red for this branch
+  at 06:23, 08:25 and 08:31 - time-correlated, not branch-correlated.
+- Four code-level checks say the branch cannot move that pixel: no `editor/` or
+  `contracts/` file in `git diff --name-only origin/main...HEAD`; the module is
+  referenced only by `mod universal_scraper;` at `main.rs:33` and is dead code;
+  `crates/workflowd/build.rs` embeds only `editor/dist`; and the identity card
+  rendering `build_commit` sits behind `{!workflowId && ...}` at
+  `editor/src/main.tsx:459`, so it is not part of a screenshot taken with a
+  workflow open.
+- The decisive experiment is blocked from this sandbox: `workflow_dispatch`
+  returns 403 for the integration token and `gh run rerun` refuses both older
+  runs with "cannot be rerun; its workflow file may be broken". The owner needs
+  to re-run `validate` on `main` (an empty commit works) or review and approve
+  the baseline with `UPDATE_VISUAL_BASELINE=1`.

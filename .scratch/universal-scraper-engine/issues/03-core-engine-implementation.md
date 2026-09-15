@@ -61,8 +61,28 @@ Three defects had to be fixed on the way, each one found by that job:
 | `34934598306` | `E0277`: `UniversalScraper` is not `Debug`, which `Result::unwrap_err` requires of the `Ok` type | `3eb7a93` matches on the constructor result |
 | `34935542196` | `row_and_page_budgets_are_permanent_failures` saw `page_rejected` instead of `page_bytes_exceeded`: the first scenario consumed the only scripted 200 | `5f28b59` re-scripts the page |
 
-Unrelated failures in the same runs, for the record: `browser-suite` failed on
-`two-tab editing` with "expected Draft Version 5; got 4" in run `34945219044`
-after passing in `34935542196`, and `validate` failed on the
-`generate-progress.mobile.png` geometry gate (actual 340x546 against baseline
-340x545). This branch changes no file under `editor/` or `contracts/`.
+Two jobs stay red on this branch for reasons the evidence puts outside it.
+
+`browser-suite` fails differently each time and passed once with this code:
+"expected Draft Version 5; got 4" on `vps-fern-worker-2` in run `34945219044`,
+then "daemon did not start (still running when the 20s health budget expired)" on
+`vps-fern-worker-5` in run `34947325495`, after `success` in run `34935542196`.
+
+`validate` fails identically every time: the geometry gate reports
+`generate-progress.mobile.png` actual 340x546 73391 bytes sha256:3d380bf896d42cb7
+against baseline 340x545 73060 bytes sha256:5bbddbc8298f4b18 (the committed
+baseline is indeed 340x545 / 73060 bytes). All four runs put that job on
+`vps-fern-worker-3`, which reported `success` for `main` at 04:13 and `failure`
+for this branch at 06:23, 08:25 and 08:31 - so it correlates with time, not with
+the branch. Four checks support that: the branch diff has no file under `editor/`
+or `contracts/`; the engine module is referenced exactly once, by
+`mod universal_scraper;` in `main.rs`, and is dead code, so no HTTP response can
+change; `build.rs` embeds only `editor/dist`, so the bundle inputs are identical;
+and the identity card that renders `build_commit` is gated on `{!workflowId && ...}`
+in `editor/src/main.tsx:459`, so not even the build SHA reaches this screenshot.
+
+What could not be checked from the sandbox: the rendered PNG itself (log and
+artifact storage is unreachable), and what changed on `vps-fern-worker-3` between
+04:13 and 06:23. `workflow_dispatch` returns 403 for this token and
+`gh run rerun` refuses both older runs ("cannot be rerun"), so the clean
+main-versus-branch experiment has to be run by the owner.
