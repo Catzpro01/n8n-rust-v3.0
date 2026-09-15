@@ -32,7 +32,7 @@ use crate::cgroup::{
 use serde::Serialize;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 /// Absolute floor for hot Run slots so that status, cancellation, and at least
 /// one hot Run remain dispatchable even on a very constrained profile.
