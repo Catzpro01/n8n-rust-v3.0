@@ -19,6 +19,7 @@ mod governor;
 mod identity;
 mod if_node;
 mod merge;
+mod n8n_import;
 mod owner_http;
 mod publication;
 mod publication_http;

@@ -88,6 +88,10 @@ pub fn router(state: AppState) -> Router {
             get(draft_http::contract),
         )
         .route("/api/v1/workflows", post(draft_http::create))
+        .route(
+            "/api/v1/workflows/import/n8n",
+            post(draft_http::import_n8n),
+        )
         .route("/api/v1/workflows/{id}", get(draft_http::load))
         .route(
             "/api/v1/workflows/{id}/topology",
