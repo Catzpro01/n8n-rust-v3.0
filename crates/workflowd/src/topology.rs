@@ -363,9 +363,17 @@ fn normalize_connection(value: &Value) -> Option<PackedConnectionEntry> {
     Some(PackedConnectionEntry {
         id,
         source_node: source.get("node_id")?.as_str()?.to_string(),
-        source_port: source.get("port")?.as_str()?.to_string(),
+        source_port: source
+            .get("port_id")
+            .or_else(|| source.get("port"))?
+            .as_str()?
+            .to_string(),
         target_node: target.get("node_id")?.as_str()?.to_string(),
-        target_port: target.get("port")?.as_str()?.to_string(),
+        target_port: target
+            .get("port_id")
+            .or_else(|| target.get("port"))?
+            .as_str()?
+            .to_string(),
     })
 }
 
@@ -442,10 +450,10 @@ pub fn generate_100k_fixture() -> WorkflowDraft {
             obj.insert("id".into(), Value::String(id.into()));
             let mut src = serde_json::Map::new();
             src.insert("node_id".into(), Value::String(source.into()));
-            src.insert("port".into(), Value::String(sport.into()));
+            src.insert("port_id".into(), Value::String(sport.into()));
             let mut tgt = serde_json::Map::new();
             tgt.insert("node_id".into(), Value::String(target.into()));
-            tgt.insert("port".into(), Value::String(tport.into()));
+            tgt.insert("port_id".into(), Value::String(tport.into()));
             obj.insert("source".into(), Value::Object(src));
             obj.insert("target".into(), Value::Object(tgt));
             Value::Object(obj)
