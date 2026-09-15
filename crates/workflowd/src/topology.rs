@@ -352,7 +352,9 @@ fn hex_digest(bytes: &[u8]) -> String {
             .map(|&byte| Value::Number(serde_json::Number::from(u64::from(byte))))
             .collect(),
     );
-    digest(&byte_values).unwrap_or_else(|_| "sha256:0000000000000000000000000000000000000000000000000000000000000000".into())
+    digest(&byte_values).unwrap_or_else(|_| {
+        "sha256:0000000000000000000000000000000000000000000000000000000000000000".into()
+    })
 }
 
 fn normalize_connection(value: &Value) -> Option<PackedConnectionEntry> {
