@@ -59,3 +59,26 @@
   cargo-enabled host to regenerate `Cargo.lock`; `csv` is pinned in
   `[workspace.dependencies]` but absent from `Cargo.lock`, so the
   `DataTransform` gate stays closed.
+- Rebased onto `origin/main` `934c475` (fast-forward, no divergence), committed the
+  engine as `10766dd` and pushed to `arena/01a0a352-n8n-rust-v3-0`. `validate.yml`
+  only triggers on push to `main` or on a pull request into `main`, so PR #17 was
+  opened to make the gate run.
+- The committed `cache.kv` turned out to be stale: it was missing 28 tracked
+  files (including `crates/node-contract/src/universal_scraper.rs`,
+  `docs/operations/if-routing.md`, `tests/acceptance/test_if_runtime.py`) and
+  carried 39 outdated content hashes. Resynced with
+  `python3 tools/codebase_index.py index` (279 files) in its own commit `d8d62e1`
+  so the engine change stays reviewable.
+- `rust-check` run `34931924759` failed: step "Check Rust formatting" passed, step
+  "Run Rust tests" reported `E0599: no method named next_backoff found for
+  &mut ExponentialBackoff<SystemClock>`. The `backoff` crate does not re-export
+  its trait at the root — `lib.rs` re-exports only `Clock`, `SystemClock`,
+  `Error`, `retry`, `retry_notify` and `Notify` — so the trait has to be imported
+  as `backoff::backoff::Backoff`. Fixed in `7839795`.
+- Run `34932547778` then failed in "Run Rust tests" with all ten visible
+  annotations still `Compiling ...` lines. Raw job logs are not readable from
+  this sandbox (`productionresultssa0.blob.core.windows.net` is unreachable) and
+  GitHub keeps only ten annotations, so the tail-30 could not say whether the
+  failure was a compile error, a test failure or the host killing the compiler.
+  `743e9d6` makes the step emit cargo's exit status, host memory and a
+  grep-matched failure signature before the tail; the gate is unchanged.
