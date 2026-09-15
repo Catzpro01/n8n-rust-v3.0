@@ -30,7 +30,8 @@
 
 use crate::canonical::{bytes as canonical_bytes, digest};
 use crate::cgroup::ResourceIdentity;
-use backoff::{Backoff, ExponentialBackoff, ExponentialBackoffBuilder};
+use backoff::backoff::Backoff;
+use backoff::{ExponentialBackoff, ExponentialBackoffBuilder};
 use canopy_node_contract::universal_scraper::{self, ScraperError, ScraperMode};
 use governor::{DefaultDirectRateLimiter, Quota};
 use scraper::{ElementRef, Html, Selector};
