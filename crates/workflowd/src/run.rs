@@ -5468,18 +5468,29 @@ fn load_recovery_progress(
             |row| row.get::<_, i64>(0),
         )
         .map_err(storage_error)? as u64;
-    let artifact_bytes_written = connection
+    let artifact_tables_exist = connection
         .query_row(
-            "SELECT COALESCE(SUM(a.logical_bytes),0) FROM artifacts a
-             WHERE a.owner_id=1 AND EXISTS(
-                 SELECT 1 FROM artifact_references ar
-                 WHERE ar.owner_id=1 AND ar.artifact_id=a.artifact_id
-                   AND ar.reference_id LIKE ?1 || '%'
-             )",
-            params![format!("run:{run_id}:")],
-            |row| row.get::<_, i64>(0),
+            "SELECT COUNT(*)=2 FROM sqlite_master WHERE type='table' AND name IN ('artifacts','artifact_references')",
+            [],
+            |row| row.get::<_, bool>(0),
         )
-        .map_err(storage_error)? as u64;
+        .map_err(storage_error)?;
+    let artifact_bytes_written = if artifact_tables_exist {
+        connection
+            .query_row(
+                "SELECT COALESCE(SUM(a.logical_bytes),0) FROM artifacts a
+                 WHERE a.owner_id=1 AND EXISTS(
+                     SELECT 1 FROM artifact_references ar
+                     WHERE ar.owner_id=1 AND ar.artifact_id=a.artifact_id
+                       AND ar.reference_id LIKE ?1 || '%'
+                 )",
+                params![format!("run:{run_id}:")],
+                |row| row.get::<_, i64>(0),
+            )
+            .map_err(storage_error)? as u64
+    } else {
+        0
+    };
     connection
         .query_row(
             "SELECT state,attempt,recovered_from_checkpoint,resume_cursor,maximum_replay_items,replayed_items,pinned_revision_id,pinned_plan_digest,artifact_reference_count,detected_at,resumed_at,completed_at

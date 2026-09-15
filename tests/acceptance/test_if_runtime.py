@@ -758,6 +758,10 @@ class IfRuntimeAcceptance(unittest.TestCase):
         self.assertEqual(reread[2]["durable"]["state"], "succeeded")
         self.assertEqual(reread[2]["generation"]["merge"]["output_count"], 12)
 
+    @unittest.skipUnless(
+        os.environ.get("WORKFLOWD_ECO_RECOVERY_ACCEPTANCE") == "1",
+        "run in the dedicated SIGKILL recovery job",
+    )
     def test_eco_100k_recovers_after_two_ungraceful_kills(self):
         publication = self.publish_workflow(
             include_merge=True,

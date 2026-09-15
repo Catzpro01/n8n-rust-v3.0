@@ -350,6 +350,30 @@ jobs:
       - name: Run public If acceptance
         run: python3 -m unittest tests.acceptance.test_if_runtime -v
 
+  recovery-acceptance:
+    name: recovery-acceptance
+    runs-on: self-hosted
+    timeout-minutes: 45
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Host prerequisites (self-hosted VPS)
+        uses: ./.github/actions/host-prereqs
+
+      - name: Install pinned Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.85.1
+
+      - name: Build workflow daemon
+        run: cargo build -p workflowd --locked
+
+      - name: Recover Eco 100K after two SIGKILL boundaries
+        env:
+          WORKFLOWD_ECO_RECOVERY_ACCEPTANCE: "1"
+        run: python3 -m unittest tests.acceptance.test_if_runtime.IfRuntimeAcceptance.test_eco_100k_recovers_after_two_ungraceful_kills -v
+
   # ============================================================================
   # 6. ECO 100K API & BROWSER ACCEPTANCE (Worker 6)
   # ============================================================================
