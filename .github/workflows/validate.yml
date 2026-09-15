@@ -499,7 +499,14 @@ jobs:
           tool: cargo-audit
 
       - name: Audit Cargo dependencies
-        run: cargo audit
+        shell: bash
+        run: |
+          for attempt in 1 2 3; do
+            if cargo audit; then exit 0; fi
+            if [ "$attempt" -eq 3 ]; then exit 1; fi
+            echo "::warning::RustSec fetch failed (attempt $attempt/3); retrying"
+            sleep $((attempt * 5))
+          done
 
   # ============================================================================
   # 9. AUDIT GATEWAY (Aggregates audit-npm and audit-cargo) - PR #16 Check
