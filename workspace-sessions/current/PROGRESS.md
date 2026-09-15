@@ -157,3 +157,23 @@
   runs with "cannot be rerun; its workflow file may be broken". The owner needs
   to re-run `validate` on `main` (an empty commit works) or review and approve
   the baseline with `UPDATE_VISUAL_BASELINE=1`.
+- The owner ran the experiment I could not: `workflow_dispatch` on `main` at
+  `934c475`, run `34951125279` at 09:11, `validate` on `vps-fern-worker-3`. It
+  failed, but at `editor/tests/generate-artifact.mjs:229` with "daemon did not
+  start" - the 400x50ms health budget in `ready()` - so the geometry gate was
+  never reached and the one-pixel question stays open. `browser-suite` passed
+  there on `vps-fern-worker-8`; `rust-check`, `editor-tests`, `if-runtime`,
+  `eco-acceptance`, `audit`, `audit-npm` and `audit-cargo` all passed.
+- Verified the same "daemon did not start" failure for `validate` in this
+  branch's run `34948966146` (`c8d44ae`, started 08:48), which means the failure
+  mode on worker-3 changed during the morning: geometry at 06:23/08:25/08:31,
+  startup starvation at 08:48 and 09:11 - the latter on `main` as well. `main`
+  failing `validate` the same way is what separates host starvation from a branch
+  defect.
+- One correction to the report I was given: the acceptance harness has no 8 s
+  serve timeout. `test_if_runtime.py` imports `Daemon` from
+  `test_run_manual_trigger.py`, whose budget is `range(1200)` at
+  `time.sleep(0.05)` = 60 s; the `8` is `self.process.wait(8)` after
+  `terminate()`, so an unkillable daemon raises `subprocess.TimeoutExpired` from
+  that wait and hides the real assertion. `if-runtime` published no annotations
+  in run `34948966146`, so its message could not be read directly.

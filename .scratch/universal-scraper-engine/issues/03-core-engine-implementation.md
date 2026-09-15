@@ -86,3 +86,46 @@ artifact storage is unreachable), and what changed on `vps-fern-worker-3` betwee
 04:13 and 06:23. `workflow_dispatch` returns 403 for this token and
 `gh run rerun` refuses both older runs ("cannot be rerun"), so the clean
 main-versus-branch experiment has to be run by the owner.
+
+### Addendum: the owner's dispatch experiment on `main` (run `34951125279`)
+
+`workflow_dispatch` on `main` at `934c475` puts the same code on the same runner
+and answers the branch question directly. It ran at 09:11 on `vps-fern-worker-3`
+and `validate` failed - but earlier than the geometry gate:
+
+```
+editor/tests/generate-artifact.mjs:229  Error: daemon did not start
+```
+
+`ready()` polls `/health/live` 400 times at 50 ms, so the budget is 20 s. The
+visual comparison was never reached, so the one-pixel question is still open.
+`browser-suite` was green in that run on `vps-fern-worker-8`, and so were
+`rust-check`, `editor-tests`, `if-runtime`, `eco-acceptance` and the three
+audits.
+
+The failure mode on `vps-fern-worker-3` changed during the morning, which the
+ordered `validate` history shows:
+
+| started | run | code | failure |
+| --- | --- | --- | --- |
+| 04:13 | `34926933956` | `main` | success |
+| 06:23 | `34935542196` | `3eb7a93` | geometry 340x546 vs 340x545 |
+| 08:25 | `34945219044` | `5f28b59` | geometry 340x546 vs 340x545 |
+| 08:31 | `34947325495` | `fab5f4b` | geometry 340x546 vs 340x545 |
+| 08:48 | `34948966146` | `c8d44ae` | daemon did not start |
+| 09:11 | `34951125279` | `main` | daemon did not start |
+
+`main` now fails `validate` the same way this branch does, which settles the
+startup failures as host CPU starvation rather than a branch defect. It does not
+settle the geometry failures: nothing has reached that gate on `main` since
+04:13.
+
+`if-runtime` failed in run `34948966146` and published no annotations, so its
+reason cannot be read from here. The code path is
+`tests/acceptance/test_if_runtime.py` importing `Daemon` from
+`tests/acceptance/test_run_manual_trigger.py`, whose health budget is
+`range(1200)` at `time.sleep(0.05)` - 60 s, not 8 - and whose failure path then
+calls `self.process.wait(8)`; the `8` is the post-`terminate()` wait, so a daemon
+that ignores SIGTERM raises `subprocess.TimeoutExpired` from that call and buries
+the "daemon did not start (still running when the 60s health budget expired)"
+assertion underneath it.

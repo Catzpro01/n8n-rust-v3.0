@@ -49,10 +49,24 @@
 
 - Issue 03 is closed out: `rust-check` run `34945219044` is recorded in the
   ticket, the map and `PROGRESS.md`. PR #17 carries the branch.
-- The owner decides what to do about the `validate` visual baseline: re-run it,
-  fix the rendering environment on `actions-runner-3`, or approve the one-pixel
-  change deliberately with `UPDATE_VISUAL_BASELINE=1`. Do not regenerate a
-  baseline from inside a scraper change.
+- The owner ran the decisive experiment: `workflow_dispatch` on `main` at
+  `934c475` (run `34951125279`). `validate` failed on `vps-fern-worker-3` before
+  reaching the geometry gate - `editor/tests/generate-artifact.mjs:229`, "daemon
+  did not start", a 20 s health budget - so `main` now fails `validate` the same
+  way this branch does. That settles the startup failures as host CPU starvation
+  and leaves the one-pixel geometry question open; nothing has reached that gate
+  on `main` since 04:13. `browser-suite` was green in that run on
+  `vps-fern-worker-8`.
+- Next: rerun `validate` on run `34951125279` once the VPS load settles, so the
+  render happens without CPU throttling. Do not regenerate a baseline from inside
+  a scraper change; if the geometry really moved, approve it deliberately with
+  `UPDATE_VISUAL_BASELINE=1`.
+- Worth fixing separately from this branch: the browser harnesses allow 20 s for
+  the daemon to become healthy (`generate-artifact.mjs:225`, `two-tab.mjs:227`)
+  while the Python harness allows 60 s, and
+  `test_run_manual_trigger.py`'s `self.process.wait(8)` after `terminate()` can
+  raise `subprocess.TimeoutExpired` over the top of the real "daemon did not
+  start" assertion.
 - Then start Issue 04: native acceptance test plus removing the Playwright
   browser gate from CI.
 - The mode-4 unlock still needs a cargo-enabled host to regenerate
