@@ -5502,7 +5502,10 @@ fn load_recovery_progress(
                 let completed_at = row.get::<_, Option<i64>>(11)?;
                 let maximum_items = row.get::<_, i64>(4)?.max(0) as u64;
                 let first_ordinal = row.get::<_, i64>(3)?.max(0) as u64;
-                let observed_at = completed_at.or(resumed_at).unwrap_or_else(now_millis);
+                // Restart time ends when execution first resumes from the
+                // durable cursor. Terminal completion can be much later and is
+                // reported by the Run timing view, not as daemon restart cost.
+                let observed_at = resumed_at.or(completed_at).unwrap_or_else(now_millis);
                 let restart_elapsed_millis = observed_at.saturating_sub(detected_at).max(0) as u64;
                 Ok(RecoveryProgress {
                     state: row.get(0)?,
