@@ -26,6 +26,11 @@ mod run_engine;
 mod run_http;
 mod security;
 mod summarize;
+// Issue 04 wires the scraper engine into the run dispatch and the acceptance
+// suite. Until then the engine is exercised by its own lib tests, so the
+// binary would otherwise report its public surface as dead code.
+#[allow(dead_code)]
+mod universal_scraper;
 
 use crate::app::AppState;
 use crate::config::{ServeConfig, BLOCKING_THREADS_MAX, TOKIO_CORE_WORKERS};

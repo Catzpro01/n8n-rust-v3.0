@@ -63,9 +63,20 @@ jobs:
           set -e
           if [ "$status" -ne 0 ]; then
             # exit 101 covers a stale lockfile, a resolution conflict, a compile
-            # error and a test failure alike. Annotations are the only channel
-            # readable without the runner log, so surface the tail.
-            tail -n 30 "$RUNNER_TEMP/rust-tests.log" \
+            # error and a test failure alike, while 137 means the host killed the
+            # compiler outright. Annotations are the only channel readable
+            # without the runner log and GitHub keeps ten of them, so lead with
+            # the exit status and the failure signature, then the raw tail.
+            echo "::error::cargo test exited ${status}; host $(free -m | awk '/Mem:/{print "mem "$3"/"$2"MB"}')"
+            sed -e $'s/\033\\[[0-9;]*m//g' "$RUNNER_TEMP/rust-tests.log" \
+              > "$RUNNER_TEMP/rust-tests-plain.log"
+            # rustc prints a diagnostic while other units are still compiling, so
+            # the error block is usually nowhere near the tail. Print the first
+            # one instead: message, location, source line and note.
+            first=$(grep -nE 'error(\[E[0-9]+\])?:|panicked at|Killed|signal: 9|out of memory' \
+              "$RUNNER_TEMP/rust-tests-plain.log" | head -n 1 | cut -d: -f1)
+            if [ -z "$first" ]; then first=1; fi
+            tail -n "+$first" "$RUNNER_TEMP/rust-tests-plain.log" | head -n 8 \
               | sed -e 's/%/%25/g' -e 's/\r/%0D/g' -e 's/^/::error::/'
           fi
           exit "$status"

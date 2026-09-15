@@ -1,39 +1,54 @@
-# Previous session handoff
+# Current session handoff
 
-**Period:** prior recovered implementation session through 2026-09-13
-**Safe source archive:** `docs/legacy/session-archive/`
-**Baseline:** recovered Canopy Workbench / Rust + connected Preact implementation
+**Started:** 2026-09-13
+**Branch:** `arena/01a09a2a-n8n-rust-v3-0`
+**Previous handoff:** `workspace-sessions/previous/SESSION.md`
+**Active map:** `.scratch/canopy-platform-expansion/map.md`
+**Active phase:** implementation phase 1, core completion (decision issues #9–#14 resolved locally as ADRs 0059–0063/research)
 
-## Completed
+## Owner direction
 
-- Tickets 01–07 were recovered as complete from the prior project evidence.
-- Ticket 08 Edit Fields and the safe expression VM was implemented, corrected,
-  and pinned-verified.
-- The P1 correctness fixes covered transactional transform counters/digests,
-  physical Artifact preservation in `replace`, and exact large-integer
-  arithmetic/comparison.
-- Final product-fix head before the current planning session was `00cc554`.
-- GitHub push and pull-request validation passed for that product fix.
+- Implement all explicitly recorded workspace designs, not arbitrary full n8n
+  parity.
+- Follow the phase order: core completion; extension foundation;
+  Workflow/Skill Hub; AI Agent platform; production upgrade/recovery; large
+  editor and compatibility.
+- A phase is complete only with production code, versioned contracts, UI where
+  applicable, tests, documentation, and release evidence.
+- Keep the recovered Rust/Preact baseline and do not silently broaden accepted
+  ADRs or Ticket 08.
 
-## Important retained decisions
+## Current state
 
-- Rust-first default runtime with a connected Preact editor.
-- Immutable Workflow Revisions and pinned Execution Plans.
-- Durable Run Admission, checkpoints, replay, Causal Trace, bounded Envelopes,
-  encrypted Owner-scoped Artifacts, and clean-room compatibility boundaries.
-- Workflow Hub, Skill Hub, AI Agent, Agent Engine, Memory, Skill, MCP, Model
-  Route, and signed upgrade designs are planned extension surfaces, not yet
-  active first-runnable code.
-- Ticket 08's approved ADR 0057/0058 boundaries remain in force.
+- The full expansion Wayfinder map is published as GitHub issue #8.
+- Issue #9 is resolved as ADR 0059: Contract, Implementation, Form, and Lane
+  stay separate; Rust is the in-process promotion path; C++ and other languages
+  use the common External Process/WASM boundary; Plans pin exact identities.
+- Issue #10 is resolved as ADR 0060: Workflow/Skill and Skill Package lifecycle
+  uses immutable locks, verified Draft/sandbox flow, explicit scope, reviewed
+  side-by-side updates, and reference-safe retirement.
+- Issue #11 is resolved as ADR 0061: AI Agent turns use durable Activations,
+  explicit six-subport grants, ordered pre-side-effect fallback, typed outcomes,
+  validated output, redacted traces, and locked Agent Blueprints.
+- Issue #12 is resolved as ADR 0062: signed Staging/Current/Previous slots,
+  complete incremental Recovery Sets, traffic-boundary rollback, quarantine,
+  and Recovery Kit/off-site/drill readiness.
+- Research issue #14 is resolved in `docs/research/external-agent-package-
+  adapters-2026-09.md`.
+- Issue #13 is resolved as ADR 0063: the private-first vertical journey,
+  deterministic/external dual evidence lanes, Rust-first resource/trust
+  envelope, and full production-complete gate are accepted.
+- The decision map is complete. Begin core completion using the existing
+  first-runnable implementation tickets; Tickets 01–09 are recorded complete
+  and Ticket 10 (closed branch-stream Merge) is the current core frontier.
+  Preserve the approved order before starting Hub or AI production slices. No
+  production code for Hub, Skill Hub, or AI Agent has been started; the first
+  AI implementation ticket is planned and phase-gated.
 
-## Resume pointers
+## Next action
 
-- `CONTEXT.md`
-- `docs/agents/PROJECT-STATUS.md`
-- `.scratch/eco-100k-first-runnable/map.md`
-- `.scratch/canopy-platform-expansion/map.md`
-- `docs/legacy/session-archive/USER_INSTRUCTIONS.md`
-- `docs/legacy/session-archive/SESSION_STATE.md`
-
-This is a sanitized handoff. The complete historical chat transcript is not
-stored here, and no secrets or recovery material belong in this record.
+Implement and verify Ticket 10's bounded Merge contract and runtime seam,
+including Artifact-backed branch spooling, deterministic true-then-false
+ordering, compiler rejection diagnostics, and cancellation/failure evidence.
+Keep the completed Ticket 09 topology and evidence intact while extending the
+core path.
