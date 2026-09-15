@@ -122,7 +122,10 @@ jobs:
   browser-suite:
     name: browser-suite
     needs: [select-runner]
-    runs-on: ${{ fromJson(needs.select-runner.outputs.runner) }}
+    # Browser timing is sensitive to the parallel compiler load on the legacy
+    # Actions runner pool. The bare-metal webhook gate covers the installed
+    # host; keep this independent browser proof isolated on a hosted runner.
+    runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:
       - name: Check out source
@@ -150,9 +153,7 @@ jobs:
       - name: Build workspace binaries for acceptance tests
         run: cargo build --workspace --locked
 
-      - name: Install Chromium for browser acceptance
-        working-directory: editor
-        run: npx playwright install --with-deps chromium
+      - uses: ./.github/actions/install-chromium
 
       - name: "Browser acceptance: two-tab editing"
         working-directory: editor
@@ -200,9 +201,7 @@ jobs:
       - name: Build workflow daemon binary
         run: cargo build -p workflowd --locked
 
-      - name: Install Chromium for browser acceptance
-        working-directory: editor
-        run: npx playwright install --with-deps chromium
+      - uses: ./.github/actions/install-chromium
 
       - name: "Browser acceptance: artifact generation"
         working-directory: editor
@@ -398,9 +397,7 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
           exit "$status"
 
-      - name: Install Chromium for browser acceptance
-        working-directory: editor
-        run: npx playwright install --with-deps chromium
+      - uses: ./.github/actions/install-chromium
 
       - name: Run Eco browser/API acceptance
         working-directory: editor
