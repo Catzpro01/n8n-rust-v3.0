@@ -393,7 +393,9 @@ jobs:
   # ============================================================================
   eco-acceptance:
     name: eco-acceptance
-    runs-on: self-hosted
+    # The elastic self-hosted pool recycles runners after 30 minutes. Keep the
+    # full Eco API/browser proof on a runner that can outlive that lease.
+    runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
       - name: Check out source
