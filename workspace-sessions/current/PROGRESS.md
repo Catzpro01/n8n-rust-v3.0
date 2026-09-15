@@ -117,3 +117,18 @@
   explicit fetch of the branch ref plus `git reset origin/arena/01a0a352-n8n-rust-v3-0`,
   which left exactly the two pending edits staged in the working tree; nothing on
   the remote was lost.
+- `rust-check` is green for Issue 03: run `34945219044` on commit `5f28b59`
+  reports `success` for "Check Rust formatting" and "Run Rust tests", which is
+  the acceptance criterion `cargo test -p workflowd --lib universal_scraper`
+  (16 tests: 15 `#[tokio::test]` plus 1 `#[test]`). `if-runtime`,
+  `eco-acceptance`, `editor-tests`, `audit`, `audit-npm` and `audit-cargo` are
+  green in the same run.
+- Two jobs are red in that run for reasons outside this branch. `browser-suite`
+  failed on two-tab editing with "expected Draft Version 5; got 4" after passing
+  in run `34935542196`. `validate` failed on the `generate-progress.mobile.png`
+  geometry gate with actual 340x546 sha256:3d380bf896d42cb7 against baseline
+  340x545 sha256:5bbddbc8298f4b18 - byte-identical across both runs and both
+  times on `actions-runner-3`. `git diff --name-only origin/main...HEAD` shows no
+  file under `editor/` or `contracts/`, so this needs an owner decision: re-run,
+  fix the runner's rendering environment, or approve the one-pixel change with
+  `UPDATE_VISUAL_BASELINE=1`.

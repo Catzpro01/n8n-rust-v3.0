@@ -42,8 +42,27 @@ unvalidated contract still cannot reach a stack that does not exist.
 
 ## Acceptance evidence
 
-- `cargo fmt --all -- --check`: verified locally with rustfmt 1.8.0-stable
-  (4d91de4e48), the formatter shipped with the pinned 1.85.1 toolchain.
-- `cargo test -p workflowd --lib universal_scraper`: the sandbox has no Cargo
-  toolchain and crates.io is unreachable from it, so this is verified by the
-  pinned `rust-check` job rather than locally.
+Verified by `rust-check` run `34945219044` on commit `5f28b59` (PR #17), whose
+steps "Check Rust formatting" and "Run Rust tests" both report `success`:
+
+- `cargo fmt --all -- --check`: no diff. Also reproduced locally with
+  rustfmt 1.8.0-stable (4d91de4e48), the formatter shipped with the pinned
+  1.85.1 toolchain.
+- `cargo test --workspace --locked -- --test-threads=1`, which includes
+  `cargo test -p workflowd --lib universal_scraper`: green. The sandbox has no
+  Cargo toolchain and crates.io is unreachable from it, so this criterion can
+  only be verified on the pinned runner.
+
+Three defects had to be fixed on the way, each one found by that job:
+
+| run | defect | fix |
+| --- | --- | --- |
+| `34931924759` | `E0599`: `next_backoff` not found, because `backoff` does not re-export its trait at the crate root | `7839795` imports `backoff::backoff::Backoff` |
+| `34934598306` | `E0277`: `UniversalScraper` is not `Debug`, which `Result::unwrap_err` requires of the `Ok` type | `3eb7a93` matches on the constructor result |
+| `34935542196` | `row_and_page_budgets_are_permanent_failures` saw `page_rejected` instead of `page_bytes_exceeded`: the first scenario consumed the only scripted 200 | `5f28b59` re-scripts the page |
+
+Unrelated failures in the same runs, for the record: `browser-suite` failed on
+`two-tab editing` with "expected Draft Version 5; got 4" in run `34945219044`
+after passing in `34935542196`, and `validate` failed on the
+`generate-progress.mobile.png` geometry gate (actual 340x546 against baseline
+340x545). This branch changes no file under `editor/` or `contracts/`.

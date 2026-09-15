@@ -26,13 +26,27 @@
 - Operational description: `docs/operations/universal-scraper.md`.
 - The sandbox has no Cargo toolchain and cannot reach crates.io, so
   `cargo test -p workflowd --lib universal_scraper` runs in the pinned
-  `rust-check` job rather than locally. Formatting was checked locally with
+  `rust-check` job rather than locally. That job is green for this branch: run
+  `34945219044` on commit `5f28b59` reports `success` for both "Check Rust
+  formatting" and "Run Rust tests". Formatting was also checked locally with
   rustfmt 1.8.0-stable, the formatter shipped with the pinned toolchain.
+- `if-runtime`, `eco-acceptance`, `editor-tests`, `audit`, `audit-npm` and
+  `audit-cargo` are green in the same run. Two jobs are red for reasons outside
+  this branch: `browser-suite` on the two-tab draft-version race ("expected
+  Draft Version 5; got 4", green one run earlier) and `validate` on the
+  `generate-progress.mobile.png` geometry gate (actual 340x546
+  sha256:3d380bf896d42cb7 against baseline 340x545 sha256:5bbddbc8298f4b18,
+  byte-identical across two runs and both times on `actions-runner-3`). This
+  branch changes no file under `editor/` or `contracts/`.
 
 ## Next action
 
-- Confirm the pinned `rust-check` run is green for this branch and record the
-  run id in the Issue 03 ticket.
+- Issue 03 is closed out: `rust-check` run `34945219044` is recorded in the
+  ticket, the map and `PROGRESS.md`. PR #17 carries the branch.
+- The owner decides what to do about the `validate` visual baseline: re-run it,
+  fix the rendering environment on `actions-runner-3`, or approve the one-pixel
+  change deliberately with `UPDATE_VISUAL_BASELINE=1`. Do not regenerate a
+  baseline from inside a scraper change.
 - Then start Issue 04: native acceptance test plus removing the Playwright
   browser gate from CI.
 - The mode-4 unlock still needs a cargo-enabled host to regenerate
