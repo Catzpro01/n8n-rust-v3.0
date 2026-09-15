@@ -48,6 +48,7 @@ export function LargeEditor({ workflowId }: Props) {
   const dragStateRef = useRef<{ startX: number; startY: number; ox: number; oy: number } | null>(null);
   const viewTransformRef = useRef({ offsetX: 0, offsetY: 0, zoom: 1 });
   const statsIntervalRef = useRef<number | null>(null);
+  const evidenceRef = useRef<LargeEditorEvidence | null>(null);
 
   const [state, setState] = useState<State>({ phase: "idle" });
   const [searchQuery, setSearchQuery] = useState("");
@@ -165,9 +166,21 @@ export function LargeEditor({ workflowId }: Props) {
     let cancelled = false;
     const reqId = ++requestIdRef.current;
     setState({ phase: "loading" });
+    const startedAt = performance.now();
+    let fetchedBytes = 0;
+    const initial: LargeEditorEvidence = {
+      workflowId,
+      fetchedBytes: 0,
+      loadStartedAt: startedAt,
+    };
+    evidenceRef.current = initial;
+    window.__canopyLargeEditorEvidence = initial;
 
-    const applyTopology = (topology: PackedTopology) => {
+    const applyTopology = (topology: PackedTopology, parseMs?: number) => {
+      const evidence = evidenceRef.current;
+      if (!evidence || cancelled || reqId !== requestIdRef.current) return;
       if (cancelled || reqId !== requestIdRef.current) return;
+      const t0 = performance.now();
       viewportRef.current?.setTopology(topology);
       deckInstRef.current?.setData(topology.sections.groups, topology.sections.nodes);
       if (searchQuery.trim()) {
@@ -177,6 +190,13 @@ export function LargeEditor({ workflowId }: Props) {
         resultsRef.current?.setItems([]);
       }
       viewportRef.current?.setViewport({});
+      const readyAt = performance.now();
+      evidenceRef.current!.readyAt = readyAt;
+      evidenceRef.current!.totalLoadMs = Number((readyAt - startedAt).toFixed(3));
+      evidenceRef.current!.parseMs = parseMs;
+      evidenceRef.current!.nodeCount = topology.sections.nodes.length;
+      evidenceRef.current!.connectionCount = topology.sections.connections.length;
+      evidenceRef.current!.groupCount = topology.sections.groups.length;
       setState({ phase: "ready", topology });
     };
 
@@ -186,7 +206,9 @@ export function LargeEditor({ workflowId }: Props) {
         phase: "progress",
         progress: { phase: "verify", bytesLoaded: 0, totalBytes: buffer.byteLength, nodesIndexed: 0, connectionsIndexed: 0 },
       });
+      const parseStart = performance.now();
       const parsed = parseTopology(buffer, digestHeader);
+      const parseMs = performance.now() - parseStart;
       for (let i = 0; i < parsed.sections.nodes.length; i += WORKER_CHUNK) {
         setState({
           phase: "progress",
@@ -199,7 +221,7 @@ export function LargeEditor({ workflowId }: Props) {
           },
         });
       }
-      applyTopology(parsed);
+      applyTopology(parsed, parseMs);
     };
 
     const runWithWorker = (buffer: ArrayBuffer, digestHeader: string | null) => {
@@ -212,7 +234,7 @@ export function LargeEditor({ workflowId }: Props) {
         if (event.data.type === "progress") {
           setState({ phase: "progress", progress: event.data });
         } else if (event.data.type === "complete") {
-          applyTopology(event.data.topology);
+          applyTopology(event.data.topology, undefined);
           worker.terminate();
           workerRef.current = null;
         } else if (event.data.type === "error") {
@@ -239,6 +261,8 @@ export function LargeEditor({ workflowId }: Props) {
         }
         const digestHeader = response.headers.get("x-canopy-topology-digest");
         const buffer = await response.arrayBuffer();
+        fetchedBytes = buffer.byteLength;
+        if (evidenceRef.current) evidenceRef.current.fetchedBytes = fetchedBytes;
         if (typeof Worker !== "undefined") {
           runWithWorker(buffer, digestHeader);
         } else {
@@ -271,8 +295,21 @@ export function LargeEditor({ workflowId }: Props) {
     if (state.phase !== "ready") return;
     if (statsIntervalRef.current) window.clearInterval(statsIntervalRef.current);
     const tick = () => {
+      const evidence = evidenceRef.current;
+      if (!evidence) return;
       viewportRef.current?.setViewport({});
-      setRenderStats(viewportRef.current?.lastStats() ?? { nodesInViewport: 0, connectionsInViewport: 0, drawCalls: 0 });
+      const stats = viewportRef.current?.lastStats() ?? { nodesInViewport: 0, connectionsInViewport: 0, drawCalls: 0 };
+      setRenderStats(stats);
+      const deckRows = deckRef.current?.querySelectorAll("li").length ?? 0;
+      const searchRows = searchRef.current?.querySelectorAll("li").length ?? 0;
+      const canvases = canvasRef.current ? 1 : 0;
+      evidence.lastRender = stats;
+      evidence.domCounts = {
+        structureDeckRows: deckRows,
+        searchResultRows: searchRows,
+        canvasElements: canvases,
+      };
+      window.__canopyLargeEditorEvidence = evidence;
     };
     tick();
     statsIntervalRef.current = window.setInterval(tick, 400);
@@ -373,3 +410,27 @@ type WorkerMessage =
   | { id: string; type: "complete"; topology: PackedTopology }
   | { id: string; type: "error"; message: string }
   | { id: string; type: "cancelled" };
+
+declare global {
+  interface Window {
+    __canopyLargeEditorEvidence?: LargeEditorEvidence;
+  }
+}
+
+type LargeEditorEvidence = {
+  workflowId: string;
+  fetchedBytes: number;
+  loadStartedAt: number;
+  readyAt?: number;
+  totalLoadMs?: number;
+  parseMs?: number;
+  nodeCount?: number;
+  connectionCount?: number;
+  groupCount?: number;
+  domCounts?: {
+    structureDeckRows: number;
+    searchResultRows: number;
+    canvasElements: number;
+  };
+  lastRender?: RenderStats;
+};
