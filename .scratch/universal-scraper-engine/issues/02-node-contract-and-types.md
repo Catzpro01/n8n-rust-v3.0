@@ -35,3 +35,17 @@ reqwest/scraper/governor/backoff set.
 
 Closing this ticket needs a decision on modes 3 and 4: add a CDP client and
 `csv`, or revise this ticket to two modes.
+
+## Mode 4 progress (2026-09-15)
+
+`csv = "=1.3.0"` is now pinned in the root `[workspace.dependencies]`. The gate
+in `dependency_stack_locked()` is still closed for `DataTransform`, because the
+gate asserts membership in `Cargo.lock` and `csv` is not there: nothing depends
+on it yet, so cargo never resolves it. `grep -c '^name = "csv"$' Cargo.lock`
+returns 0.
+
+Adding it to `crates/workflowd` without regenerating the lockfile would fail
+`cargo test --workspace --locked` - that is exactly what happened at 248fba8.
+So the sequence is: add the member dependency and run `cargo check --workspace`
+on the VPS, commit the resulting `Cargo.lock`, then flip `DataTransform` to
+locked. Mode 3 stays gated until a CDP client is chosen.
