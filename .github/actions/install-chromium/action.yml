@@ -2,8 +2,8 @@ name: Install Chromium for browser acceptance
 description: >-
   Install Chromium into the runner user's shared ~/.cache/ms-playwright,
   serialized host-wide so concurrent jobs on the same VPS cannot corrupt each
-  other's partial downloads. --with-deps is deliberately absent: self-hosted
-  runners must not drive apt (see 8fecc63).
+  other's partial downloads. --with-deps is deliberately absent on self-hosted
+  runners (must not drive apt), but enabled on github-hosted ubuntu-latest.
 runs:
   using: composite
   steps:
@@ -18,4 +18,8 @@ runs:
         else
           echo "::warning::flock unavailable; Chromium install is not serialized"
         fi
-        npx playwright install chromium
+        if [ "$USER" = "runner" ]; then
+          npx playwright install --with-deps chromium
+        else
+          npx playwright install chromium
+        fi
