@@ -269,6 +269,13 @@ impl GenerateSession {
         (self.next, self.logical_bytes, &self.stream_digest)
     }
 
+    /// True after the most recently returned batch reached the configured
+    /// logical end. Executors use this to make the close barrier durable before
+    /// beginning a downstream barrier reducer.
+    pub fn is_complete(&self) -> bool {
+        self.next >= self.count
+    }
+
     pub fn finish(self) -> Result<GenerateSummary, GenerateFailure> {
         if self.next != self.count {
             return Err(invalid(

@@ -111,6 +111,8 @@ pub struct RunView {
     pub timing: RunTimingView,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub generation: Option<GenerationProgress>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub recovery: Option<RecoveryProgress>,
     pub admitted_at: i64,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub started_at: Option<i64>,
@@ -134,6 +136,47 @@ pub struct LiveProgress {
     pub speculative: bool,
     pub boot_epoch: String,
     pub sequence: u64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub generated_count: Option<u64>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct RecoveryProgress {
+    pub state: String,
+    pub attempt: u64,
+    pub recovered_from_checkpoint: u64,
+    pub resume_cursor: u64,
+    pub replay_window: RecoveryReplayWindow,
+    pub pinned_revision_id: String,
+    pub pinned_plan_digest: String,
+    pub artifact_reference_count: u64,
+    pub detected_at: i64,
+    pub restart_elapsed_millis: u64,
+    pub objective_millis: u64,
+    pub within_objective: bool,
+    pub sqlite: RecoverySqliteEvidence,
+    pub evidence: RecoveryEvidence,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct RecoveryReplayWindow {
+    pub first_ordinal: u64,
+    pub last_ordinal: u64,
+    pub maximum_items: u64,
+    pub replayed_items: u64,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct RecoverySqliteEvidence {
+    pub journal_mode: String,
+    pub synchronous: String,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct RecoveryEvidence {
+    pub checkpoint_commit_count: u64,
+    pub trace_event_count: u64,
+    pub artifact_bytes_written: u64,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -657,6 +700,8 @@ fn start_writer(database: PathBuf) -> Result<(WriterClient, JoinHandle<()>), Str
                 connection
                     .execute("DELETE FROM run_suspensions", [])
                     .map_err(|error| error.to_string())?;
+                recover_interrupted_runs(&mut connection)
+                    .map_err(|error| format!("interrupted Run recovery failed: {error:?}"))?;
                 Ok(connection)
             });
             match opened {
@@ -830,9 +875,25 @@ fn initialize_schema(connection: &Connection) -> Result<(), String> {
                 branch_true_count INTEGER NOT NULL DEFAULT 0,
                 branch_false_count INTEGER NOT NULL DEFAULT 0,
                 branch_stream_digest TEXT NOT NULL DEFAULT 'genesis',
+                merge_checkpoint_json TEXT,
                 merge_json TEXT,
                 summary_json TEXT,
                 updated_at INTEGER NOT NULL
+            ) STRICT;
+            CREATE TABLE IF NOT EXISTS run_recovery_progress(
+                run_id TEXT PRIMARY KEY REFERENCES runs(run_id),
+                state TEXT NOT NULL CHECK(state IN ('recovering','replaying','running','completed','failed','cancelled')),
+                attempt INTEGER NOT NULL,
+                recovered_from_checkpoint INTEGER NOT NULL,
+                resume_cursor INTEGER NOT NULL,
+                maximum_replay_items INTEGER NOT NULL,
+                replayed_items INTEGER NOT NULL,
+                pinned_revision_id TEXT NOT NULL,
+                pinned_plan_digest TEXT NOT NULL,
+                artifact_reference_count INTEGER NOT NULL,
+                detected_at INTEGER NOT NULL,
+                resumed_at INTEGER,
+                completed_at INTEGER
             ) STRICT;
             CREATE TABLE IF NOT EXISTS run_suspensions(
                 run_id TEXT PRIMARY KEY REFERENCES runs(run_id),
@@ -893,6 +954,7 @@ fn initialize_schema(connection: &Connection) -> Result<(), String> {
         "branch_stream_digest",
         "TEXT NOT NULL DEFAULT 'genesis'",
     )?;
+    ensure_generation_column(connection, "merge_checkpoint_json", "TEXT")?;
     ensure_generation_column(connection, "merge_json", "TEXT")?;
     ensure_generation_column(connection, "summary_json", "TEXT")?;
     ensure_generation_column(
@@ -1522,7 +1584,8 @@ fn generation_progress_transaction(
             "contiguous_ordinal_range":[progress.first_ordinal,progress.last_ordinal],
             "backpressure_events":progress.backpressure_events,
             "backpressure_micros":progress.backpressure_micros,
-            "artifact":progress.artifact
+            "artifact":progress.artifact,
+            "merge_input_checkpoint":progress.merge_checkpoint
         }),
         &previous_hash,
         committed_at,
@@ -1547,6 +1610,7 @@ fn generation_progress_transaction(
             "stream_digest": progress.branch_stream_digest
         })),
         "artifact":progress.artifact,
+        "merge_input_checkpoint":progress.merge_checkpoint,
         "complete":false
     });
     insert_checkpoint(
@@ -1560,15 +1624,24 @@ fn generation_progress_transaction(
         committed_at,
     )?;
     let artifact_json = progress.artifact.as_ref().map(canonical_text).transpose()?;
+    let merge_checkpoint_json = progress
+        .merge_checkpoint
+        .as_ref()
+        .map(canonical_text)
+        .transpose()?;
     transaction.execute(
-        "INSERT INTO run_generation_progress(run_id,state,generated_count,logical_bytes,stream_digest,backpressure_events,backpressure_micros,artifact_json,transform_node_id,transformed_count,transformed_logical_bytes,transformed_stream_digest,branch_node_id,branch_true_count,branch_false_count,branch_stream_digest,merge_json,updated_at,elapsed_wall_micros,cpu_micros)
-         VALUES(?1,'running',?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,NULL,?16,?17,?18)
-         ON CONFLICT(run_id) DO UPDATE SET state='running',generated_count=excluded.generated_count,logical_bytes=excluded.logical_bytes,stream_digest=excluded.stream_digest,backpressure_events=excluded.backpressure_events,backpressure_micros=excluded.backpressure_micros,artifact_json=excluded.artifact_json,transform_node_id=excluded.transform_node_id,transformed_count=excluded.transformed_count,transformed_logical_bytes=excluded.transformed_logical_bytes,transformed_stream_digest=excluded.transformed_stream_digest,branch_node_id=excluded.branch_node_id,branch_true_count=excluded.branch_true_count,branch_false_count=excluded.branch_false_count,branch_stream_digest=excluded.branch_stream_digest,merge_json=NULL,summary_json=NULL,updated_at=excluded.updated_at,elapsed_wall_micros=excluded.elapsed_wall_micros,cpu_micros=excluded.cpu_micros",
-        params![progress.run_id,progress.generated_count as i64,progress.logical_bytes as i64,progress.stream_digest,progress.backpressure_events as i64,progress.backpressure_micros as i64,artifact_json,progress.transform_node_id,progress.transformed_count as i64,progress.transformed_logical_bytes as i64,progress.transformed_stream_digest,progress.branch_node_id,progress.branch_true_count as i64,progress.branch_false_count as i64,progress.branch_stream_digest,committed_at,progress.elapsed_wall_micros as i64,progress.cpu_micros.map(|value| value as i64)]
+        "INSERT INTO run_generation_progress(run_id,state,generated_count,logical_bytes,stream_digest,backpressure_events,backpressure_micros,artifact_json,transform_node_id,transformed_count,transformed_logical_bytes,transformed_stream_digest,branch_node_id,branch_true_count,branch_false_count,branch_stream_digest,merge_checkpoint_json,merge_json,updated_at,elapsed_wall_micros,cpu_micros)
+         VALUES(?1,'running',?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,NULL,?17,?18,?19)
+         ON CONFLICT(run_id) DO UPDATE SET state='running',generated_count=excluded.generated_count,logical_bytes=excluded.logical_bytes,stream_digest=excluded.stream_digest,backpressure_events=excluded.backpressure_events,backpressure_micros=excluded.backpressure_micros,artifact_json=excluded.artifact_json,transform_node_id=excluded.transform_node_id,transformed_count=excluded.transformed_count,transformed_logical_bytes=excluded.transformed_logical_bytes,transformed_stream_digest=excluded.transformed_stream_digest,branch_node_id=excluded.branch_node_id,branch_true_count=excluded.branch_true_count,branch_false_count=excluded.branch_false_count,branch_stream_digest=excluded.branch_stream_digest,merge_checkpoint_json=excluded.merge_checkpoint_json,merge_json=NULL,summary_json=NULL,updated_at=excluded.updated_at,elapsed_wall_micros=excluded.elapsed_wall_micros,cpu_micros=excluded.cpu_micros",
+        params![progress.run_id,progress.generated_count as i64,progress.logical_bytes as i64,progress.stream_digest,progress.backpressure_events as i64,progress.backpressure_micros as i64,artifact_json,progress.transform_node_id,progress.transformed_count as i64,progress.transformed_logical_bytes as i64,progress.transformed_stream_digest,progress.branch_node_id,progress.branch_true_count as i64,progress.branch_false_count as i64,progress.branch_stream_digest,merge_checkpoint_json,committed_at,progress.elapsed_wall_micros as i64,progress.cpu_micros.map(|value| value as i64)]
     ).map_err(storage_error)?;
     transaction.execute(
         "UPDATE runs SET checkpoint_sequence=?2,logical_order=1,attempted=1,succeeded=1,output_count=?3,trace_head_hash=?4,started_at=COALESCE(started_at,?5),updated_at=?6 WHERE run_id=?1 AND state='queued'",
         params![progress.run_id,checkpoint as i64,progress.generated_count as i64,event.event_hash,progress.started_at,committed_at]
+    ).map_err(storage_error)?;
+    transaction.execute(
+        "UPDATE run_recovery_progress SET state='running',replayed_items=MIN(maximum_replay_items,?2-resume_cursor),resumed_at=COALESCE(resumed_at,?3) WHERE run_id=?1 AND state IN ('recovering','replaying','running')",
+        params![progress.run_id,progress.generated_count as i64,committed_at]
     ).map_err(storage_error)?;
     let run = load_run(&transaction, &progress.run_id)?;
     transaction.commit().map_err(storage_error)?;
@@ -2483,6 +2556,20 @@ fn complete_generated_transaction(
         "UPDATE runs SET state=?2,checkpoint_sequence=?3,logical_order=?4,attempted=?5,succeeded=?6,cancelled=?7,failed=?8,output_count=?9,correctness_digest=?10,digest_complete=?11,trace_head_hash=?12,started_at=COALESCE(started_at,?13),updated_at=?14,terminal_at=?14 WHERE run_id=?1 AND state IN ('queued','cancel_requested')",
         params![completed.run_id,state,checkpoint as i64,final_order as i64,attempted,succeeded,cancelled,failed,output_count as i64,correctness_digest,if state=="succeeded"{1}else{0},checkpoint_event.event_hash,completed.started_at,committed_at]
     ).map_err(storage_error)?;
+    transaction
+        .execute(
+            "UPDATE run_recovery_progress SET state=?2,completed_at=?3 WHERE run_id=?1",
+            params![
+                completed.run_id,
+                if state == "succeeded" {
+                    "completed"
+                } else {
+                    state
+                },
+                committed_at
+            ],
+        )
+        .map_err(storage_error)?;
     let run = load_run(&transaction, &completed.run_id)?;
     transaction.commit().map_err(storage_error)?;
     Ok(run)
@@ -2744,6 +2831,132 @@ fn recover_cancellations(connection: &mut Connection) -> Result<(), String> {
     Ok(())
 }
 
+fn recover_interrupted_runs(connection: &mut Connection) -> Result<(), RunError> {
+    let run_ids = {
+        let mut statement = connection
+            .prepare(
+                "SELECT r.run_id FROM runs r JOIN run_generation_progress g ON g.run_id=r.run_id
+                 WHERE r.state='queued' AND g.state='running' AND g.generated_count>0
+                 ORDER BY r.run_id",
+            )
+            .map_err(storage_error)?;
+        let values = statement
+            .query_map([], |row| row.get::<_, String>(0))
+            .map_err(storage_error)?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(storage_error)?;
+        drop(statement);
+        values
+    };
+    for run_id in run_ids {
+        let transaction = connection
+            .transaction_with_behavior(TransactionBehavior::Immediate)
+            .map_err(storage_error)?;
+        let (
+            checkpoint,
+            logical_order,
+            revision_id,
+            plan_digest,
+            trace_head,
+            resume_cursor,
+            merge_checkpoint_json,
+            artifact_json,
+        ): (i64, i64, String, String, String, i64, Option<String>, Option<String>) = transaction
+            .query_row(
+                "SELECT r.checkpoint_sequence,r.logical_order,r.revision_id,r.plan_digest,r.trace_head_hash,g.generated_count,g.merge_checkpoint_json,g.artifact_json
+                 FROM runs r JOIN run_generation_progress g ON g.run_id=r.run_id WHERE r.run_id=?1",
+                params![run_id],
+                |row| Ok((row.get(0)?,row.get(1)?,row.get(2)?,row.get(3)?,row.get(4)?,row.get(5)?,row.get(6)?,row.get(7)?)),
+            )
+            .map_err(storage_error)?;
+        let attempt = transaction
+            .query_row(
+                "SELECT attempt FROM run_recovery_progress WHERE run_id=?1",
+                params![run_id],
+                |row| row.get::<_, i64>(0),
+            )
+            .optional()
+            .map_err(storage_error)?
+            .unwrap_or(0)
+            .saturating_add(1);
+        let artifact_reference_count = merge_checkpoint_json
+            .as_deref()
+            .map(parse_sql_json)
+            .transpose()
+            .map_err(storage_error)?
+            .map(|value| {
+                value["true_segments"].as_array().map_or(0, Vec::len)
+                    + value["false_segments"].as_array().map_or(0, Vec::len)
+            })
+            .unwrap_or(0)
+            .saturating_add(usize::from(artifact_json.is_some()));
+        let occurred_at = now_millis();
+        let recovered_from_checkpoint = checkpoint as u64;
+        let checkpoint = recovered_from_checkpoint.saturating_add(1);
+        let resume_cursor = resume_cursor as u64;
+        let replay_window = json!({
+            "first_ordinal": resume_cursor,
+            "last_ordinal": resume_cursor.saturating_add(CHECKPOINT_MAX_OUTCOMES as u64).saturating_sub(1),
+            "maximum_items": CHECKPOINT_MAX_OUTCOMES,
+            "replayed_items": 0
+        });
+        let payload = json!({
+            "state":"recovering",
+            "attempt":attempt,
+            "recovered_from_checkpoint":recovered_from_checkpoint,
+            "resume_cursor":resume_cursor,
+            "replay_window":replay_window,
+            "pinned_revision_id":revision_id,
+            "pinned_plan_digest":plan_digest,
+            "artifact_reference_count":artifact_reference_count,
+            "transition_path":["disconnected","recovering","replaying","running"]
+        });
+        let event = make_trace_event(
+            &run_id,
+            next_trace_sequence(&transaction, &run_id)?,
+            None,
+            checkpoint,
+            "control",
+            "recovery_started",
+            payload.clone(),
+            &trace_head,
+            occurred_at,
+        )?;
+        insert_trace_event(&transaction, &event)?;
+        insert_checkpoint(
+            &transaction,
+            &run_id,
+            checkpoint,
+            "recovering",
+            logical_order as u64,
+            &json!({
+                "state":"recovering",
+                "resume":{"generate_next_ordinal":resume_cursor},
+                "recovery":payload,
+                "complete":false
+            }),
+            &event.event_hash,
+            occurred_at,
+        )?;
+        transaction
+            .execute(
+                "INSERT INTO run_recovery_progress(run_id,state,attempt,recovered_from_checkpoint,resume_cursor,maximum_replay_items,replayed_items,pinned_revision_id,pinned_plan_digest,artifact_reference_count,detected_at,resumed_at,completed_at)
+                 VALUES(?1,'recovering',?2,?3,?4,?5,0,?6,?7,?8,?9,NULL,NULL)
+                 ON CONFLICT(run_id) DO UPDATE SET state='recovering',attempt=excluded.attempt,recovered_from_checkpoint=excluded.recovered_from_checkpoint,resume_cursor=excluded.resume_cursor,maximum_replay_items=excluded.maximum_replay_items,replayed_items=0,pinned_revision_id=excluded.pinned_revision_id,pinned_plan_digest=excluded.pinned_plan_digest,artifact_reference_count=excluded.artifact_reference_count,detected_at=excluded.detected_at,resumed_at=NULL,completed_at=NULL",
+                params![run_id,attempt, recovered_from_checkpoint as i64,resume_cursor as i64,CHECKPOINT_MAX_OUTCOMES as i64,revision_id,plan_digest,artifact_reference_count as i64,occurred_at],
+            )
+            .map_err(storage_error)?;
+        transaction
+            .execute(
+                "UPDATE runs SET checkpoint_sequence=?2,trace_head_hash=?3,updated_at=?4 WHERE run_id=?1 AND state='queued'",
+                params![run_id,checkpoint as i64,event.event_hash,occurred_at],
+            )
+            .map_err(storage_error)?;
+        transaction.commit().map_err(storage_error)?;
+    }
+    Ok(())
+}
+
 fn finalize_requested_cancellation(
     connection: &mut Connection,
     run_id: &str,
@@ -2836,6 +3049,7 @@ struct Candidate {
     plan: ExecutionPlan,
     captured_invocation: Value,
     checkpoint_sequence: u64,
+    recovery_attempt: Option<u64>,
     generate_resume: Option<GenerateResume>,
     edit_fields: Option<EditFieldsCandidate>,
     if_node: Option<IfCandidate>,
@@ -2864,6 +3078,16 @@ struct IfCandidate {
 struct MergeCandidate {
     node_id: String,
     configuration: Value,
+    checkpoint: Option<MergeInputCheckpoint>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+struct MergeInputCheckpoint {
+    node_instance_id: String,
+    generated_count: u64,
+    true_segments: Vec<ArtifactReference>,
+    false_segments: Vec<ArtifactReference>,
+    physical_spool_bytes: u64,
 }
 
 struct SummarizeCandidate {
@@ -2916,6 +3140,8 @@ struct GeneratedBatchEvent {
     branch_previous_stream_digest: String,
     backpressure_micros: u64,
     artifact: Option<ArtifactReference>,
+    merge_checkpoint: Option<MergeInputCheckpoint>,
+    checkpoint_ready: bool,
     started_at: i64,
 }
 
@@ -2947,6 +3173,7 @@ struct GeneratedProgressCommit {
     first_ordinal: u64,
     last_ordinal: u64,
     artifact: Option<ArtifactReference>,
+    merge_checkpoint: Option<MergeInputCheckpoint>,
     started_at: i64,
 }
 
@@ -2992,7 +3219,6 @@ struct GenerationCheckpointState {
     branch_stream_digest: String,
     backpressure_events: u64,
     backpressure_micros: u64,
-    checkpointed_at: Instant,
 }
 
 fn start_scheduler(context: SchedulerContext) -> Result<JoinHandle<()>, String> {
@@ -3344,6 +3570,7 @@ struct MergeSpool {
     pending: Vec<u8>,
     pending_records: u64,
     references: Vec<ArtifactReference>,
+    retained_segments: usize,
     physical_bytes: u64,
 }
 
@@ -3355,21 +3582,55 @@ impl MergeSpool {
         port_id: &'static str,
         reference_kind: &'static str,
     ) -> Self {
+        Self::resume(
+            artifacts,
+            run_id,
+            node_id,
+            port_id,
+            reference_kind,
+            Vec::new(),
+        )
+    }
+
+    fn resume(
+        artifacts: Arc<ArtifactService>,
+        run_id: &str,
+        node_id: &str,
+        port_id: &'static str,
+        reference_kind: &'static str,
+        references: Vec<ArtifactReference>,
+    ) -> Self {
+        let physical_bytes = references.iter().fold(0_u64, |total, reference| {
+            total.saturating_add(reference.logical_bytes)
+        });
+        let retained_segments = references.len();
         Self {
             artifacts,
             run_id: run_id.into(),
             node_id: node_id.into(),
             port_id,
             reference_kind,
-            next_segment: 0,
+            next_segment: retained_segments.min(u32::MAX as usize) as u32,
             active: None,
             active_count: 0,
             active_bytes: 0,
             pending: Vec::new(),
             pending_records: 0,
-            references: Vec::new(),
-            physical_bytes: 0,
+            references,
+            retained_segments,
+            physical_bytes,
         }
+    }
+
+    fn reference_ids(&self) -> Vec<String> {
+        (0..self.references.len())
+            .map(|segment| {
+                format!(
+                    "run:{}:merge:{}:{}:segment:{}",
+                    self.run_id, self.node_id, self.port_id, segment
+                )
+            })
+            .collect()
     }
 
     fn append(&mut self, record: &merge::MergeRecord) -> Result<(), merge::MergeError> {
@@ -3500,15 +3761,15 @@ impl MergeSpool {
         if let Some(lease) = self.active.take() {
             self.artifacts.abandon_upload(lease);
         }
-        for segment in 0..self.references.len() {
+        for segment in self.retained_segments..self.references.len() {
             let reference_id = format!(
                 "run:{}:merge:{}:{}:segment:{}",
                 self.run_id, self.node_id, self.port_id, segment
             );
             let _ = self.artifacts.release_reference(&reference_id);
         }
-        self.references.clear();
-        self.next_segment = 0;
+        self.references.truncate(self.retained_segments);
+        self.next_segment = self.retained_segments.min(u32::MAX as usize) as u32;
         self.active_count = 0;
         self.active_bytes = 0;
         self.pending.clear();
@@ -3755,6 +4016,9 @@ fn start_executor(
                 let edit_fields_candidate = candidate.edit_fields;
                 let if_candidate = candidate.if_node;
                 let merge_candidate = candidate.merge;
+                let merge_input_checkpoint = merge_candidate
+                    .as_ref()
+                    .and_then(|candidate| candidate.checkpoint.clone());
                 let summarize_candidate = candidate.summarize;
                 let (
                     generation_plan,
@@ -3895,9 +4159,21 @@ fn start_executor(
                     ),
                     None => (None, None),
                 };
-                let mut generated_count = 0_u64;
-                let mut logical_bytes = 0_u64;
-                let mut stream_digest = "genesis".to_owned();
+                let mut generated_count = candidate
+                    .generate_resume
+                    .as_ref()
+                    .map_or(0, |resume| resume.next_ordinal);
+                let mut logical_bytes = candidate
+                    .generate_resume
+                    .as_ref()
+                    .map_or(0, |resume| resume.logical_bytes);
+                let mut stream_digest = candidate.generate_resume.as_ref().map_or_else(
+                    || "genesis".to_owned(),
+                    |resume| resume.stream_digest.clone(),
+                );
+                let mut checkpoint_generated_count = generated_count;
+                let mut checkpoint_logical_bytes = logical_bytes;
+                let mut checkpointed_at = Instant::now();
                 let mut transformed_count = edit_fields_candidate
                     .as_ref()
                     .map_or(0, |candidate| candidate.transformed_count);
@@ -3926,21 +4202,27 @@ fn start_executor(
                     .as_ref()
                     .map(|reference| json!({"$artifact": reference}));
                 let mut merge_true_spool = merge_node_id.as_ref().map(|node_id| {
-                    MergeSpool::new(
+                    MergeSpool::resume(
                         merge_artifacts.clone(),
                         &run_id,
                         node_id,
                         "true",
                         "run_merge_true_segment",
+                        merge_input_checkpoint
+                            .as_ref()
+                            .map_or_else(Vec::new, |checkpoint| checkpoint.true_segments.clone()),
                     )
                 });
                 let mut merge_false_spool = merge_node_id.as_ref().map(|node_id| {
-                    MergeSpool::new(
+                    MergeSpool::resume(
                         merge_artifacts.clone(),
                         &run_id,
                         node_id,
                         "false",
                         "run_merge_false_segment",
+                        merge_input_checkpoint
+                            .as_ref()
+                            .map_or_else(Vec::new, |checkpoint| checkpoint.false_segments.clone()),
                     )
                 });
                 let mut merge_output_spool = merge_node_id.as_ref().map(|node_id| {
@@ -3963,8 +4245,19 @@ fn start_executor(
                     .and_then(|configuration| configuration.as_ref().err().cloned());
                 let merge_cleanup_error = merge_node_id.as_ref().and_then(|node_id| {
                     let prefix = format!("run:{}:merge:{}:", run_id, node_id);
+                    let retained_reference_ids = merge_true_spool
+                        .as_ref()
+                        .into_iter()
+                        .flat_map(MergeSpool::reference_ids)
+                        .chain(
+                            merge_false_spool
+                                .as_ref()
+                                .into_iter()
+                                .flat_map(MergeSpool::reference_ids),
+                        )
+                        .collect::<Vec<_>>();
                     merge_artifacts
-                        .release_reference_prefix(&prefix)
+                        .retain_reference_prefix(&prefix, &retained_reference_ids)
                         .err()
                         .map(|error| GenerateFailure {
                             code: "canopy.merge.spool_cleanup".into(),
@@ -4110,6 +4403,59 @@ fn start_executor(
                                             break Err(error);
                                         }
                                     }
+                                    let checkpoint_ready = generated_count
+                                        .saturating_sub(checkpoint_generated_count)
+                                        >= CHECKPOINT_MAX_OUTCOMES as u64
+                                        || logical_bytes.saturating_sub(checkpoint_logical_bytes)
+                                            >= CHECKPOINT_MAX_BYTES as u64
+                                        || checkpointed_at.elapsed()
+                                            >= Duration::from_millis(
+                                                CHECKPOINT_MAX_LATENCY_MILLIS,
+                                            )
+                                        || session.is_complete();
+                                    let merge_checkpoint = if checkpoint_ready {
+                                        let checkpoint_result: Result<
+                                            Option<MergeInputCheckpoint>,
+                                            GenerateFailure,
+                                        > = (|| {
+                                            let Some(node_id) = merge_node_id.as_ref() else {
+                                                return Ok(None);
+                                            };
+                                            let true_spool = merge_true_spool
+                                                .as_mut()
+                                                .ok_or_else(|| generate_failure(
+                                                    "canopy.merge.invalid_runtime_topology",
+                                                    "Merge true input spool is unavailable.",
+                                                ))?;
+                                            true_spool.finish_segment().map_err(|error| {
+                                                generate_failure(&error.code, &error.message)
+                                            })?;
+                                            let false_spool = merge_false_spool
+                                                .as_mut()
+                                                .ok_or_else(|| generate_failure(
+                                                    "canopy.merge.invalid_runtime_topology",
+                                                    "Merge false input spool is unavailable.",
+                                                ))?;
+                                            false_spool.finish_segment().map_err(|error| {
+                                                generate_failure(&error.code, &error.message)
+                                            })?;
+                                            Ok(Some(MergeInputCheckpoint {
+                                                node_instance_id: node_id.clone(),
+                                                generated_count,
+                                                true_segments: true_spool.references(),
+                                                false_segments: false_spool.references(),
+                                                physical_spool_bytes: true_spool
+                                                    .physical_bytes
+                                                    .saturating_add(false_spool.physical_bytes),
+                                            }))
+                                        })();
+                                        match checkpoint_result {
+                                            Ok(checkpoint) => checkpoint,
+                                            Err(error) => break Err(error),
+                                        }
+                                    } else {
+                                        None
+                                    };
                                     let sent = Instant::now();
                                     if envelopes
                                         .send(GeneratedBatchEvent {
@@ -4136,11 +4482,21 @@ fn start_executor(
                                             branch_previous_stream_digest,
                                             backpressure_micros,
                                             artifact: artifact.clone(),
+                                            merge_checkpoint,
+                                            checkpoint_ready,
                                             started_at,
                                         })
                                         .is_err()
                                     {
                                         return;
+                                    }
+                                    if checkpoint_ready {
+                                        checkpoint_generated_count = generated_count;
+                                        checkpoint_logical_bytes = logical_bytes;
+                                        checkpointed_at = Instant::now();
+                                    }
+                                    if fault_injection_enabled(&input, "eco-100k-recovery") {
+                                        thread::sleep(Duration::from_millis(2));
                                     }
                                     transformed_count = transformed.transformed_count;
                                     transformed_logical_bytes =
@@ -4458,6 +4814,7 @@ fn scheduler_loop(context: SchedulerContext) {
                 };
                 let run_id = candidate.run_id.clone();
                 let checkpoint = candidate.checkpoint_sequence;
+                let recovery_attempt = candidate.recovery_attempt;
                 match context.ready.try_send(QueuedWork {
                     work: WorkItem {
                         candidate,
@@ -4468,6 +4825,11 @@ fn scheduler_loop(context: SchedulerContext) {
                 }) {
                     Ok(()) => {
                         active.insert(run_id.clone());
+                        let initial_state = if recovery_attempt.is_some() {
+                            "recovering"
+                        } else {
+                            "running"
+                        };
                         context.live.emit(
                             &run_id,
                             checkpoint,
@@ -4475,11 +4837,27 @@ fn scheduler_loop(context: SchedulerContext) {
                             json!({
                                 "run_id": run_id,
                                 "durability": "speculative",
-                                "state": "running",
+                                "state": initial_state,
+                                "recovery_attempt": recovery_attempt,
                                 "durable_checkpoint_sequence": checkpoint,
                                 "terminal": false
                             }),
                         );
+                        if let Some(attempt) = recovery_attempt {
+                            context.live.emit(
+                                &run_id,
+                                checkpoint,
+                                "recovery",
+                                json!({
+                                    "run_id":run_id,
+                                    "durability":"speculative",
+                                    "state":"replaying",
+                                    "attempt":attempt,
+                                    "maximum_replay_items":CHECKPOINT_MAX_OUTCOMES,
+                                    "terminal":false
+                                }),
+                            );
+                        }
                         dispatched = true;
                     }
                     Err(TrySendError::Full(_)) => {
@@ -4587,7 +4965,6 @@ fn handle_generated_batch(
             branch_stream_digest: batch.branch_previous_stream_digest.clone(),
             backpressure_events: 0,
             backpressure_micros: 0,
-            checkpointed_at: Instant::now(),
         }
     });
     let observed_backpressure = batch.backpressure_micros > state.backpressure_micros;
@@ -4596,12 +4973,6 @@ fn handle_generated_batch(
     }
     state.backpressure_micros = batch.backpressure_micros;
 
-    let count_due = batch.generated_count.saturating_sub(state.generated_count)
-        >= CHECKPOINT_MAX_OUTCOMES as u64;
-    let bytes_due =
-        batch.logical_bytes.saturating_sub(state.logical_bytes) >= CHECKPOINT_MAX_BYTES as u64;
-    let time_due =
-        state.checkpointed_at.elapsed() >= Duration::from_millis(CHECKPOINT_MAX_LATENCY_MILLIS);
     context.live.emit(
         &batch.run_id,
         0,
@@ -4609,6 +4980,7 @@ fn handle_generated_batch(
         json!({
             "run_id": batch.run_id,
             "durability": "speculative",
+            "state": "running",
             "generated_count": batch.generated_count,
             "logical_bytes": batch.logical_bytes,
             "stream_digest": batch.stream_digest,
@@ -4634,7 +5006,7 @@ fn handle_generated_batch(
             "terminal": false
         }),
     );
-    if !(count_due || bytes_due || time_due) {
+    if !batch.checkpoint_ready {
         return;
     }
 
@@ -4658,6 +5030,7 @@ fn handle_generated_batch(
         first_ordinal: state.generated_count,
         last_ordinal: batch.generated_count.saturating_sub(1),
         artifact: batch.artifact,
+        merge_checkpoint: batch.merge_checkpoint,
         started_at: batch.started_at,
     };
     let weight = 8 * 1024;
@@ -4676,7 +5049,6 @@ fn handle_generated_batch(
             state.branch_true_count = batch.branch_true_count;
             state.branch_false_count = batch.branch_false_count;
             state.branch_stream_digest = batch.branch_stream_digest.clone();
-            state.checkpointed_at = Instant::now();
             context.live.emit(
                 &run.run_id,
                 run.durable.checkpoint_sequence,
@@ -4746,9 +5118,10 @@ fn next_candidate(
 ) -> Result<Option<Candidate>, RunError> {
     let mut statement = connection
         .prepare(
-            "SELECT r.run_id,r.revision_id,r.revision_digest,r.plan_digest,p.payload_json,r.captured_invocation_json,r.checkpoint_sequence,g.generated_count,g.logical_bytes,g.stream_digest,g.transform_node_id,g.transformed_count,g.transformed_logical_bytes,g.transformed_stream_digest,g.artifact_json,g.branch_node_id,g.branch_true_count,g.branch_false_count,g.branch_stream_digest
+            "SELECT r.run_id,r.revision_id,r.revision_digest,r.plan_digest,p.payload_json,r.captured_invocation_json,r.checkpoint_sequence,g.generated_count,g.logical_bytes,g.stream_digest,g.transform_node_id,g.transformed_count,g.transformed_logical_bytes,g.transformed_stream_digest,g.artifact_json,g.branch_node_id,g.branch_true_count,g.branch_false_count,g.branch_stream_digest,g.merge_checkpoint_json,rp.attempt,rp.state
              FROM runs r JOIN execution_plans p ON p.plan_id=r.plan_id
              LEFT JOIN run_generation_progress g ON g.run_id=r.run_id
+             LEFT JOIN run_recovery_progress rp ON rp.run_id=r.run_id
              WHERE r.state='queued' AND NOT EXISTS(SELECT 1 FROM run_suspensions s WHERE s.run_id=r.run_id)
              ORDER BY r.admitted_at,r.run_id LIMIT 64",
         )
@@ -4796,15 +5169,7 @@ fn next_candidate(
             .get::<_, Option<i64>>(7)
             .map_err(storage_error)?
             .unwrap_or(0) as u64;
-        // Merge spools are finalized only after both streams close. If a daemon
-        // stops before that barrier, replay the bounded source from zero rather
-        // than pretending an unpersisted suffix is a complete Merge input.
-        let replay_merge_from_zero = merge_definition.is_some() && durable_generated_count > 0;
-        let stored_generated_count = if replay_merge_from_zero {
-            0
-        } else {
-            durable_generated_count
-        };
+        let stored_generated_count = durable_generated_count;
         let stored_branch_node_id = row.get::<_, Option<String>>(15).map_err(storage_error)?;
         let durable_branch_true_count = row
             .get::<_, Option<i64>>(16)
@@ -4818,36 +5183,12 @@ fn next_candidate(
             .get::<_, Option<String>>(18)
             .map_err(storage_error)?
             .unwrap_or_else(|| "genesis".into());
-        let transformed_count = if replay_merge_from_zero {
-            0
-        } else {
-            durable_transformed_count
-        };
-        let transformed_logical_bytes = if replay_merge_from_zero {
-            0
-        } else {
-            durable_transformed_logical_bytes
-        };
-        let transformed_stream_digest = if replay_merge_from_zero {
-            "genesis".into()
-        } else {
-            durable_transformed_stream_digest
-        };
-        let branch_true_count = if replay_merge_from_zero {
-            0
-        } else {
-            durable_branch_true_count
-        };
-        let branch_false_count = if replay_merge_from_zero {
-            0
-        } else {
-            durable_branch_false_count
-        };
-        let branch_stream_digest = if replay_merge_from_zero {
-            "genesis".into()
-        } else {
-            durable_branch_stream_digest
-        };
+        let transformed_count = durable_transformed_count;
+        let transformed_logical_bytes = durable_transformed_logical_bytes;
+        let transformed_stream_digest = durable_transformed_stream_digest;
+        let branch_true_count = durable_branch_true_count;
+        let branch_false_count = durable_branch_false_count;
+        let branch_stream_digest = durable_branch_stream_digest;
         let edit_fields = match edit_fields_definition {
             Some((node_id, configuration)) => {
                 if stored_transform_node_id
@@ -4919,10 +5260,51 @@ fn next_candidate(
                 None
             }
         };
-        let merge = merge_definition.map(|(node_id, configuration)| MergeCandidate {
-            node_id,
-            configuration,
-        });
+        let stored_merge_checkpoint: Option<MergeInputCheckpoint> = row
+            .get::<_, Option<String>>(19)
+            .map_err(storage_error)?
+            .as_deref()
+            .map(parse_sql_json)
+            .transpose()
+            .map_err(storage_error)?
+            .map(serde_json::from_value)
+            .transpose()
+            .map_err(|error| {
+                RunError::Integrity(format!(
+                    "durable Merge input checkpoint is invalid: {error}"
+                ))
+            })?;
+        let merge = match merge_definition {
+            Some((node_id, configuration)) => {
+                if let Some(checkpoint) = stored_merge_checkpoint.as_ref() {
+                    if checkpoint.node_instance_id != node_id
+                        || checkpoint.generated_count != durable_generated_count
+                    {
+                        return Err(RunError::Integrity(
+                            "durable Merge input checkpoint does not match the resume cursor"
+                                .into(),
+                        ));
+                    }
+                } else if durable_generated_count > 0 {
+                    return Err(RunError::Integrity(
+                        "durable Merge input checkpoint is missing".into(),
+                    ));
+                }
+                Some(MergeCandidate {
+                    node_id,
+                    configuration,
+                    checkpoint: stored_merge_checkpoint,
+                })
+            }
+            None => {
+                if stored_merge_checkpoint.is_some() {
+                    return Err(RunError::Integrity(
+                        "durable Merge input checkpoint exists without Merge".into(),
+                    ));
+                }
+                None
+            }
+        };
         let summarize = summarize_definition.map(|(node_id, configuration)| SummarizeCandidate {
             node_id,
             configuration,
@@ -4937,20 +5319,28 @@ fn next_candidate(
                 RunError::Integrity(format!("queued invocation is invalid: {error}"))
             })?,
             checkpoint_sequence: row.get::<_, i64>(6).map_err(storage_error)? as u64,
-            generate_resume: if replay_merge_from_zero {
-                None
-            } else {
-                row.get::<_, Option<i64>>(7)
+            recovery_attempt: match row
+                .get::<_, Option<String>>(21)
+                .map_err(storage_error)?
+                .as_deref()
+            {
+                Some("recovering" | "replaying" | "running") => row
+                    .get::<_, Option<i64>>(20)
                     .map_err(storage_error)?
-                    .map(|generated_count| {
-                        Ok(GenerateResume {
-                            next_ordinal: generated_count as u64,
-                            logical_bytes: row.get::<_, i64>(8).map_err(storage_error)? as u64,
-                            stream_digest: row.get(9).map_err(storage_error)?,
-                        })
-                    })
-                    .transpose()?
+                    .map(|value| value as u64),
+                _ => None,
             },
+            generate_resume: row
+                .get::<_, Option<i64>>(7)
+                .map_err(storage_error)?
+                .map(|generated_count| {
+                    Ok(GenerateResume {
+                        next_ordinal: generated_count as u64,
+                        logical_bytes: row.get::<_, i64>(8).map_err(storage_error)? as u64,
+                        stream_digest: row.get(9).map_err(storage_error)?,
+                    })
+                })
+                .transpose()?,
             edit_fields,
             if_node,
             merge,
@@ -5015,6 +5405,7 @@ fn load_run(connection: &Connection, run_id: &str) -> Result<RunView, RunError> 
                         cpu_source: "unavailable".into(),
                     },
                     generation: None,
+                    recovery: None,
                     admitted_at: row.get(18)?,
                     started_at: row.get(19)?,
                     terminal_at: row.get(21)?,
@@ -5030,6 +5421,7 @@ fn load_run(connection: &Connection, run_id: &str) -> Result<RunView, RunError> 
             }
         })?;
     run.generation = load_generation_progress(connection, run_id)?;
+    run.recovery = load_recovery_progress(connection, run_id)?;
     if let Some(generation) = run.generation.as_ref() {
         run.timing = generation.timing.clone();
     }
@@ -5056,6 +5448,99 @@ fn load_run(connection: &Connection, run_id: &str) -> Result<RunView, RunError> 
         run.durable.state = "suspended".into();
     }
     Ok(run)
+}
+
+fn load_recovery_progress(
+    connection: &Connection,
+    run_id: &str,
+) -> Result<Option<RecoveryProgress>, RunError> {
+    let checkpoint_commit_count = connection
+        .query_row(
+            "SELECT COUNT(*) FROM run_checkpoints WHERE run_id=?1",
+            params![run_id],
+            |row| row.get::<_, i64>(0),
+        )
+        .map_err(storage_error)? as u64;
+    let trace_event_count = connection
+        .query_row(
+            "SELECT COUNT(*) FROM run_trace_events WHERE run_id=?1",
+            params![run_id],
+            |row| row.get::<_, i64>(0),
+        )
+        .map_err(storage_error)? as u64;
+    let artifact_tables_exist = connection
+        .query_row(
+            "SELECT COUNT(*)=2 FROM sqlite_master WHERE type='table' AND name IN ('artifacts','artifact_references')",
+            [],
+            |row| row.get::<_, bool>(0),
+        )
+        .map_err(storage_error)?;
+    let artifact_bytes_written = if artifact_tables_exist {
+        connection
+            .query_row(
+                "SELECT COALESCE(SUM(a.logical_bytes),0) FROM artifacts a
+                 WHERE a.owner_id=1 AND EXISTS(
+                     SELECT 1 FROM artifact_references ar
+                     WHERE ar.owner_id=1 AND ar.artifact_id=a.artifact_id
+                       AND ar.reference_id LIKE ?1 || '%'
+                 )",
+                params![format!("run:{run_id}:")],
+                |row| row.get::<_, i64>(0),
+            )
+            .map_err(storage_error)? as u64
+    } else {
+        0
+    };
+    connection
+        .query_row(
+            "SELECT state,attempt,recovered_from_checkpoint,resume_cursor,maximum_replay_items,replayed_items,pinned_revision_id,pinned_plan_digest,artifact_reference_count,detected_at,resumed_at,completed_at
+             FROM run_recovery_progress WHERE run_id=?1",
+            params![run_id],
+            |row| {
+                let detected_at = row.get::<_, i64>(9)?;
+                let resumed_at = row.get::<_, Option<i64>>(10)?;
+                let completed_at = row.get::<_, Option<i64>>(11)?;
+                let maximum_items = row.get::<_, i64>(4)?.max(0) as u64;
+                let first_ordinal = row.get::<_, i64>(3)?.max(0) as u64;
+                // Restart time ends when execution first resumes from the
+                // durable cursor. Terminal completion can be much later and is
+                // reported by the Run timing view, not as daemon restart cost.
+                let observed_at = resumed_at.or(completed_at).unwrap_or_else(now_millis);
+                let restart_elapsed_millis = observed_at.saturating_sub(detected_at).max(0) as u64;
+                Ok(RecoveryProgress {
+                    state: row.get(0)?,
+                    attempt: row.get::<_, i64>(1)? as u64,
+                    recovered_from_checkpoint: row.get::<_, i64>(2)? as u64,
+                    resume_cursor: first_ordinal,
+                    replay_window: RecoveryReplayWindow {
+                        first_ordinal,
+                        last_ordinal: first_ordinal
+                            .saturating_add(maximum_items)
+                            .saturating_sub(1),
+                        maximum_items,
+                        replayed_items: row.get::<_, i64>(5)?.max(0) as u64,
+                    },
+                    pinned_revision_id: row.get(6)?,
+                    pinned_plan_digest: row.get(7)?,
+                    artifact_reference_count: row.get::<_, i64>(8)?.max(0) as u64,
+                    detected_at,
+                    restart_elapsed_millis,
+                    objective_millis: 60_000,
+                    within_objective: restart_elapsed_millis < 60_000,
+                    sqlite: RecoverySqliteEvidence {
+                        journal_mode: "wal".into(),
+                        synchronous: "full".into(),
+                    },
+                    evidence: RecoveryEvidence {
+                        checkpoint_commit_count,
+                        trace_event_count,
+                        artifact_bytes_written,
+                    },
+                })
+            },
+        )
+        .optional()
+        .map_err(storage_error)
 }
 
 fn load_generation_progress(
@@ -5835,6 +6320,35 @@ fn prepare_candidate_artifact(
     artifacts: &ArtifactService,
     candidate: &mut Candidate,
 ) -> Result<(), RunError> {
+    if let Some(checkpoint) = candidate
+        .merge
+        .as_ref()
+        .and_then(|merge| merge.checkpoint.as_ref())
+    {
+        for reference in checkpoint
+            .true_segments
+            .iter()
+            .chain(checkpoint.false_segments.iter())
+        {
+            let verified =
+                artifacts
+                    .metadata(&reference.artifact_id)
+                    .map_err(|error| match error {
+                        ArtifactError::Storage(message) => RunError::Storage(message),
+                        other => RunError::Integrity(format!(
+                            "Merge checkpoint Artifact could not be revalidated: {other}"
+                        )),
+                    })?;
+            if verified.reference.artifact_id != reference.artifact_id
+                || verified.reference.logical_bytes != reference.logical_bytes
+                || verified.reference.media_type != reference.media_type
+            {
+                return Err(RunError::Integrity(
+                    "Merge checkpoint Artifact metadata changed".into(),
+                ));
+            }
+        }
+    }
     if let Some(reference) = candidate.artifact.as_ref() {
         let (reference, logical_data) = load_artifact_data(artifacts, &reference.artifact_id)?;
         candidate.logical_data_override = Some(logical_data);
@@ -6094,6 +6608,7 @@ impl LiveHub {
             speculative: payload["durability"] == "speculative",
             boot_epoch: self.boot_epoch.clone(),
             sequence,
+            generated_count: payload.get("generated_count").and_then(Value::as_u64),
         });
         run.subscribers
             .retain(|subscriber| match subscriber.try_send(frame.clone()) {
@@ -6536,6 +7051,7 @@ mod tests {
                 cpu_source: "unavailable".into(),
             },
             generation: None,
+            recovery: None,
             admitted_at: 0,
             started_at: None,
             terminal_at: None,

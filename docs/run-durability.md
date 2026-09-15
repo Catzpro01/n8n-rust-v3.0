@@ -85,6 +85,16 @@ The Resource Governor may lower but not exceed these thresholds. This bounds rep
 
 One terminal transaction atomically advances resume state, Logical Order, typed outcome, algorithm-tagged digest and counters, Activation input/output digests and bounded values, provenance, cancellation/failure state, Causal Trace events, hash-chain head, and the Run projection.
 
+### Ungraceful daemon recovery
+
+A boot that finds a nonterminal Run with committed generation progress records one atomic `recovery_started` control checkpoint before redispatch. The checkpoint pins the existing revision and plan digest, records the logical resume cursor, and declares a replay window capped by the ordinary 1,024-outcome policy. Status exposes the current recovery attempt, restart objective, WAL/FULL evidence, replay work, checkpoint/trace volume, and referenced Artifact bytes.
+
+Merge input spools close at the same boundaries as generation checkpoints. Their immutable true/false segment references are committed in the generation checkpoint transaction. Startup revalidates those references through the Artifact service, retains exactly that committed prefix, releases/quarantines any finalized speculative suffix, and resumes segment numbering after the prefix. An interrupted active upload remains speculative and is handled by normal startup quarantine. The final generation batch is always a checkpoint barrier before Merge or Summarize reduction begins.
+
+SSE recovery observations follow `disconnected` (browser-observed) → `recovering` → `replaying` → `running` → `terminal`. These live transitions remain notifications; the immutable recovery checkpoint and subsequent ordinary generation/terminal checkpoints remain commit truth. Repeated process kills increment the recovery attempt without rewriting prior checkpoints, trace events, logical Activations, counters, or Artifact references.
+
+The production systemd unit uses `Restart=on-failure`; its installed-bundle smoke test sends SIGKILL, requires a new `MainPID`, checks `NRestarts`, rechecks WAL/FULL readiness, and verifies persistent state survived. The exact Eco acceptance separately sends SIGKILL at multiple observed speculative windows and requires the 100,000-Activation result and uninterrupted output digest.
+
 ## Cancellation race
 
 Cancellation carries a unique `cancellation_request_id`. HTTP success means the request is durable.

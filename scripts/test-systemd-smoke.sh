@@ -66,12 +66,26 @@ idle_cpu_cores=$(awk -v used="$((cpu_ticks_after - cpu_ticks_before))" \
   -v ticks="$clock_ticks" 'BEGIN {printf "%.4f", used / ticks / 2}')
 awk -v cores="$idle_cpu_cores" 'BEGIN {exit !(cores <= 0.5)}'
 sudo -u workflowd touch /var/lib/workflow-rust/install-smoke-marker
-sudo systemctl restart workflowd.service
-for _ in {1..100}; do
-  curl -fsS "$origin/health/ready" >/dev/null 2>&1 && break
+
+# Exercise the production unit's ungraceful path: SIGKILL cannot invoke the
+# daemon shutdown handler, so readiness returning under a different MainPID is
+# direct evidence for Restart=on-failure and persistent-state reuse.
+restart_count_before=$(systemctl show workflowd.service -p NRestarts --value)
+sudo kill -KILL "$pid"
+for _ in {1..300}; do
+  restarted_pid=$(systemctl show workflowd.service -p MainPID --value)
+  if [[ $restarted_pid =~ ^[1-9][0-9]*$ ]] && [[ $restarted_pid != "$pid" ]] \
+      && curl -fsS "$origin/health/ready" >/dev/null 2>&1; then
+    break
+  fi
   sleep 0.1
 done
-curl -fsS "$origin/health/ready" >/dev/null
+[[ $restarted_pid =~ ^[1-9][0-9]*$ ]]
+[[ $restarted_pid != "$pid" ]]
+restart_count_after=$(systemctl show workflowd.service -p NRestarts --value)
+(( restart_count_after > restart_count_before ))
+curl -fsS "$origin/health/ready" | jq -e \
+  '.status == "ready" and .checks.sqlite.journal_mode == "wal" and .checks.sqlite.synchronous == "full"' >/dev/null
 sudo test -f /var/lib/workflow-rust/install-smoke-marker
 
 sudo ./scripts/uninstall.sh >/dev/null

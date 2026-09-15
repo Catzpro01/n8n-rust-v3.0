@@ -39,7 +39,7 @@ function App() {
   const [run, setRun] = useState<RunView>();
   const [trace, setTrace] = useState<TraceView>();
   const [runBusy, setRunBusy] = useState(false);
-  const [streamState, setStreamState] = useState<"idle" | "connecting" | "connected" | "gap" | "resynced" | "complete" | "disconnected">("idle");
+  const [streamState, setStreamState] = useState<"idle" | "connecting" | "connected" | "gap" | "resynced" | "recovering" | "replaying" | "running" | "terminal" | "complete" | "disconnected">("idle");
   const [artifactView, setArtifactView] = useState<ArtifactView>();
   const [artifactPreview, setArtifactPreview] = useState("");
   const [artifactBusy, setArtifactBusy] = useState(false);
@@ -158,7 +158,10 @@ function App() {
       if (!active) return;
       const message = event as MessageEvent<string>;
       try {
-        const payload = JSON.parse(message.data) as { run?: RunView };
+        const payload = JSON.parse(message.data) as { run?: RunView; state?: string };
+        if (payload.state === "recovering" || payload.state === "replaying" || payload.state === "running") {
+          setStreamState(payload.state);
+        }
         if (payload.run) {
           setRun(payload.run);
           if (payload.run.durable.terminal) void refresh().catch(showError);
@@ -174,7 +177,8 @@ function App() {
     source.addEventListener("durable", update);
     source.addEventListener("checkpoint", update);
     source.addEventListener("generation-progress", update);
-    source.addEventListener("terminal", update);
+    source.addEventListener("recovery", update);
+    source.addEventListener("terminal", (event) => { if (active) setStreamState("terminal"); update(event); });
     source.addEventListener("gap", (event) => { if (active) setStreamState("gap"); update(event); });
     source.addEventListener("resync", (event) => { if (active) setStreamState("resynced"); update(event); });
     source.onerror = () => { if (active) setStreamState("disconnected"); };
@@ -493,6 +497,10 @@ function App() {
         {run ? <div class="run-evidence">
           <div class="run-states" aria-label="Run progress states"><article data-testid="run-durable-state" data-state={run.durable.state}><p>Durable state</p><strong>{run.durable.state.replaceAll("_", " ")}</strong><small>Checkpoint {run.durable.checkpoint_sequence} · Logical Order {run.durable.logical_order}</small></article><article data-testid="run-live-state" data-state={run.live?.state ?? "none"}><p>Live state</p><strong>{run.live?.state ?? "No speculative work"}</strong><small>{run.live?.speculative ? "Speculative — replay is allowed" : "No uncommitted claim"}</small></article><article><p>Correctness</p><strong>{run.correctness.complete ? "Complete" : "Incomplete"}</strong><small>{run.correctness.digest ? shortIdentity(run.correctness.digest) : "Digest waits for checkpoint"}</small></article></div>
           <section class="run-timing" data-testid="run-timing" aria-label="Aggregate run timing"><div><p>Aggregate wall time</p><strong>{formatMicros(run.timing.elapsed_wall_micros)}</strong><small>Admit to terminal checkpoint</small></div><div><p>Aggregate CPU time</p><strong>{formatMicros(run.timing.cpu_micros)}</strong><small>{run.timing.cpu_source}</small></div></section>
+          {run.recovery && <section class="recovery-card" data-testid="run-recovery" aria-labelledby="run-recovery-title">
+            <div><p class="eyebrow">Crash recovery · attempt {run.recovery.attempt}</p><h4 id="run-recovery-title">{run.recovery.state}</h4><small>Checkpoint {run.recovery.recovered_from_checkpoint} · resume ordinal {run.recovery.resume_cursor.toLocaleString()}</small></div>
+            <dl><div><dt>Replay window</dt><dd>{run.recovery.replay_window.first_ordinal.toLocaleString()}–{run.recovery.replay_window.last_ordinal.toLocaleString()} · max {run.recovery.replay_window.maximum_items.toLocaleString()}</dd></div><div><dt>Replay work</dt><dd>{run.recovery.replay_window.replayed_items.toLocaleString()} items</dd></div><div><dt>Restart objective</dt><dd>{run.recovery.restart_elapsed_millis.toLocaleString()} ms / {run.recovery.objective_millis.toLocaleString()} ms · {run.recovery.within_objective ? "within target" : "over target"}</dd></div><div><dt>Durability</dt><dd>{run.recovery.sqlite.journal_mode.toUpperCase()} / {run.recovery.sqlite.synchronous.toUpperCase()} · {run.recovery.artifact_reference_count} Artifact refs</dd></div></dl>
+          </section>}
           {run.generation && <section class="generation-card" data-testid="generation-progress" aria-labelledby="generation-progress-title">
             <div class="generation-summary"><div><p class="eyebrow">Bounded Envelope stream</p><h4 id="generation-progress-title">Generated {run.generation.generated_count.toLocaleString()} items</h4><small>{formatBytes(run.generation.logical_bytes)} logical output · {run.generation.state}</small></div><strong class={run.generation.artifact ? "spill artifact" : "spill inline"}>{run.generation.artifact ? "Encrypted spill" : "Inline data"}</strong></div>
             <progress max={50_000} value={run.generation.generated_count} aria-label={`${run.generation.generated_count.toLocaleString()} of the 50,000 item hard limit generated`} />

@@ -111,13 +111,16 @@ Hub/Agent implementation remains decision-gated by
 
 ## Wayfinder checkpoint
 
-The GitHub map is [#2](https://github.com/Catzpro01/n8n-rust-v3.0/issues/2), with
-child decision issues #3–#7. The recovered local implementation map is
-`.scratch/eco-100k-first-runnable/map.md` and is more detailed for execution.
-The next safe action is to inspect and reconcile the recovered baseline with
-those decisions. ADR 0058 records the Owner-approved v1alpha2 bounded
-integer-label conversion that resolves the Eco expression typing edge without
-changing Generate Items' numeric index or adding general JavaScript coercion.
+The public phase plan is [`ROADMAP.md`](ROADMAP.md), backed by six GitHub
+milestones. GitHub issue
+[#8](https://github.com/Catzpro01/n8n-rust-v3.0/issues/8) is the expansion map;
+issue [#2](https://github.com/Catzpro01/n8n-rust-v3.0/issues/2) retains the
+original first-runnable decision map. The detailed implementation map remains
+`.scratch/eco-100k-first-runnable/map.md`. Eco Tickets 01–12 are complete on
+pinned evidence: Ticket 12 proved exact bounded recovery after two `SIGKILL`s,
+and final head `838e1e5` passed the bare-metal webhook gate. Ticket 13 is the
+next core frontier but has not been started. Expansion production work remains
+ordered after its core and extension-foundation dependencies.
 
 
 ## Security boundary

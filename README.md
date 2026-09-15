@@ -8,11 +8,11 @@ icons, product copy, or distinctive trade dress.
 The recovered production slice contains a Rust execution daemon with embedded
 TypeScript/Preact editor assets, bundled SQLite startup, versioned health,
 release, and resource APIs, direct HTTP/HTTPS support, and a hardened native
-systemd package. It can author and sign an immutable Manual Trigger revision,
-admit its exact pinned plan durably, execute a deterministic Activation, expose
-reconnectable progress, cancel cooperatively, and verify checkpointed Causal
-Trace evidence. The dependency-ordered continuation tickets are under
-`.scratch/eco-100k-first-runnable/`.
+systemd package. It authors immutable Workflow Revisions, executes pinned plans
+durably through bounded Envelopes and encrypted Artifacts, exposes
+reconnectable progress and cancellation, and retains checkpointed Causal Trace
+evidence. The first six-node Eco fixture executes exactly 100,000 logical
+Activations and produces a deterministic Output Digest.
 
 ## Continue the recovered project
 
@@ -27,16 +27,22 @@ Read in this order:
 3. `docs/legal/clean-room-policy.md`
 4. `docs/agents/PROJECT-STATUS.md`
 5. `.scratch/eco-100k-first-runnable/map.md`
-6. the active ticket, currently Ticket 08
+6. the active ticket, currently Ticket 13
 7. relevant ADRs under `docs/adr/`
 
-The previous session completed Tickets 01–07. Ticket 08 is now authorized
-within ADRs 0057 and 0058 after explicit Owner approval of its bounded Edit
-Fields, safe-expression-VM, and v1alpha2 integer-label revision decisions. See
-`docs/legacy/session-archive/SESSION_STATE.md`,
-`docs/legacy/session-archive/DECISIONS.md`, and
-`.scratch/eco-100k-first-runnable/issues/08-transform-items-with-edit-fields-and-the-safe-expression-vm.md`
-for the recovered handoff and frozen scope.
+Eco implementation Tickets 01–12 are complete. Ticket 11's exact six-node,
+100,000-Activation Summarize journey passed its full pinned gate, and Ticket
+12 proved bounded recovery of the same Run after two real `SIGKILL`s. Final
+Ticket 12 head `838e1e5` passed the bare-metal `vps-baremetal/fast-ci` webhook
+gate via `make check` in 19 seconds. Ticket 13, bounded work and cgroup-profile
+scaling, is the current frontier but has not been started.
+
+## Roadmap and delivery
+
+The public phase plan is in [`ROADMAP.md`](ROADMAP.md). GitHub milestones roll
+up core delivery, extension lanes, Hub packages, AI Agents, recovery, and the
+large-editor/compatibility release gate. Detailed ticket contracts and evidence
+remain versioned with the source under `.scratch/`.
 
 ## Builder quick start
 
