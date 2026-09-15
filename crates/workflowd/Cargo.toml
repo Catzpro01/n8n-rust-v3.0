@@ -9,10 +9,7 @@ repository.workspace = true
 build = "build.rs"
 [dependencies]
 canopy-node-contract = { path = "../node-contract" }
-chromiumoxide.workspace = true
 idna_adapter.workspace = true
-polars.workspace = true
-spider.workspace = true
 url.workspace = true
 backoff.workspace = true
 governor.workspace = true

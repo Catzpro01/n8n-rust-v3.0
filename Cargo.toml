@@ -49,9 +49,6 @@ tokio-cron-scheduler = "=0.15.1"
 # requires Rust 1.88 and breaks the workspace MSRV.
 url = "=2.5.4"
 idna_adapter = "=1.2.0"
-spider = { version = "=2.53.9", default-features = false, features = ["sync", "headers", "time", "rate_limit", "ua_generator", "encoding"] }
-chromiumoxide = { version = "=0.9.1", default-features = false, features = ["rustls"] }
-polars = { version = "=0.55.2", default-features = false, features = ["lazy", "csv", "json"] }
 
 [profile.release]
 opt-level = 3
