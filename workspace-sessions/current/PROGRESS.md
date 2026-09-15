@@ -82,3 +82,38 @@
   failure was a compile error, a test failure or the host killing the compiler.
   `743e9d6` makes the step emit cargo's exit status, host memory and a
   grep-matched failure signature before the tail; the gate is unchanged.
+- The diagnostics earned their keep on run `34934598306`: `cargo test exited 101`,
+  host memory 972/3914MB (so no OOM), and
+  `error[E0277]: UniversalScraper doesn't implement Debug` at
+  `universal_scraper.rs:1610`. `Result::unwrap_err` needs `Debug` on the `Ok`
+  type, and the engine holds `Arc<dyn PageTransport>` plus a rate limiter, so
+  deriving it would have meant a `Debug` supertrait on the transport trait.
+  `3eb7a93` matches on the constructor result instead and keeps the assertion on
+  the failure code.
+- Run `34935542196` (commit `3eb7a93`) was in progress when the sandbox GitHub
+  credential expired: `gh` reports `The github.com token in GH_TOKEN is no
+  longer valid` and `git ls-remote` fails with `could not read Username`. The
+  branch itself is fully pushed - HEAD, `origin/arena/01a0a352-n8n-rust-v3-0` and
+  PR #17 all point at `3eb7a93` - so the only unknown is that run's outcome.
+- After the credential was restored, run `34935542196` read as `completed
+  failure`: `rust-check` compiled the workspace and ran the suite, and 15 of the
+  16 scraper tests passed. The failure was
+  `row_and_page_budgets_are_permanent_failures` at `universal_scraper.rs:1650`,
+  `left: canopy.universal-scraper.page_rejected` against
+  `right: canopy.universal-scraper.page_bytes_exceeded`. The row-budget scenario
+  popped the only scripted 200 for that URL, so the byte-budget scenario fell
+  through to the transport's 404 default and never reached the ceiling check.
+  Re-scripted the page for the second scenario.
+- The same run's `validate` job failed on an editor visual baseline:
+  `generate-progress.mobile.png` actual 340x546 sha256:3d380bf896d42cb7 against
+  baseline 340x545 sha256:5bbddbc8298f4b18, reported by the geometry gate as "a
+  layout regression, not font rendering". This branch changes no file under
+  `editor/` or `contracts/` (`git diff --name-only origin/main...HEAD`), and
+  `main`'s run `34926933956` was 10/10 green about an hour earlier, so the
+  one-pixel drift is environmental; it needs either a re-run or a deliberate
+  `UPDATE_VISUAL_BASELINE=1` regeneration by the owner.
+- The sandbox restarted mid-session and reset local `.git` to `main`, dropping
+  the local commits while leaving the working tree intact. Recovered with an
+  explicit fetch of the branch ref plus `git reset origin/arena/01a0a352-n8n-rust-v3-0`,
+  which left exactly the two pending edits staged in the working tree; nothing on
+  the remote was lost.

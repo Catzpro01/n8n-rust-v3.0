@@ -1644,6 +1644,13 @@ mod tests {
             CODE_ROW_LIMIT_EXCEEDED
         );
 
+        // The first scenario consumed the scripted answer, so the second one
+        // needs its own copy: without it the transport falls back to 404 and the
+        // page ceiling is never reached.
+        transport.script(
+            "https://example.test/list",
+            vec![ScriptedResponse::page(CATALOGUE)],
+        );
         let mut bytes_capped = settings(ScraperMode::FastHttp);
         bytes_capped.max_page_bytes = 32;
         let scraper = engine(bytes_capped, &transport, 2.0, 4);
