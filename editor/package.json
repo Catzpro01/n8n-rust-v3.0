@@ -11,6 +11,7 @@
     "build": "node scripts/build.mjs",
     "typecheck": "tsc --noEmit",
     "generate:fixture": "node scripts/generate-100k-fixture.mjs",
+    "benchmark:topology": "node scripts/benchmark-topology.mjs",
     "test:node": "node --test tests/lib/*.test.mjs",
     "test:browser": "node tests/two-tab.mjs && node tests/publish-rollback.mjs && node tests/run-trace.mjs && node tests/generate-artifact.mjs && node tests/edit-fields-run.mjs",
     "test:browser:eco": "node tests/eco-summarize.mjs"

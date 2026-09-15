@@ -80,6 +80,20 @@ function makeConnection(id, source, sport, target, tport) {
   };
 }
 
+function normalizeConnectionWire(value) {
+  if (!value || typeof value !== "object") return null;
+  const source = value.source;
+  const target = value.target;
+  if (!source || !target) return null;
+  const id = typeof value.id === "string" ? value.id : null;
+  const sourceNode = source.node_id;
+  const sourcePort = source.port_id ?? source.port;
+  const targetNode = target.node_id;
+  const targetPort = target.port_id ?? target.port;
+  if (!id || !sourceNode || !sourcePort || !targetNode || !targetPort) return null;
+  return { id, source_node: sourceNode, source_port: sourcePort, target_node: targetNode, target_port: targetPort };
+}
+
 // Stable hash-based canonical JSON ordering matches serde_json+BTreeMap used by
 // the Rust daemon: keys emitted in insertion order of a BTree/sorted map,
 // arrays preserve order, and no extraneous whitespace.
@@ -101,23 +115,12 @@ function bodyDigest(bodyBytes) {
   return `sha256:${hash}`;
 }
 
-function normalizeConnection(value) {
-  if (!value || typeof value !== "object") return null;
-  const source = value.source;
-  const target = value.target;
-  if (!source || !target) return null;
-  const id = typeof value.id === "string" ? value.id : null;
-  const sourceNode = source.node_id;
-  const sourcePort = source.port_id ?? source.port;
-  const targetNode = target.node_id;
-  const targetPort = target.port_id ?? target.port;
-  if (!id || !sourceNode || !sourcePort || !targetNode || !targetPort) return null;
-  return { id, sourceNode, sourcePort, targetNode, targetPort };
-}
+
 
 function buildSearchableText(node) {
   const parts = [node.name, node.id];
   if (node.annotation) parts.push(node.annotation);
+  if (node.compatibility_metadata.search_label) parts.push(String(node.compatibility_metadata.search_label));
   return parts.join(" ").toLowerCase();
 }
 
@@ -188,7 +191,7 @@ async function main() {
     .sort((a, b) => a.id.localeCompare(b.id));
 
   const connEntries = rawConnections
-    .map(normalizeConnection)
+    .map(normalizeConnectionWire)
     .filter(Boolean)
     .sort((a, b) => a.id.localeCompare(b.id));
 

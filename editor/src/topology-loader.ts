@@ -23,24 +23,24 @@ export interface TopologyNode {
   id: string;
   name: string;
   contract: string;
-  groupId: string | null;
+  group_id: string | null;
   x: number;
   y: number;
-  searchableText: string;
+  searchable_text: string;
 }
 
 export interface TopologyConnection {
   id: string;
-  sourceNode: string;
-  sourcePort: string;
-  targetNode: string;
-  targetPort: string;
+  source_node: string;
+  source_port: string;
+  target_node: string;
+  target_port: string;
 }
 
 export interface TopologyGroup {
   id: string;
   label: string;
-  nodeIds: string[];
+  node_ids: string[];
   collapsed: boolean;
 }
 
@@ -231,7 +231,7 @@ export function searchNodes(
   if (!needle) return [];
   const results: Array<{ index: number; node: TopologyNode }> = [];
   for (let i = 0; i < nodes.length && results.length < limit; i++) {
-    if (nodes[i].searchableText.includes(needle) || nodes[i].id.toLowerCase().includes(needle)) {
+    if (nodes[i].searchable_text.includes(needle) || nodes[i].id.toLowerCase().includes(needle)) {
       results.push({ index: i, node: nodes[i] });
     }
   }

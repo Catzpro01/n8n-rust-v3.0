@@ -230,8 +230,8 @@ export class ViewportCanvas {
     ctx.lineWidth = Math.max(1, zoom);
     ctx.beginPath();
     for (const c of t.sections.connections) {
-      const sIdx = t.nodeIdToIndex.get(c.sourceNode);
-      const tIdx = t.nodeIdToIndex.get(c.targetNode);
+      const sIdx = t.nodeIdToIndex.get(c.source_node);
+      const tIdx = t.nodeIdToIndex.get(c.target_node);
       if (sIdx === undefined || tIdx === undefined) continue;
       const s = nodes[sIdx];
       const tgt = nodes[tIdx];

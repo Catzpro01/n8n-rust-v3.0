@@ -106,8 +106,8 @@ function run(buffer: ArrayBuffer, digest: string | null, id: string) {
   const connCount = parsed.sections.connections.length;
   for (let ci = 0; ci < connCount; ci++) {
     const c = parsed.sections.connections[ci];
-    const sIdx = nodeIndex.get(c.sourceNode);
-    const tIdx = nodeIndex.get(c.targetNode);
+    const sIdx = nodeIndex.get(c.source_node);
+    const tIdx = nodeIndex.get(c.target_node);
     if (sIdx === undefined || tIdx === undefined) continue;
     outgoingOffset[sIdx]++;
     adjacency[ci * 2] = sIdx;

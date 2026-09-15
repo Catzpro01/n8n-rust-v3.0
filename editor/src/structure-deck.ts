@@ -57,11 +57,11 @@ export class StructureDeck {
     this.groupNodes.clear();
     const ungrouped: TopologyNode[] = [];
     for (const n of nodes) {
-      if (n.groupId) {
-        let bucket = this.groupNodes.get(n.groupId);
+      if (n.group_id) {
+        let bucket = this.groupNodes.get(n.group_id);
         if (!bucket) {
           bucket = [];
-          this.groupNodes.set(n.groupId, bucket);
+          this.groupNodes.set(n.group_id, bucket);
         }
         bucket.push(n);
       } else {
@@ -71,7 +71,7 @@ export class StructureDeck {
     if (ungrouped.length) {
       this.groupNodes.set("__ungrouped__", ungrouped);
       this.groups = [
-        { id: "__ungrouped__", label: "Ungrouped", nodeIds: ungrouped.map((n) => n.id), collapsed: false },
+        { id: "__ungrouped__", label: "Ungrouped", node_ids: ungrouped.map((n) => n.id), collapsed: false },
         ...this.groups,
       ];
     }
@@ -105,19 +105,19 @@ export class StructureDeck {
     // insert them into the new group. Callers persist via draft commands.
     for (const node of this.nodes) {
       if (this.state.selectedNodeIds.has(node.id)) {
-        if (node.groupId) {
+        if (node.group_id) {
           this.groupNodes
-            .get(node.groupId)
-            ?.splice(this.groupNodes.get(node.groupId)!.findIndex((n) => n.id === node.id), 1);
+            .get(node.group_id)
+            ?.splice(this.groupNodes.get(node.group_id)!.findIndex((n) => n.id === node.id), 1);
         }
-        node.groupId = newGroupId;
+        node.group_id = newGroupId;
       }
     }
     let bucket = this.groupNodes.get(newGroupId);
     if (!bucket) {
       bucket = [];
       this.groupNodes.set(newGroupId, bucket);
-      this.groups.push({ id: newGroupId, label: newGroupId, nodeIds: [], collapsed: false });
+      this.groups.push({ id: newGroupId, label: newGroupId, node_ids: [], collapsed: false });
     }
     for (const id of this.state.selectedNodeIds) {
       const node = this.nodes.find((n) => n.id === id);
@@ -207,7 +207,7 @@ export class StructureDeck {
           depth: 0,
           selected: false,
           groupCollapsed: this.state.collapsed.has(g.id),
-          nodeCount: g.nodeIds.length,
+          nodeCount: g.node_ids.length,
         });
       }
       return rows;
@@ -225,7 +225,7 @@ export class StructureDeck {
         depth: 0,
         selected: true,
         groupCollapsed: this.state.collapsed.has(groupEntry.id),
-        nodeCount: groupEntry.nodeIds.length,
+        nodeCount: groupEntry.node_ids.length,
       });
       if (!this.state.collapsed.has(groupEntry.id)) {
         for (let i = start; i < end; i++) {
