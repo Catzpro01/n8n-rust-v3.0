@@ -1,11 +1,10 @@
 # Project status
 
-**Last updated:** 2026-09-15 (later: acceptance-harness hardening)
-**Stage:** recovered implementation baseline; full platform expansion mapped
-**Current branch:** `arena/01a0a488-n8n-rust-v3-0`
-**Current PR:** none open yet at the time of this commit; the merged
-predecessors are [#17](https://github.com/Catzpro01/n8n-rust-v3.0/pull/17)
-and [#16](https://github.com/Catzpro01/n8n-rust-v3.0/pull/16)
+**Last updated:** 2026-09-15 (Ticket 11 closure and GitHub roadmap publication)
+**Stage:** recovered implementation baseline; Eco Tickets 01–11 complete
+**Current branch:** `arena/01a0a4cc-n8n-rust-v3-0`
+**Current PR:** none at the time of this update; the merged predecessor is
+[#18](https://github.com/Catzpro01/n8n-rust-v3.0/pull/18)
 **Recovered source baseline:** Canopy Workbench / `workflow-rust`
 
 ## Destination
@@ -37,22 +36,17 @@ profile.
 
 ## Retained implementation frontier
 
-Tickets 01–07 in `.scratch/eco-100k-first-runnable/` are recorded as complete
-by the recovered session evidence. Ticket 08 is implemented and pinned-verified
-within ADRs 0057 and 0058, including the bounded v1alpha2 integer-label rule.
-Ticket 09's native If slice is complete. **Ticket 10 is complete**: its bounded
-native success, empty-branch, Artifact-spooling, cleanup, durable-progress,
-restart, and trace slice plus the dedicated runtime cancellation,
-one-branch-failure, and spill/read fault-injection acceptance all passed in the
-pinned `If runtime acceptance` run `34881819422`. Ticket 11's compiler
-topology gate, typed route provenance, aggregate timing, retained-segment
-Causal Trace links, login-race fix, UI, and focused tests are implemented in
-the current working tree; Ticket 11 is now the frontier and only needs the
-pinned full `Validate` gate, including the artifact-generation browser step
-that has never completed in CI (see the next section).
+Tickets 01–11 in `.scratch/eco-100k-first-runnable/` are complete. Ticket 10's
+dedicated runtime cancellation, one-branch-failure, and spill/read
+fault-injection acceptance passed in pinned run `34881819422`. Ticket 11's
+exact topology, typed route provenance, bounded Summarize reducer, Output
+Digest, aggregate timing, retained-segment Causal Trace links, UI, browser/API
+acceptance, dependency audits, and release bundle passed together in pinned
+run [34917759414](https://github.com/Catzpro01/n8n-rust-v3.0/actions/runs/34917759414).
+Ticket 12 is unblocked and is the current core frontier.
 
-- **Ticket 08:** `08-transform-items-with-edit-fields-and-the-safe-expression-vm.md`
-- **Status:** `implemented-and-pinned-verified`
+- **Current core ticket:** `12-recover-eco-100k-after-an-ungraceful-daemon-kill.md`
+- **Status:** `ready; not started in this update`
 - **Expansion map:** `.scratch/canopy-platform-expansion/map.md` and GitHub
   issue [#8](https://github.com/Catzpro01/n8n-rust-v3.0/issues/8)
 - **Resolved expansion decisions:** issue #9 is recorded as ADR 0059 for the
@@ -63,9 +57,12 @@ that has never completed in CI (see the next section).
   state recovery; issue #13 is recorded as ADR 0063 for the integrated
   private-first dual-lane release gate; research issue #14 is recorded in
   `docs/research/external-agent-package-adapters-2026-09.md`.
-- **Next action:** Begin implementation in the approved phase order, starting
-  with core completion; future expansion still requires the ADRs, contracts,
-  tests, documentation, and release evidence recorded above.
+- **Roadmap:** [`ROADMAP.md`](../../ROADMAP.md) and the six GitHub milestones
+  are the public phase roll-up; detailed implementation criteria remain in the
+  versioned local tickets.
+- **Next action:** Start Ticket 12 in a separate implementation session; future
+  expansion still requires the ADRs, contracts, tests, documentation, and
+  release evidence recorded above.
 
 The earlier Wayfinder selection of “architecture spike first” now means a
 reversible audit/reconciliation of the recovered Rust + connected Preact
@@ -136,18 +133,12 @@ SIGKILL-escalation and the EOF-lags-kill cases); fake-daemon proof for
 
 - **Owner:** none
 - **Map:** Canopy Workbench full platform expansion, GitHub issue #8.
-- **Frontier:** implementation phase 1, core completion; Ticket 11 needs one
-  pinned `Validate Rust workflow platform` run whose `Browser acceptance:
-  artifact generation` step completes. The harness hardening above exists
-  exactly to let that step survive a loaded runner; the mobile visual
-  baseline question in the table is the remaining known gate.
+- **Frontier:** implementation phase 1, core completion; Ticket 11 is complete
+  on pinned run `34917759414`, and Ticket 12 is ready but not started in this
+  update.
 - **Blockers:** local Cargo remains unavailable, so pinned GitHub CI is the
-  Rust verification environment; the runner hosts serialize the workflow's
-  jobs, so pushes queue behind runs in flight, and the runner log/artifact
-  blob endpoint is currently unreachable from the Arena sandbox (EOF), which
-  makes the check-summary and annotation tees the only readable evidence
-  channel. Hub and Agent production work remains ordered after core and
-  extension foundation.
+  Rust verification environment. Hub and Agent production work remains ordered
+  after core and extension foundation.
 
 ## Universal Scraper engine (2026-09-15)
 
