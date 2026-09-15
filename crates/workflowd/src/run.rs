@@ -10,7 +10,7 @@ use crate::{
         self, GenerateFailure, GenerateResume, GenerateSession, GenerateStart, GenerateSummary,
         GeneratedEnvelope,
     },
-    governor::{self, Governor, RunWorkClass},
+    governor::{self, Governor},
     if_node, merge,
     run_engine::{self, ActivationOutcome, ManualActivationInput, ManualActivationResult},
     summarize,
