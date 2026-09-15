@@ -107,9 +107,9 @@ pub fn declares_rows_output(contract: &Value) -> bool {
         .and_then(|ports| ports.get("outputs"))
         .and_then(Value::as_array)
         .map(|outputs| {
-            outputs.iter().any(|output| {
-                output.get("id").and_then(Value::as_str) == Some(ROWS_OUTPUT_PORT)
-            })
+            outputs
+                .iter()
+                .any(|output| output.get("id").and_then(Value::as_str) == Some(ROWS_OUTPUT_PORT))
         })
         .unwrap_or(false)
 }
@@ -142,8 +142,14 @@ mod tests {
 
     #[test]
     fn locked_modes_are_accepted() {
-        assert_eq!(declared_mode(&contract("FastHttp")).unwrap(), ScraperMode::FastHttp);
-        assert_eq!(declared_mode(&contract("DeepCrawl")).unwrap(), ScraperMode::DeepCrawl);
+        assert_eq!(
+            declared_mode(&contract("FastHttp")).unwrap(),
+            ScraperMode::FastHttp
+        );
+        assert_eq!(
+            declared_mode(&contract("DeepCrawl")).unwrap(),
+            ScraperMode::DeepCrawl
+        );
     }
 
     #[test]
@@ -168,13 +174,19 @@ mod tests {
     #[test]
     fn mode_must_be_a_string() {
         let value = json!({ "configuration": { "defaults": { "mode": 3 } } });
-        assert_eq!(declared_mode(&value).unwrap_err(), ScraperError::ModeNotString);
+        assert_eq!(
+            declared_mode(&value).unwrap_err(),
+            ScraperError::ModeNotString
+        );
     }
 
     #[test]
     fn missing_defaults_is_reported_as_such() {
         let value = json!({ "configuration": {} });
-        assert_eq!(declared_mode(&value).unwrap_err(), ScraperError::DefaultsNotObject);
+        assert_eq!(
+            declared_mode(&value).unwrap_err(),
+            ScraperError::DefaultsNotObject
+        );
     }
 
     #[test]
