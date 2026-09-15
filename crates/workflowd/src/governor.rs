@@ -445,7 +445,7 @@ impl Governor {
         };
 
         GovernorDecision {
-            sampled_at_millis: elapsed_micros / 1000,
+            sampled_at_millis: (elapsed_micros / 1000) as u64,
             cpu: CpuSnapshot {
                 available: sample.cpu.available,
                 quota_cores,

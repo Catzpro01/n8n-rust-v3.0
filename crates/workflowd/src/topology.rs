@@ -349,7 +349,7 @@ fn hex_digest(bytes: &[u8]) -> String {
     let byte_values: Value = Value::Array(
         bytes
             .iter()
-            .map(|byte| Value::Number(serde_json::Number::from(*byte)))
+            .map(|&byte| Value::Number(serde_json::Number::from(u64::from(byte))))
             .collect(),
     );
     digest(&byte_values).unwrap_or_else(|_| "sha256:0000000000000000000000000000000000000000000000000000000000000000".into())
