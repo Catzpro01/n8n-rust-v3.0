@@ -211,7 +211,13 @@ try {
 } finally {
   if (browser) await browser.close();
   daemon.kill("SIGTERM");
-  await new Promise((resolve) => daemon.once("exit", resolve));
+  // kill() on an already-exited daemon never emits another "exit", and
+  // awaiting one unconditionally turns the failure being reported into an
+  // unsettled top-level await (Node exit 13, no message).
+  await new Promise((resolve) => {
+    if (daemon.exitCode !== null || daemon.signalCode !== null) resolve();
+    else daemon.once("exit", resolve);
+  });
   await rm(root, { recursive: true, force: true });
 }
 
@@ -224,7 +230,7 @@ async function freePort() {
   return port;
 }
 async function ready(origin, daemon, stderrChunks) {
-  for (let attempt = 0; attempt < 400; attempt += 1) {
+  for (let attempt = 0; attempt < 1200; attempt += 1) {
     try {
       if ((await fetch(`${origin}/health/live`)).ok) return;
     } catch {
@@ -239,13 +245,17 @@ async function ready(origin, daemon, stderrChunks) {
       ? `exited with code ${daemon.exitCode}`
       : daemon.signalCode !== null
         ? `killed by ${daemon.signalCode}`
-        : "still running when the 20s health budget expired";
+        : "still running when the 60s health budget expired";
   const reason = stderrChunks.map((chunk) => chunk.toString()).join("").trim();
   throw new Error(`daemon did not start (${outcome}): ${reason || "no stderr captured"}`);
 }
 async function waitContains(locator, text) {
   await locator.waitFor();
-  for (let attempt = 0; attempt < 100; attempt += 1) {
+  // 600 * 100ms = 60s of convergence budget, the same convention eco-summarize
+  // already uses. 10s flaked on a loaded runner (run 34958356672: "expected
+  // Draft Version 5; got 4" in the redo step on vps-fern-worker-2) - the
+  // version is inevitable, the deadline was not load-tolerant.
+  for (let attempt = 0; attempt < 600; attempt += 1) {
     if ((await locator.textContent())?.includes(text)) return;
     await new Promise((resolve) => setTimeout(resolve, 100));
   }
@@ -253,7 +263,7 @@ async function waitContains(locator, text) {
 }
 async function waitState(page, state) {
   const locator = page.getByTestId("save-state");
-  for (let attempt = 0; attempt < 100; attempt += 1) {
+  for (let attempt = 0; attempt < 600; attempt += 1) {
     if ((await locator.getAttribute("data-state")) === state) return;
     await new Promise((resolve) => setTimeout(resolve, 100));
   }
@@ -263,17 +273,20 @@ async function waitState(page, state) {
 }
 async function waitDraftVersion(page, version) {
   const editor = page.getByTestId("editor");
-  for (let attempt = 0; attempt < 100; attempt += 1) {
+  for (let attempt = 0; attempt < 600; attempt += 1) {
     if ((await editor.getAttribute("data-draft-version")) === String(version))
       return;
     await new Promise((resolve) => setTimeout(resolve, 100));
   }
+  // The version alone cannot distinguish a command still in flight from one
+  // the app refused; the save state can.
+  const saveState = await page.getByTestId("save-state").textContent();
   throw new Error(
-    `expected Draft Version ${version}; got ${await editor.getAttribute("data-draft-version")}`,
+    `expected Draft Version ${version}; got ${await editor.getAttribute("data-draft-version")} with save state "${saveState}"`,
   );
 }
 async function waitValue(locator, value) {
-  for (let attempt = 0; attempt < 100; attempt += 1) {
+  for (let attempt = 0; attempt < 600; attempt += 1) {
     if ((await locator.inputValue()) === value) return;
     await new Promise((resolve) => setTimeout(resolve, 100));
   }

@@ -5,10 +5,12 @@ from __future__ import annotations
 
 import json
 import os
+from collections import deque
 from pathlib import Path
 import socket
 import subprocess
 import tempfile
+import threading
 import time
 import unittest
 from urllib.error import HTTPError, URLError
@@ -47,6 +49,14 @@ def api(origin, path, method="GET", body=None, headers=None):
 
 
 class Daemon:
+    # The /health/live budget must cover a cold debug binary starting behind
+    # the other jobs of a shared self-hosted runner: the recorded pinned pass
+    # of the Eco suite leaves nowhere near 8s of head-room under load. The
+    # SIGTERM grace is followed by SIGKILL so a hung daemon can never turn a
+    # diagnostic into a leaked TimeoutExpired (run 34954379976).
+    HEALTH_BUDGET_ATTEMPTS = 1200  # 1200 * 0.05s = 60s of health polls
+    TERMINATION_GRACE_SECONDS = 8
+
     def __init__(self, state: Path, key: Path, extra_environment: dict[str, str] | None = None):
         self.port = free_port()
         self.origin = f"http://127.0.0.1:{self.port}"
@@ -71,7 +81,15 @@ class Daemon:
             stderr=subprocess.PIPE,
             text=True,
         )
-        for _ in range(1200):
+        # Drain stderr from the moment the process exists. A PIPE nobody reads
+        # fills its 64 KiB kernel buffer, the daemon blocks inside a logging
+        # write, and it can then neither become healthy nor honour SIGTERM -
+        # that deadlock is what surfaced as a bare TimeoutExpired in run
+        # 34954379976. Keeping a bounded tail preserves the startup reason.
+        self._stderr_tail: deque[str] = deque(maxlen=400)
+        self._drain = threading.Thread(target=self._drain_stderr, daemon=True)
+        self._drain.start()
+        for _ in range(self.HEALTH_BUDGET_ATTEMPTS):
             try:
                 if api(self.origin, "/health/live")[0] == 200:
                     return
@@ -82,26 +100,48 @@ class Daemon:
                 # can only bury the reason it died under the health budget.
                 break
             time.sleep(0.05)
-        if self.process.poll() is None:
-            self.process.terminate()
-            self.process.wait(8)
-        stderr = self.process.stderr.read() if self.process.stderr else ""
-        if self.process.stderr:
-            self.process.stderr.close()
+        self._terminate()
         exit_code = self.process.poll()
         outcome = (
             f"exited with code {exit_code}"
             if exit_code is not None
-            else f"still running when the {1200 * 0.05:.0f}s health budget expired"
+            else f"still running when the {self.HEALTH_BUDGET_ATTEMPTS * 0.05:.0f}s health budget expired"
         )
-        raise AssertionError(f"daemon did not start ({outcome}): {stderr}")
+        raise AssertionError(f"daemon did not start ({outcome}): {self.stderr_text()}")
 
-    def stop(self) -> None:
+    def _drain_stderr(self) -> None:
+        stream = self.process.stderr
+        if stream is None:
+            return
+        try:
+            for line in stream:
+                self._stderr_tail.append(line)
+        except ValueError:
+            # stop() closed the pipe mid-read; the tail already holds the end.
+            pass
+
+    def stderr_text(self) -> str:
+        return "".join(self._stderr_tail).strip()
+
+    def _terminate(self) -> None:
         if self.process.poll() is None:
             self.process.terminate()
-            self.process.wait(8)
-        if self.process.stderr:
-            self.process.stderr.close()
+            try:
+                self.process.wait(self.TERMINATION_GRACE_SECONDS)
+            except subprocess.TimeoutExpired:
+                self.process.kill()
+                self.process.wait(self.TERMINATION_GRACE_SECONDS)
+        # The drain thread may legitimately still be blocked in readline: a
+        # grandchild that inherited the pipe keeps the write end open past the
+        # daemon's death, so EOF can lag the kill. Closing the wrapper under a
+        # blocked reader would deadlock on the io lock (observed with an
+        # orphaned `sleep` inheriting the pipe), so the pipe is left to the
+        # daemonized thread and reclaimed at interpreter exit.
+        if self._drain.is_alive():
+            self._drain.join(self.TERMINATION_GRACE_SECONDS)
+
+    def stop(self) -> None:
+        self._terminate()
 
 
 def login(origin: str):
