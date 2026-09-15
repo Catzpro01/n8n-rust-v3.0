@@ -1,10 +1,9 @@
 # Project status
 
-**Last updated:** 2026-09-15 (Ticket 11 closure and GitHub roadmap publication)
-**Stage:** recovered implementation baseline; Eco Tickets 01–11 complete
+**Last updated:** 2026-09-16 (Ticket 12 crash-recovery closure)
+**Stage:** recovered implementation baseline; Eco Tickets 01–12 complete
 **Current branch:** `arena/01a0a4cc-n8n-rust-v3-0`
-**Current PR:** none at the time of this update; the merged predecessor is
-[#18](https://github.com/Catzpro01/n8n-rust-v3.0/pull/18)
+**Current PR:** [#19](https://github.com/Catzpro01/n8n-rust-v3.0/pull/19)
 **Recovered source baseline:** Canopy Workbench / `workflow-rust`
 
 ## Destination
@@ -29,24 +28,28 @@ profile.
   `docs/legacy/session-archive/`. They are evidence, not freshly rerun checks.
 - Historical `.ssh` material and other recovery-only secrets were intentionally
   not imported.
-- The local sandbox has Node/npm/Python but no `cargo`; the pinned GitHub
-  workflow is the Rust/editor verification environment.
+- The local sandbox has Node/npm/Python but no `cargo`; automatic push/PR
+  verification is owned by the bare-metal VPS webhook gate.
 - The current context preserves both the earlier Arena decisions and the
   recovered project's canonical glossary and ADR decisions.
 
 ## Retained implementation frontier
 
-Tickets 01–11 in `.scratch/eco-100k-first-runnable/` are complete. Ticket 10's
+Tickets 01–12 in `.scratch/eco-100k-first-runnable/` are complete. Ticket 10's
 dedicated runtime cancellation, one-branch-failure, and spill/read
 fault-injection acceptance passed in pinned run `34881819422`. Ticket 11's
 exact topology, typed route provenance, bounded Summarize reducer, Output
 Digest, aggregate timing, retained-segment Causal Trace links, UI, browser/API
 acceptance, dependency audits, and release bundle passed together in pinned
-run [34917759414](https://github.com/Catzpro01/n8n-rust-v3.0/actions/runs/34917759414).
-Ticket 12 is unblocked and is the current core frontier.
+run `34917759414`. Ticket 12 then passed its two-SIGKILL recovery acceptance:
+replay stayed within 1,024 outcomes, committed output/evidence remained unique,
+WAL/FULL state resumed in under one minute, and the Run converged on exactly
+100,000 logical Activations, 24,999/24,999 branches, and the uninterrupted
+digest. Final head `838e1e5` passed `vps-baremetal/fast-ci` via `make check` in
+19 seconds.
 
-- **Current core ticket:** `12-recover-eco-100k-after-an-ungraceful-daemon-kill.md`
-- **Status:** `ready; not started in this update`
+- **Current core ticket:** `13-govern-bounded-work-and-scale-across-cgroup-cpu-profiles.md`
+- **Status:** `ready; unblocked by Ticket 12; not started in this update`
 - **Expansion map:** `.scratch/canopy-platform-expansion/map.md` and GitHub
   issue [#8](https://github.com/Catzpro01/n8n-rust-v3.0/issues/8)
 - **Resolved expansion decisions:** issue #9 is recorded as ADR 0059 for the
@@ -60,9 +63,9 @@ Ticket 12 is unblocked and is the current core frontier.
 - **Roadmap:** [`ROADMAP.md`](../../ROADMAP.md) and the six GitHub milestones
   are the public phase roll-up; detailed implementation criteria remain in the
   versioned local tickets.
-- **Next action:** Start Ticket 12 in a separate implementation session; future
-  expansion still requires the ADRs, contracts, tests, documentation, and
-  release evidence recorded above.
+- **Next action:** Start Ticket 13 only in a separate implementation session;
+  future expansion still requires the ADRs, contracts, tests, documentation,
+  and release evidence recorded above.
 
 The earlier Wayfinder selection of “architecture spike first” now means a
 reversible audit/reconciliation of the recovered Rust + connected Preact
@@ -133,12 +136,11 @@ SIGKILL-escalation and the EOF-lags-kill cases); fake-daemon proof for
 
 - **Owner:** none
 - **Map:** Canopy Workbench full platform expansion, GitHub issue #8.
-- **Frontier:** implementation phase 1, core completion; Ticket 11 is complete
-  on pinned run `34917759414`, and Ticket 12 is ready but not started in this
-  update.
-- **Blockers:** local Cargo remains unavailable, so pinned GitHub CI is the
-  Rust verification environment. Hub and Agent production work remains ordered
-  after core and extension foundation.
+- **Frontier:** implementation phase 1, core completion; Tickets 01–12 are
+  complete, and Ticket 13 is ready but not started in this update.
+- **Blockers:** local Cargo remains unavailable; the bare-metal VPS webhook is
+  the Rust verification environment. Hub and Agent production work remains
+  ordered after core and extension foundation.
 
 ## Universal Scraper engine (2026-09-15)
 

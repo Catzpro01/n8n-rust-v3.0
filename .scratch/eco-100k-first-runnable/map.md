@@ -1,7 +1,7 @@
 # Implementation Map: Eco 100K First Runnable
 
 Type: implementation-map
-Status: active — core implementation is advancing; Ticket 12 is the current frontier
+Status: active — core implementation is advancing; Ticket 13 is the current frontier
 Blocked by: none
 
 ## Parent specification
@@ -10,11 +10,13 @@ Blocked by: none
 
 ## Frontier
 
-- Tickets 01 through 11 are complete. Ticket 10's runtime cancellation,
+- Tickets 01 through 12 are complete. Ticket 10's runtime cancellation,
   one-branch-failure, and spill/read fault-injection acceptance passed in pinned
   run `34881819422`; Ticket 11's complete Rust, editor, browser, Eco,
   dependency-audit, and release-bundle gate passed in pinned run `34917759414`.
-  Ticket 12 is now the current frontier. A later ticket becomes frontier when
+  Ticket 12's exact two-SIGKILL recovery acceptance passed before final head
+  `838e1e5` passed the bare-metal webhook gate. Ticket 13 is now the current
+  frontier but has not been started. A later ticket becomes frontier when
   every ticket listed in its `Blocked by` field is complete.
 
 ## Tickets
@@ -30,8 +32,8 @@ Blocked by: none
 9. [Route items deterministically with If](issues/09-route-items-deterministically-with-if.md) — **complete**; public/editor acceptance and release evidence are recorded in the ticket.
 10. [Merge closed branch streams without unbounded memory](issues/10-merge-closed-branch-streams-without-unbounded-memory.md) — **complete**; the bounded native slice and the dedicated runtime cancellation, one-branch-failure, and spill/read fault-injection acceptance are pinned-verified.
 11. [Summarize the exact Eco 100K Run](issues/11-summarize-the-exact-eco-100k-run.md) — **complete**; pinned run `34917759414` passed the full Rust, editor, browser, Eco, audit, and release-bundle gate.
-12. [Recover Eco 100K after an ungraceful daemon kill](issues/12-recover-eco-100k-after-an-ungraceful-daemon-kill.md) — **current frontier**; unblocked by completed Ticket 11.
-13. [Govern bounded work and scale across cgroup CPU profiles](issues/13-govern-bounded-work-and-scale-across-cgroup-cpu-profiles.md) — blocked by 12: Recover Eco 100K after an ungraceful daemon kill.
+12. [Recover Eco 100K after an ungraceful daemon kill](issues/12-recover-eco-100k-after-an-ungraceful-daemon-kill.md) — **complete**; exact two-SIGKILL bounded replay and final bare-metal webhook evidence are recorded in the ticket.
+13. [Govern bounded work and scale across cgroup CPU profiles](issues/13-govern-bounded-work-and-scale-across-cgroup-cpu-profiles.md) — **current frontier**; unblocked by completed Ticket 12, but not started by this closure.
 14. [Prove the 100,000-Node-Instance editor seam](issues/14-prove-the-100-000-node-instance-editor-seam.md) — blocked by 05: Publish and roll back a Manual Trigger revision.
 15. [Import the first n8n 2.39.0 compatibility subset](issues/15-import-the-first-n8n-2-39-0-compatibility-subset.md) — blocked by 05: Publish and roll back a Manual Trigger revision.
 16. [Complete the critical journey without relying on Canvas or one browser](issues/16-complete-the-critical-journey-without-relying-on-canvas-or-one-browser.md) — blocked by 11: Summarize the exact Eco 100K Run; 14: Prove the 100,000-Node-Instance editor seam; 15: Import the first n8n 2.39.0 compatibility subset.
@@ -52,10 +54,12 @@ as complete. `If runtime acceptance` run `34881819422` executed Ticket 10's
 runtime cancellation, one-branch-failure, and spill/read fault-injection cases.
 Run `34917759414` then passed Ticket 11's full Rust, editor, browser, Eco,
 dependency-audit, and release-bundle gate, including the artifact-generation
-browser step. Ticket 12 is therefore unblocked and is the current frontier; no
-later core ticket is claimed complete by this map. Ticket 09's public
-acceptance workflow and companion validation runs remain recorded in its
-ticket and operations guide.
+browser step. Ticket 12 subsequently passed its two-SIGKILL recovery proof,
+then final head `838e1e5` passed `vps-baremetal/fast-ci` via `make check` in 19
+seconds on 2026-09-16. Ticket 12 is complete and Ticket 13 is the current
+frontier; no Ticket 13 production work is included in this reconciliation.
+Ticket 09's public acceptance workflow and companion validation runs remain
+recorded in its ticket and operations guide.
 
 The shared GitHub Wayfinder map is [#2](https://github.com/Catzpro01/n8n-rust-v3.0/issues/2).
 The broader decision tickets are recorded in the expansion map. The retained

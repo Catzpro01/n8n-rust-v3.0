@@ -13,14 +13,16 @@ the code under `.scratch/`, `docs/spec/`, and `docs/adr/`.
 
 ## Current position
 
-As of 2026-09-15, the recovered Rust/Preact baseline is the implementation to
-continue. Eco implementation Tickets 01–11 are complete. Ticket 11,
-**Summarize the exact Eco 100K Run**, is backed by the all-green pinned
-[validation run 34917759414](https://github.com/Catzpro01/n8n-rust-v3.0/actions/runs/34917759414),
-including the Rust workspace, browser suites, exact Eco acceptance, dependency
-audits, and release bundle. Ticket 12, **Recover Eco 100K after an ungraceful
-daemon kill**, is the next core frontier; this roadmap update does not begin
-that ticket.
+As of 2026-09-16, the recovered Rust/Preact baseline is the implementation to
+continue. Eco implementation Tickets 01–12 are complete. Ticket 11,
+**Summarize the exact Eco 100K Run**, passed its full pinned gate. Ticket 12,
+**Recover Eco 100K after an ungraceful daemon kill**, then proved exact bounded
+recovery after two real process kills, including WAL/FULL state reuse,
+non-duplicated output/evidence, the 1,024-outcome replay bound, and the
+under-one-minute recovery objective. Final head `838e1e5` passed the
+bare-metal `vps-baremetal/fast-ci` webhook gate via `make check` in 19 seconds.
+Ticket 13, **Govern bounded work and scale across cgroup CPU profiles**, is the
+next core frontier; it is not started by this roadmap update.
 
 The Eco implementation ticket number is separate from GitHub issue numbering.
 In particular, GitHub issue
@@ -32,7 +34,7 @@ contract decision, resolved by
 
 | Milestone | Scope | Exit condition | Current state |
 | --- | --- | --- | --- |
-| [M1 — Core: Eco 100K First Runnable](https://github.com/Catzpro01/n8n-rust-v3.0/milestone/1) | Durable authoring, exact bounded execution, crash recovery, resource governance, evidence retention, signed packaging, and first compatibility proof. | Eco release candidate passes the complete deterministic, recovery, resource, editor, compatibility, packaging, and restore evidence gate. | In progress; Tickets 01–11 complete, Ticket 12 next. |
+| [M1 — Core: Eco 100K First Runnable](https://github.com/Catzpro01/n8n-rust-v3.0/milestone/1) | Durable authoring, exact bounded execution, crash recovery, resource governance, evidence retention, signed packaging, and first compatibility proof. | Eco release candidate passes the complete deterministic, recovery, resource, editor, compatibility, packaging, and restore evidence gate. | In progress; Tickets 01–12 complete, Ticket 13 next. |
 | [M2 — Extension Foundation](https://github.com/Catzpro01/n8n-rust-v3.0/milestone/2) | Separate Node Contract, Node Implementation, Node Form, and Execution Lane identities; add versioned External Process/WASM boundaries and promotion evidence. | At least one non-native binding proves the locked plan, capability, budget, outcome, and conformance seams without burdening the default daemon. | Decision accepted in [ADR 0059](docs/adr/0059-language-bindings-behind-contract-and-lane-boundary.md); implementation follows M1 dependencies. |
 | [M3 — Workflow & Skill Hub](https://github.com/Catzpro01/n8n-rust-v3.0/milestone/3) | Content-addressed Workflow and Skill Packages, review, sandboxing, explicit scope, side-by-side updates, safe retirement, and immutable dependency locks. | A package can move from discovery through review and sandbox to a newly published revision, then update or retire without changing retained Runs or revisions. | Lifecycle accepted in [ADR 0060](docs/adr/0060-keep-hub-package-installation-reviewable-and-scoped.md). |
 | [M4 — AI Agent Platform](https://github.com/Catzpro01/n8n-rust-v3.0/milestone/4) | Durable capability-bound Agent Turns, locked Agent Blueprints, Model Routes, bounded memory, Skill/MCP grants, validated output, and optional engine adapters. | A deterministic first Agent Node vertical slice proves suspension, budgets, typed outcomes, redacted trace, recovery, and the safe pre-side-effect fallback rule. | Contract accepted in [ADR 0061](docs/adr/0061-make-agent-turns-durable-and-capability-bound.md); production runtime remains future work. |

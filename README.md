@@ -27,14 +27,15 @@ Read in this order:
 3. `docs/legal/clean-room-policy.md`
 4. `docs/agents/PROJECT-STATUS.md`
 5. `.scratch/eco-100k-first-runnable/map.md`
-6. the active ticket, currently Ticket 12
+6. the active ticket, currently Ticket 13
 7. relevant ADRs under `docs/adr/`
 
-Eco implementation Tickets 01–11 are complete. Ticket 11's exact six-node,
-100,000-Activation Summarize journey passed the full pinned validation gate in
-[run 34917759414](https://github.com/Catzpro01/n8n-rust-v3.0/actions/runs/34917759414).
-Ticket 12, recovery after an ungraceful daemon kill, is the current frontier;
-no Ticket 12 production work is included in the Ticket 11 closure.
+Eco implementation Tickets 01–12 are complete. Ticket 11's exact six-node,
+100,000-Activation Summarize journey passed its full pinned gate, and Ticket
+12 proved bounded recovery of the same Run after two real `SIGKILL`s. Final
+Ticket 12 head `838e1e5` passed the bare-metal `vps-baremetal/fast-ci` webhook
+gate via `make check` in 19 seconds. Ticket 13, bounded work and cgroup-profile
+scaling, is the current frontier but has not been started.
 
 ## Roadmap and delivery
 
