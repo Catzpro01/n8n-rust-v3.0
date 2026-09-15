@@ -32,10 +32,18 @@ const daemon = spawn(binary, ["serve"], {
   stdio: ["ignore", "pipe", "pipe"],
 });
 daemon.stdout.resume();
-daemon.stderr.resume();
+// Keep the tail of the daemon's stderr. Discarding it is what made a startup
+// failure report nothing but "daemon did not start" (run 34920215184).
+const daemonStderr = [];
+let daemonStderrBytes = 0;
+daemon.stderr.on("data", (chunk) => {
+  if (daemonStderrBytes >= 65_536) return;
+  daemonStderr.push(chunk);
+  daemonStderrBytes += chunk.length;
+});
 let browser;
 try {
-  await ready(origin);
+  await ready(origin, daemon, daemonStderr);
   const setup = await fetch(`${origin}/api/v1/setup`, {
     method: "POST",
     headers: { origin, "content-type": "application/json" },
@@ -215,16 +223,25 @@ async function freePort() {
   await new Promise((resolve) => server.close(resolve));
   return port;
 }
-async function ready(origin) {
+async function ready(origin, daemon, stderrChunks) {
   for (let attempt = 0; attempt < 400; attempt += 1) {
     try {
       if ((await fetch(`${origin}/health/live`)).ok) return;
     } catch {
       /* startup */
     }
+    // The daemon is already gone: polling out the budget only buries the reason.
+    if (daemon.exitCode !== null || daemon.signalCode !== null) break;
     await new Promise((resolve) => setTimeout(resolve, 50));
   }
-  throw new Error("daemon did not start");
+  const outcome =
+    daemon.exitCode !== null
+      ? `exited with code ${daemon.exitCode}`
+      : daemon.signalCode !== null
+        ? `killed by ${daemon.signalCode}`
+        : "still running when the 20s health budget expired";
+  const reason = stderrChunks.map((chunk) => chunk.toString()).join("").trim();
+  throw new Error(`daemon did not start (${outcome}): ${reason || "no stderr captured"}`);
 }
 async function waitContains(locator, text) {
   await locator.waitFor();
