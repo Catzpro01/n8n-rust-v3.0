@@ -424,6 +424,8 @@ jobs:
 
       - name: Run Eco API acceptance
         shell: bash
+        env:
+          WORKFLOWD_ECO_ACCEPTANCE: "1"
         run: |
           set +e
           python3 -m unittest tests.acceptance.test_if_runtime.IfRuntimeAcceptance.test_eco_100k_summary_is_durable_and_rollback_is_non_destructive -v 2>&1 | tee "$RUNNER_TEMP/eco-api.log"

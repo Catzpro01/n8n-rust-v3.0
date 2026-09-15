@@ -913,6 +913,10 @@ class IfRuntimeAcceptance(unittest.TestCase):
             list(range(1, len(committed_sequences) + 1)),
         )
 
+    @unittest.skipUnless(
+        os.environ.get("WORKFLOWD_ECO_ACCEPTANCE") == "1",
+        "run in the dedicated Eco 100K job",
+    )
     def test_eco_100k_summary_is_durable_and_rollback_is_non_destructive(self):
         publication = self.publish_workflow(
             include_merge=True,
