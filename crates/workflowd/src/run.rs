@@ -2556,10 +2556,20 @@ fn complete_generated_transaction(
         "UPDATE runs SET state=?2,checkpoint_sequence=?3,logical_order=?4,attempted=?5,succeeded=?6,cancelled=?7,failed=?8,output_count=?9,correctness_digest=?10,digest_complete=?11,trace_head_hash=?12,started_at=COALESCE(started_at,?13),updated_at=?14,terminal_at=?14 WHERE run_id=?1 AND state IN ('queued','cancel_requested')",
         params![completed.run_id,state,checkpoint as i64,final_order as i64,attempted,succeeded,cancelled,failed,output_count as i64,correctness_digest,if state=="succeeded"{1}else{0},checkpoint_event.event_hash,completed.started_at,committed_at]
     ).map_err(storage_error)?;
-    transaction.execute(
-        "UPDATE run_recovery_progress SET state=?2,completed_at=?3 WHERE run_id=?1",
-        params![completed.run_id,if state=="succeeded"{"completed"}else{state},committed_at]
-    ).map_err(storage_error)?;
+    transaction
+        .execute(
+            "UPDATE run_recovery_progress SET state=?2,completed_at=?3 WHERE run_id=?1",
+            params![
+                completed.run_id,
+                if state == "succeeded" {
+                    "completed"
+                } else {
+                    state
+                },
+                committed_at
+            ],
+        )
+        .map_err(storage_error)?;
     let run = load_run(&transaction, &completed.run_id)?;
     transaction.commit().map_err(storage_error)?;
     Ok(run)
@@ -3590,9 +3600,9 @@ impl MergeSpool {
         reference_kind: &'static str,
         references: Vec<ArtifactReference>,
     ) -> Self {
-        let physical_bytes = references
-            .iter()
-            .fold(0_u64, |total, reference| total.saturating_add(reference.logical_bytes));
+        let physical_bytes = references.iter().fold(0_u64, |total, reference| {
+            total.saturating_add(reference.logical_bytes)
+        });
         let retained_segments = references.len();
         Self {
             artifacts,
@@ -5260,7 +5270,9 @@ fn next_candidate(
             .map(serde_json::from_value)
             .transpose()
             .map_err(|error| {
-                RunError::Integrity(format!("durable Merge input checkpoint is invalid: {error}"))
+                RunError::Integrity(format!(
+                    "durable Merge input checkpoint is invalid: {error}"
+                ))
             })?;
         let merge = match merge_definition {
             Some((node_id, configuration)) => {
@@ -5269,7 +5281,8 @@ fn next_candidate(
                         || checkpoint.generated_count != durable_generated_count
                     {
                         return Err(RunError::Integrity(
-                            "durable Merge input checkpoint does not match the resume cursor".into(),
+                            "durable Merge input checkpoint does not match the resume cursor"
+                                .into(),
                         ));
                     }
                 } else if durable_generated_count > 0 {
@@ -5306,7 +5319,11 @@ fn next_candidate(
                 RunError::Integrity(format!("queued invocation is invalid: {error}"))
             })?,
             checkpoint_sequence: row.get::<_, i64>(6).map_err(storage_error)? as u64,
-            recovery_attempt: match row.get::<_, Option<String>>(21).map_err(storage_error)?.as_deref() {
+            recovery_attempt: match row
+                .get::<_, Option<String>>(21)
+                .map_err(storage_error)?
+                .as_deref()
+            {
                 Some("recovering" | "replaying" | "running") => row
                     .get::<_, Option<i64>>(20)
                     .map_err(storage_error)?
@@ -6299,14 +6316,15 @@ fn prepare_candidate_artifact(
             .iter()
             .chain(checkpoint.false_segments.iter())
         {
-            let verified = artifacts.metadata(&reference.artifact_id).map_err(|error| {
-                match error {
-                    ArtifactError::Storage(message) => RunError::Storage(message),
-                    other => RunError::Integrity(format!(
-                        "Merge checkpoint Artifact could not be revalidated: {other}"
-                    )),
-                }
-            })?;
+            let verified =
+                artifacts
+                    .metadata(&reference.artifact_id)
+                    .map_err(|error| match error {
+                        ArtifactError::Storage(message) => RunError::Storage(message),
+                        other => RunError::Integrity(format!(
+                            "Merge checkpoint Artifact could not be revalidated: {other}"
+                        )),
+                    })?;
             if verified.reference.artifact_id != reference.artifact_id
                 || verified.reference.logical_bytes != reference.logical_bytes
                 || verified.reference.media_type != reference.media_type

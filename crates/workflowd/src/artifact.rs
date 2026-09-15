@@ -1721,7 +1721,10 @@ mod tests {
                 |row| row.get(0),
             )
             .unwrap();
-        assert_eq!((retained_count, speculative_count, outside_count), (1, 0, 1));
+        assert_eq!(
+            (retained_count, speculative_count, outside_count),
+            (1, 0, 1)
+        );
         fs::remove_dir_all(root).unwrap();
     }
 
