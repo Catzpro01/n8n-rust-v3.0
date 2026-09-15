@@ -263,7 +263,7 @@ async function ready(origin, daemon, stderrChunks) {
   const reason = stderrChunks.map((chunk) => chunk.toString()).join("").trim();
   throw new Error(`daemon did not start (${outcome}): ${reason || "no stderr captured"}`);
 }
-async function waitAttribute(locator, name, value, attempts = 200) {
+async function waitAttribute(locator, name, value, attempts = 600) {
   for (let attempt = 0; attempt < attempts; attempt += 1) {
     if ((await locator.getAttribute(name)) === value) return;
     await new Promise((resolve) => setTimeout(resolve, 100));

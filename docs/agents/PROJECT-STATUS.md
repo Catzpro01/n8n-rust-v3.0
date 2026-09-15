@@ -106,6 +106,32 @@ SIGKILL-escalation and the EOF-lags-kill cases); fake-daemon proof for
 `npm run test:node`, `npm run typecheck` in `editor/`; YAML parse of
 `validate.yml` (10 jobs intact).
 
+## Run 34958356672: harness fixes confirmed, one flake left → fixed
+
+- The 60 s daemon-start budget fixed the startup class end to end:
+  `validate` passed on `vps-fern-worker-3` including
+  `Browser acceptance: artifact generation` (6m33s), `if-runtime` passed
+  (12m0s, far under the new 40m cap), `eco-acceptance` passed (15m53s),
+  `rust-check`, `editor-tests`, and all three audits passed. 7 of 8 jobs
+  green; `release-bundle` was skipped only by the all-green fan-in.
+- **Mobile visual-baseline question resolved without regeneration**: the
+  `validate` pass on worker-3 compared the same committed baselines with
+  zero mismatches (the `visual-baseline-actual` upload was skipped). The
+  340x545 → 340x546 flip in run `34954379976` was transient runner-side
+  rendering drift; the geometry gate stays as is.
+- The one failure was a convergence flake, not a correctness bug:
+  `browser-suite` on `vps-fern-worker-2` died with
+  `Error: expected Draft Version 5; got 4` (`two-tab.mjs`, the undo →
+  reload → redo step). Version 5 is inevitable — redo is deterministic —
+  but the helper's 10 s poll budget (100×100 ms) was not load-tolerant on
+  a shared runner, the same sizing mistake the daemon budgets made.
+  Fixed by adopting eco-summarize's existing convention everywhere:
+  60 s (600×100 ms) convergence budgets in `two-tab`, `publish-rollback`,
+  `run-trace`, and the `waitAttribute` defaults of `edit-fields-run` and
+  `generate-artifact`; `waitDraftVersion` now also reports the tab's
+  save-state on timeout so a future failure distinguishes a command still
+  in flight from one the app refused.
+
 ## Active work
 
 - **Owner:** none

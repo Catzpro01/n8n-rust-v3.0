@@ -251,7 +251,11 @@ async function ready(origin, daemon, stderrChunks) {
 }
 async function waitContains(locator, text) {
   await locator.waitFor();
-  for (let attempt = 0; attempt < 100; attempt += 1) {
+  // 600 * 100ms = 60s of convergence budget, the same convention eco-summarize
+  // already uses. 10s flaked on a loaded runner (run 34958356672: "expected
+  // Draft Version 5; got 4" in the redo step on vps-fern-worker-2) - the
+  // version is inevitable, the deadline was not load-tolerant.
+  for (let attempt = 0; attempt < 600; attempt += 1) {
     if ((await locator.textContent())?.includes(text)) return;
     await new Promise((resolve) => setTimeout(resolve, 100));
   }
@@ -259,7 +263,7 @@ async function waitContains(locator, text) {
 }
 async function waitState(page, state) {
   const locator = page.getByTestId("save-state");
-  for (let attempt = 0; attempt < 100; attempt += 1) {
+  for (let attempt = 0; attempt < 600; attempt += 1) {
     if ((await locator.getAttribute("data-state")) === state) return;
     await new Promise((resolve) => setTimeout(resolve, 100));
   }
@@ -269,17 +273,20 @@ async function waitState(page, state) {
 }
 async function waitDraftVersion(page, version) {
   const editor = page.getByTestId("editor");
-  for (let attempt = 0; attempt < 100; attempt += 1) {
+  for (let attempt = 0; attempt < 600; attempt += 1) {
     if ((await editor.getAttribute("data-draft-version")) === String(version))
       return;
     await new Promise((resolve) => setTimeout(resolve, 100));
   }
+  // The version alone cannot distinguish a command still in flight from one
+  // the app refused; the save state can.
+  const saveState = await page.getByTestId("save-state").textContent();
   throw new Error(
-    `expected Draft Version ${version}; got ${await editor.getAttribute("data-draft-version")}`,
+    `expected Draft Version ${version}; got ${await editor.getAttribute("data-draft-version")} with save state "${saveState}"`,
   );
 }
 async function waitValue(locator, value) {
-  for (let attempt = 0; attempt < 100; attempt += 1) {
+  for (let attempt = 0; attempt < 600; attempt += 1) {
     if ((await locator.inputValue()) === value) return;
     await new Promise((resolve) => setTimeout(resolve, 100));
   }

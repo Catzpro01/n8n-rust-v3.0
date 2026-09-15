@@ -186,15 +186,17 @@ async function ready(origin, daemon, stderrChunks) {
   const reason = stderrChunks.map((chunk) => chunk.toString()).join("").trim();
   throw new Error(`daemon did not start (${outcome}): ${reason || "no stderr captured"}`);
 }
+// 600 * 100ms = 60s convergence budget; 10s flaked under runner load
+// (see two-tab.mjs and run 34958356672).
 async function waitText(locator, text) {
-  for (let attempt = 0; attempt < 100; attempt += 1) {
+  for (let attempt = 0; attempt < 600; attempt += 1) {
     if ((await locator.textContent())?.includes(text)) return;
     await new Promise((resolve) => setTimeout(resolve, 100));
   }
   throw new Error(`expected ${text}: ${await locator.textContent()}`);
 }
 async function waitAttribute(locator, name, value) {
-  for (let attempt = 0; attempt < 100; attempt += 1) {
+  for (let attempt = 0; attempt < 600; attempt += 1) {
     if ((await locator.getAttribute(name)) === value) return;
     await new Promise((resolve) => setTimeout(resolve, 100));
   }

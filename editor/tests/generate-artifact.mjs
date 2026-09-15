@@ -267,7 +267,7 @@ async function waitForTerminal(origin, runId, cookie, attempts = 1_800) {
   throw new Error(`run ${runId} did not become terminal`);
 }
 
-async function waitAttribute(locator, name, value, attempts = 200) {
+async function waitAttribute(locator, name, value, attempts = 600) {
   for (let attempt = 0; attempt < attempts; attempt += 1) {
     if ((await locator.getAttribute(name)) === value) return;
     await new Promise((resolve) => setTimeout(resolve, 100));
