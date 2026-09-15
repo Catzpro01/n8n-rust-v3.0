@@ -299,7 +299,12 @@ pub async fn editor_session(
     );
     let drafts = state.drafts.clone();
     match tokio::task::spawn_blocking(move || drafts.load(&workflow_id)).await {
-        Ok(Ok(value)) => Json(json!({"workflow_id":value.workflow_id,"draft_version":value.draft_version,"stored":false})).into_response(),
+        Ok(Ok(value)) => Json(json!({
+            "workflow_id": value.workflow_id,
+            "draft_version": value.draft_version,
+            "stored": false,
+        }))
+        .into_response(),
         Ok(Err(error)) => problem(error),
         Err(_) => problem(DraftError::Storage("worker".into())),
     }

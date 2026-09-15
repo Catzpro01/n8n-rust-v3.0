@@ -174,7 +174,10 @@ pub fn discover(
         accelerator: AcceleratorIdentity {
             policy: "off",
             eligible: false,
-            reason: Some("Accelerator policy is Off by default; Safe Auto reports no eligible accelerator in the default bundle."),
+            reason: Some(
+                "Accelerator policy is Off by default; Safe Auto reports no \
+                 eligible accelerator in the default bundle.",
+            ),
         },
     }
 }

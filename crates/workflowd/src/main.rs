@@ -68,7 +68,8 @@ fn dispatch() -> Result<(), AppError> {
         Some("benchmark-manifest") => benchmark_manifest(),
         Some("generate-100k-fixture") => generate_100k_fixture_command(),
         Some(command) => Err(AppError::Configuration(format!(
-            "unknown command {command:?}; expected serve, benchmark-manifest, generate-100k-fixture, or version"
+            "unknown command {command:?}; expected serve, benchmark-manifest, \
+             generate-100k-fixture, or version"
         ))),
     }
 }

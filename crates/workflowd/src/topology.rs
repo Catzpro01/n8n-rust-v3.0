@@ -131,7 +131,7 @@ pub fn pack(draft: &WorkflowDraft) -> Result<PackedTopology, PackError> {
     // without schema changes.
     let mut groups: BTreeMap<String, PackedGroupEntry> = BTreeMap::new();
     for node in &nodes {
-        if let Some(group_id) = node.group_id.as_ref() {
+        if let Some(group_id) = extract_group_id(&node.compatibility_metadata) {
             groups
                 .entry(group_id.clone())
                 .or_insert_with(|| PackedGroupEntry {
