@@ -415,6 +415,7 @@ pub fn generate_100k_fixture() -> WorkflowDraft {
         id: id.to_string(),
         name: name.to_string(),
         contract_lock: NodeContractLock {
+            api_version: "canopy.node/v1alpha1".into(),
             namespace: contract_namespace.into(),
             name: contract_name.into(),
             version: contract_version.into(),
@@ -582,7 +583,8 @@ mod tests {
             nodes: vec![NodeInstance {
                 id: "n1".into(),
                 name: "Manual".into(),
-                contract_lock: crate::draft::NodeContractLock {
+                contract_lock: NodeContractLock {
+                    api_version: "canopy.node/v1alpha1".into(),
                     namespace: "canopy".into(),
                     name: "manual-trigger".into(),
                     version: "v1alpha1".into(),
