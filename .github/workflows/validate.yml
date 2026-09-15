@@ -352,7 +352,10 @@ jobs:
 
   recovery-acceptance:
     name: recovery-acceptance
-    runs-on: self-hosted
+    # Keep crash correctness independently verifiable when the installed VPS
+    # runner pool is being recycled; systemd SIGKILL coverage remains in the
+    # packaging smoke test.
+    runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
       - name: Check out source
