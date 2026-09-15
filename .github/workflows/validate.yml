@@ -133,15 +133,51 @@ jobs:
 
       - name: "Browser acceptance: two-tab editing"
         working-directory: editor
-        run: node tests/two-tab.mjs
+        run: |
+          set +e
+          node tests/two-tab.mjs 2>&1 | tee "$RUNNER_TEMP/browser-two-tab.log"
+          status=${PIPESTATUS[0]}
+          set -e
+          if [ "$status" -ne 0 ]; then
+            # These were the last heavy steps with no diagnostics: a bare
+            # "exit code 1" annotation cannot distinguish a selector timeout
+            # from a missing browser from a real regression.
+            tail -n 30 "$RUNNER_TEMP/browser-two-tab.log" \
+              | sed -e 's/%/%25/g' -e 's/\r/%0D/g' -e 's/^/::error::/'
+          fi
+          exit "$status"
 
       - name: "Browser acceptance: publish rollback"
         working-directory: editor
-        run: node tests/publish-rollback.mjs
+        run: |
+          set +e
+          node tests/publish-rollback.mjs 2>&1 | tee "$RUNNER_TEMP/browser-publish-rollback.log"
+          status=${PIPESTATUS[0]}
+          set -e
+          if [ "$status" -ne 0 ]; then
+            # These were the last heavy steps with no diagnostics: a bare
+            # "exit code 1" annotation cannot distinguish a selector timeout
+            # from a missing browser from a real regression.
+            tail -n 30 "$RUNNER_TEMP/browser-publish-rollback.log" \
+              | sed -e 's/%/%25/g' -e 's/\r/%0D/g' -e 's/^/::error::/'
+          fi
+          exit "$status"
 
       - name: "Browser acceptance: run trace"
         working-directory: editor
-        run: node tests/run-trace.mjs
+        run: |
+          set +e
+          node tests/run-trace.mjs 2>&1 | tee "$RUNNER_TEMP/browser-run-trace.log"
+          status=${PIPESTATUS[0]}
+          set -e
+          if [ "$status" -ne 0 ]; then
+            # These were the last heavy steps with no diagnostics: a bare
+            # "exit code 1" annotation cannot distinguish a selector timeout
+            # from a missing browser from a real regression.
+            tail -n 30 "$RUNNER_TEMP/browser-run-trace.log" \
+              | sed -e 's/%/%25/g' -e 's/\r/%0D/g' -e 's/^/::error::/'
+          fi
+          exit "$status"
 
   # ============================================================================
   # 4. VISUAL VALIDATE & ARTIFACT BASELINE (Worker 4) - PR #16 Evidence Check
