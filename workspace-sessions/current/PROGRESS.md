@@ -177,3 +177,15 @@
   `terminate()`, so an unkillable daemon raises `subprocess.TimeoutExpired` from
   that wait and hides the real assertion. `if-runtime` published no annotations
   in run `34948966146`, so its message could not be read directly.
+- PR #17 merged into `main` as merge commit `e8f549f` ("Merge pull request #17
+  from Catzpro01/arena/01a0a352-n8n-rust-v3-0"), matching the PR #16 convention.
+  Merged head `e5133e7`, whose `rust-check` run `34954379976` reported `success`
+  for both "Check Rust formatting" and "Run Rust tests" immediately before the
+  merge; `crates/workflowd/src/universal_scraper.rs`, `docs/operations/universal-scraper.md`
+  and `mod universal_scraper;` at `main.rs:33` are all present on `main`. The
+  post-merge push run is `34955243839`.
+- Issue 03 is closed. Issue 04 (native acceptance test plus removing the
+  Playwright browser gate) is the frontier, and the two harness budgets recorded
+  above - 20 s in the JS harnesses against 60 s in the Python one, and the
+  `process.wait(8)` that can bury the real startup failure - belong there rather
+  than in this branch.
