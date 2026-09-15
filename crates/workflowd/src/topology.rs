@@ -559,11 +559,14 @@ pub fn generate_100k_fixture() -> WorkflowDraft {
         connections,
         annotation: "Canopy deterministic 100k-node editor seam fixture".into(),
         settings: Value::Object(serde_json::Map::new()),
-        compatibility_metadata: Value::Object({
+        compatibility_metadata: {
             let mut m = serde_json::Map::new();
-            m.insert("fixture".into(), Value::String("100k-editor-seam/v1".into()));
-            m
-        }),
+            m.insert(
+                "fixture".into(),
+                Value::String("100k-editor-seam/v1".into()),
+            );
+            Value::Object(m)
+        },
     }
 }
 
