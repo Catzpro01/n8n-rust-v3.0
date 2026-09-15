@@ -1,10 +1,8 @@
 name: Validate Rust workflow platform
 
+# Push and pull-request validation is owned by the bare-metal webhook gate.
+# Keep this workflow only for explicitly requested diagnostics or baseline work.
 on:
-  push:
-    branches: ["main"]
-  pull_request:
-    branches: ["main"]
   workflow_dispatch:
     inputs:
       update_visual_baseline:
@@ -281,10 +279,7 @@ jobs:
   if-runtime:
     name: if-runtime
     needs: [select-runner]
-    # Keep the public API proof independent from the long Rust/visual builds on
-    # the legacy self-hosted pool; under contention its compile can otherwise
-    # consume this job's entire timeout before the acceptance test starts.
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJson(needs.select-runner.outputs.runner) }}
     timeout-minutes: 20
     steps:
       - name: Check out source
