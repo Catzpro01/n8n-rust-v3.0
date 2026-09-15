@@ -450,7 +450,27 @@ pub fn generate_100k_fixture() -> WorkflowDraft {
             Value::Object(obj)
         };
 
-    // Manual trigger (id 0, at origin)
+    // Layout: manual at origin, 99,998 workers in a grid, 1 sink. Total = 100,000.
+    let columns = 500usize;
+    let contract_names = [
+        ("canopy", "generate-items", "v1alpha1"),
+        ("canopy", "edit-fields", "v1alpha1"),
+        ("canopy", "if", "v1alpha1"),
+        ("canopy", "merge", "v1alpha1"),
+    ];
+    let group_count = 16usize;
+    let worker_count = 99_998usize;
+    assert_eq!(1 + worker_count + 1, 100_000);
+
+    let start_x = 200.0;
+    let start_y = 80.0;
+    let cell_w = 160.0;
+    let cell_h = 90.0;
+
+    let mut nodes: Vec<NodeInstance> = Vec::with_capacity(100_000);
+    let mut connections: Vec<Value> = Vec::with_capacity(99_999);
+
+    // Manual trigger at origin.
     let manual_id = "fixture-manual-0";
     nodes.push(make_node(
         manual_id,
@@ -463,35 +483,8 @@ pub fn generate_100k_fixture() -> WorkflowDraft {
         Some("group-entry"),
     ));
 
-    // Layout: manual at origin, 99,998 workers in a grid, 1 sink. Total = 100,000.
-    // The grid dimensions are chosen so that workers form a contiguous band:
-    // 500 columns × 200 rows = 100,000, but we skip the last 2 cells to make
-    // room for manual + sink.
-    let columns = 500usize;
-    let contract_names = [
-        ("canopy", "generate-items", "v1alpha1"),
-        ("canopy", "edit-fields", "v1alpha1"),
-        ("canopy", "if", "v1alpha1"),
-        ("canopy", "merge", "v1alpha1"),
-    ];
-    let group_count = 16usize;
-    let worker_count = 99_998usize;
-    assert_eq!(1 + worker_count + 1, 100_000);
-    let contract_names = [
-        ("canopy", "generate-items", "v1alpha1"),
-        ("canopy", "edit-fields", "v1alpha1"),
-        ("canopy", "if", "v1alpha1"),
-        ("canopy", "merge", "v1alpha1"),
-    ];
-    let group_count = 16usize;
+    // Workers arranged in a 500-column grid.
     let mut conn_id = 0u64;
-    // Grid layout constants. The workers fit in a 500-column band: 99,998 nodes
-    // = 199 full rows (500×199 = 99,500) plus 498 trailing on the 200th row,
-    // leaving room for the sink at column 499 on the 200th row.
-    let start_x = 200.0;
-    let start_y = 80.0;
-    let cell_w = 160.0;
-    let cell_h = 90.0;
     let mut prev_node_id = manual_id.to_string();
     for i in 0..worker_count {
         let col = i % columns;
@@ -520,7 +513,7 @@ pub fn generate_100k_fixture() -> WorkflowDraft {
             "in",
         ));
         conn_id += 1;
-        prev_node_id = id.clone();
+        prev_node_id = id;
     }
     // Sink summarize node connected from the very last worker.
     let sink_id = "fixture-summarize-0";
@@ -542,9 +535,7 @@ pub fn generate_100k_fixture() -> WorkflowDraft {
         "in",
     ));
 
-    // Ensure total node count is exactly 100,000.
     assert_eq!(nodes.len(), 100_000, "fixture must contain exactly 100,000 nodes");
-    // Sort connections for deterministic ordering.
     connections.sort_by(|a, b| {
         let a_id = a.get("id").and_then(Value::as_str).unwrap_or("");
         let b_id = b.get("id").and_then(Value::as_str).unwrap_or("");
