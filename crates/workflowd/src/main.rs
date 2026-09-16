@@ -15,9 +15,11 @@ mod edit_fields;
 mod error;
 mod expression;
 mod generate_engine;
+mod governor;
 mod identity;
 mod if_node;
 mod merge;
+mod n8n_import;
 mod owner_http;
 mod publication;
 mod publication_http;
@@ -26,6 +28,7 @@ mod run_engine;
 mod run_http;
 mod security;
 mod summarize;
+mod topology;
 // Issue 04 wires the scraper engine into the run dispatch and the acceptance
 // suite. Until then the engine is exercised by its own lib tests, so the
 // binary would otherwise report its public surface as dead code.
@@ -35,6 +38,7 @@ mod universal_scraper;
 use crate::app::AppState;
 use crate::config::{ServeConfig, BLOCKING_THREADS_MAX, TOKIO_CORE_WORKERS};
 use crate::database::DatabaseWorker;
+use crate::governor::Governor;
 use crate::error::AppError;
 use crate::identity::{ReleaseIdentity, PRODUCT_NAME};
 use axum_server::Handle;
@@ -62,10 +66,130 @@ fn dispatch() -> Result<(), AppError> {
             println!("{PRODUCT_NAME} workflowd {}", env!("CARGO_PKG_VERSION"));
             Ok(())
         }
+        Some("benchmark-manifest") => benchmark_manifest(),
+        Some("generate-100k-fixture") => generate_100k_fixture_command(),
         Some(command) => Err(AppError::Configuration(format!(
-            "unknown command {command:?}; expected serve or version"
+            "unknown command {command:?}; expected serve, benchmark-manifest, \
+             generate-100k-fixture, or version"
         ))),
     }
+}
+
+fn benchmark_manifest() -> Result<(), AppError> {
+    let config = ServeConfig::from_environment()?;
+    let sample = cgroup::sample(
+        config.cgroup_dir.as_deref(),
+        Some(&config.state_dir),
+        cgroup::DEFAULT_MANAGED_DISK_RESERVE_BYTES,
+    );
+    let manifest = serde_json::json!({
+        "schema": "canopy.benchmark-manifest/v1alpha1",
+        "product": PRODUCT_NAME,
+        "version": env!("CARGO_PKG_VERSION"),
+        "captured_at_epoch_seconds": std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs())
+            .unwrap_or(0),
+        "eco_profile": governor::eco_profile_targets(),
+        "observed": {
+            "cpu_quota_cores": sample.cpu.quota_cores,
+            "memory_max_bytes": sample.memory.max_bytes,
+            "memory_current_bytes": sample.memory.current_bytes,
+            "disk_available_bytes": sample.disk.available_bytes,
+            "disk_reserved_bytes": sample.disk.reserved_bytes,
+            "cpu_pressure_avg10": sample.pressure.cpu.some_avg10,
+            "memory_pressure_avg10": sample.pressure.memory.some_avg10,
+            "io_pressure_avg10": sample.pressure.io.some_avg10,
+        },
+        "accelerator_policy": "off",
+        "scheduler": "adaptive-cgroup-aware-weighted-fair",
+        "acceptance": {
+            "correctness_digest_stable": true,
+            "logical_order_deterministic": true,
+            "oom_kills_zero": true,
+            "throttle_tolerance_pct": 80.0,
+        }
+    });
+    let path = config.state_dir.join("benchmark-profile.json");
+    let bytes = serde_json::to_vec_pretty(&manifest)
+        .map_err(|e| AppError::Runtime(format!("cannot serialize benchmark manifest: {e}")))?;
+    std::fs::write(&path, bytes)
+        .map_err(|e| AppError::Runtime(format!("cannot write benchmark manifest: {e}")))?;
+    println!(
+        "{}",
+        serde_json::json!({
+            "event": "benchmark_manifest_written",
+            "path": path.display().to_string()
+        })
+    );
+    Ok(())
+}
+
+fn generate_100k_fixture_command() -> Result<(), AppError> {
+    let draft = topology::generate_100k_fixture();
+    let packed = topology::pack(&draft).map_err(|e| {
+        AppError::Runtime(format!("cannot pack 100k fixture topology: {e:?}"))
+    })?;
+    let verify = topology::verify(&packed.packed_bytes);
+    if !verify.valid {
+        return Err(AppError::Runtime(format!(
+            "100k fixture failed self-verification: {:?}",
+            verify.error
+        )));
+    }
+    let out_dir = std::env::var("CANOPY_FIXTURE_DIR")
+        .unwrap_or_else(|_| "editor/tests/fixtures".into());
+    let out_dir = std::path::PathBuf::from(out_dir);
+    std::fs::create_dir_all(&out_dir)
+        .map_err(|e| AppError::Runtime(format!("cannot create fixture dir: {e}")))?;
+    let draft_path = out_dir.join("eco-100k-editor-fixture.json");
+    let binary_path = out_dir.join("eco-100k-editor-fixture.cwbt");
+    let manifest_path = out_dir.join("eco-100k-editor-fixture.manifest.json");
+    std::fs::write(
+        &draft_path,
+        serde_json::to_vec(&draft)
+            .map_err(|e| AppError::Runtime(format!("serialize draft: {e}")))?,
+    )
+    .map_err(|e| AppError::Runtime(format!("write draft: {e}")))?;
+    std::fs::write(&binary_path, &packed.packed_bytes)
+        .map_err(|e| AppError::Runtime(format!("write binary: {e}")))?;
+    let manifest = serde_json::json!({
+        "schema": "canopy.editor-fixture/v1alpha1",
+        "fixture_id": "eco-100k-editor-seam/v1",
+        "node_count": packed.node_count,
+        "connection_count": packed.connection_count,
+        "group_count": packed.group_count,
+        "packed_bytes": packed.packed_bytes.len(),
+        "draft_bytes": std::fs::metadata(&draft_path).map(|m| m.len()).unwrap_or(0),
+        "topology_digest": packed.topology_digest,
+        "topology_version": packed.version,
+        "magic": packed.magic,
+        "acceptance": {
+            "exactly_100_000_nodes": packed.node_count == 100_000,
+            "bounded_dom_required": true,
+            "worker_indexed_incrementally": true,
+            "viewport_virtualization_required": true,
+        }
+    });
+    std::fs::write(
+        &manifest_path,
+        serde_json::to_vec_pretty(&manifest)
+            .map_err(|e| AppError::Runtime(format!("serialize manifest: {e}")))?,
+    )
+    .map_err(|e| AppError::Runtime(format!("write manifest: {e}")))?;
+    println!(
+        "{}",
+        serde_json::json!({
+            "event": "fixture_100k_written",
+            "draft_path": draft_path.display().to_string(),
+            "binary_path": binary_path.display().to_string(),
+            "manifest_path": manifest_path.display().to_string(),
+            "node_count": packed.node_count,
+            "packed_bytes": packed.packed_bytes.len(),
+            "topology_digest": packed.topology_digest
+        })
+    );
+    Ok(())
 }
 
 fn serve() -> Result<(), AppError> {
@@ -80,6 +204,25 @@ fn serve() -> Result<(), AppError> {
     rustls::crypto::ring::default_provider()
         .install_default()
         .map_err(|_| AppError::Runtime("cannot install rustls ring provider".into()))?;
+
+    // Shape the Tokio runtime against the cgroup CPU quota before constructing
+    // services, so spawn_blocking and async tasks respect container limits.
+    let resource_probe = cgroup::discover(config.cgroup_dir.as_deref(), Some(&config.state_dir));
+    let quota_sample = cgroup::sample(
+        config.cgroup_dir.as_deref(),
+        Some(&config.state_dir),
+        cgroup::DEFAULT_MANAGED_DISK_RESERVE_BYTES,
+    );
+    let core_workers = match quota_sample.cpu.quota_cores {
+        Some(cores) if cores <= 0.5 => 1,
+        Some(cores) => (cores.ceil() as usize).max(1).min(TOKIO_CORE_WORKERS.max(4)),
+        None => TOKIO_CORE_WORKERS,
+    };
+    let blocking_threads = match quota_sample.cpu.quota_cores {
+        Some(cores) if cores <= 1.0 => 2,
+        Some(cores) => ((cores * 2.0).ceil() as usize).max(2).min(BLOCKING_THREADS_MAX),
+        None => BLOCKING_THREADS_MAX,
+    };
 
     let (database_worker, database_identity) =
         DatabaseWorker::start(&config.state_dir, config.sqlite_min_version)?;
@@ -99,33 +242,49 @@ fn serve() -> Result<(), AppError> {
         publication::PublicationService::initialize(&config, security.clone())
             .map_err(|error| AppError::Database(format!("publication schema: {error}")))?,
     );
+    let governor = governor::Governor::new(
+        config.cgroup_dir.clone(),
+        config.state_dir.clone(),
+        cgroup::DEFAULT_MANAGED_DISK_RESERVE_BYTES,
+    );
     let runs = Arc::new(
-        run::RunService::initialize(&config, artifacts.clone())
+        run::RunService::initialize(&config, artifacts.clone(), governor.clone())
             .map_err(|error| AppError::Database(format!("Run schema: {error}")))?,
     );
     let state = AppState {
         _database_worker: Arc::new(database_worker),
         release: ReleaseIdentity::new(database_identity.runtime_version.clone()),
         database: database_identity,
-        resources: cgroup::discover(config.cgroup_dir.as_deref()),
+        resources: resource_probe,
         security,
         artifacts,
         drafts,
         publications,
         runs,
+        governor,
     };
 
     let runtime = Builder::new_multi_thread()
-        .worker_threads(TOKIO_CORE_WORKERS)
-        .max_blocking_threads(BLOCKING_THREADS_MAX)
+        .worker_threads(core_workers)
+        .max_blocking_threads(blocking_threads)
         .thread_name("workflowd-core")
         .enable_all()
         .build()
         .map_err(|error| AppError::Runtime(format!("cannot build Tokio runtime: {error}")))?;
-    runtime.block_on(run_server(config, state))
+    info!(
+        event = "tokio_runtime_shaped",
+        tokio_core_workers = core_workers,
+        blocking_threads_max = blocking_threads
+    );
+    runtime.block_on(run_server(config, state, core_workers, blocking_threads))
 }
 
-async fn run_server(config: ServeConfig, state: AppState) -> Result<(), AppError> {
+async fn run_server(
+    config: ServeConfig,
+    state: AppState,
+    core_workers: usize,
+    blocking_threads: usize,
+) -> Result<(), AppError> {
     let router = app::router(state);
     let handle = Handle::new();
     let shutdown_handle = handle.clone();
@@ -139,8 +298,8 @@ async fn run_server(config: ServeConfig, state: AppState) -> Result<(), AppError
         event = "server_listening",
         address = %config.bind,
         transport = if config.tls.is_some() { "https" } else { "http" },
-        tokio_core_workers = TOKIO_CORE_WORKERS,
-        blocking_threads_max = BLOCKING_THREADS_MAX
+        tokio_core_workers = core_workers,
+        blocking_threads_max = blocking_threads
     );
 
     let result = if let Some(tls) = config.tls {

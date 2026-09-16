@@ -45,14 +45,15 @@ pub enum DraftError {
     NothingToRedo,
     ForkResolved,
     Storage(String),
+    ImportRejected(String),
 }
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Layout {
     pub x: f64,
     pub y: f64,
 }
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct NodeInstance {
     pub id: String,
@@ -63,7 +64,7 @@ pub struct NodeInstance {
     pub annotation: String,
     pub compatibility_metadata: Value,
 }
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct WorkflowDraft {
     pub workflow_id: String,
     pub name: String,
@@ -422,6 +423,33 @@ impl DraftService {
     pub fn load(&self, workflow_id: &str) -> Result<WorkflowDraft, DraftError> {
         let connection = self.connect().map_err(DraftError::Storage)?;
         load(&connection, workflow_id)
+    }
+
+    /// Import an n8n 2.39.0 workflow JSON document into a new (or existing, if
+    /// id reuse is explicitly forced) Draft. The returned `WorkflowDraft` is
+    /// persisted as draft_version=1 so the editor can render the imported
+    /// graph immediately.
+    pub fn import_n8n_v2(
+        &self,
+        workflow_id: &str,
+        bytes: &[u8],
+    ) -> Result<(WorkflowDraft, Value), DraftError> {
+        let import = crate::n8n_import::import_n8n_v2(workflow_id, bytes)
+            .map_err(|e| DraftError::ImportRejected(e.to_string()))?;
+        let connection = self.connect().map_err(DraftError::Storage)?;
+        // Persist snapshot (overwrite any prior draft) so subsequent loads
+        // see the imported graph.  Uses the same storage format as `create`.
+        connection
+            .execute(
+                "INSERT INTO workflow_drafts(workflow_id, draft_version, name, document_json)
+                 VALUES(?1, 1, ?2, ?3)
+                 ON CONFLICT(workflow_id) DO UPDATE SET draft_version=1, name=excluded.name, document_json=excluded.document_json",
+                params![workflow_id, import.draft.name.clone(), serde_json::to_vec(&import.draft).map_err(|e| DraftError::Storage(format!("import serialize: {e}")))?],
+            )
+            .map_err(|e| DraftError::Storage(format!("import persist: {e}")))?;
+        let report = serde_json::to_value(&import.report)
+            .map_err(|e| DraftError::Storage(format!("report serialize: {e}")))?;
+        Ok((import.draft, report))
     }
 
     pub fn open_editing(

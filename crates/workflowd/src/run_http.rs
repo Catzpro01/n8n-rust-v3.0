@@ -7,7 +7,7 @@ use crate::{
 };
 use axum::{
     extract::{Path, Query, State},
-    http::{HeaderMap, StatusCode},
+    http::{header, HeaderMap, HeaderValue, StatusCode},
     response::{
         sse::{Event, KeepAlive, Sse},
         IntoResponse, Response,
@@ -229,6 +229,21 @@ fn problem(error: RunError) -> Response {
             "The bounded nonterminal Run allowance is full",
             None,
         ),
+        RunError::AdmissionPressure { retry_after_seconds } => {
+            let retry = retry_after_seconds.max(1);
+            let body = Json(Problem {
+                r#type: "urn:canopy:run-problem",
+                title: "The server is shedding load under resource pressure",
+                status: StatusCode::SERVICE_UNAVAILABLE.as_u16(),
+                code: "resource_pressure_retry_after",
+                field: None,
+            });
+            let mut response = (StatusCode::SERVICE_UNAVAILABLE, body).into_response();
+            if let Ok(value) = HeaderValue::from_str(&retry.to_string()) {
+                response.headers_mut().insert(header::RETRY_AFTER, value);
+            }
+            return response;
+        }
         RunError::SubscriberFull => (
             StatusCode::TOO_MANY_REQUESTS,
             "sse_subscriber_limit",

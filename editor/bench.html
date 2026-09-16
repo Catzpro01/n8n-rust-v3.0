@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="dark" />
+    <title>Ticket 14 — Large Editor Benchmark</title>
+    <link rel="stylesheet" href="/dist/assets/benchmark.css" />
+  </head>
+  <body class="bench">
+    <main class="bench-shell">
+      <header class="bench-head">
+        <p class="eyebrow">Eco Ticket 14 · 100,000-node editor benchmark</p>
+        <h1>Large Editor · viewport, worker indexing, bounded DOM</h1>
+        <p id="bench-status" data-testid="bench-status">Booting…</p>
+        <strong id="bench-pass" data-testid="bench-pass" data-status="pending">PENDING</strong>
+      </header>
+      <section class="bench-grid">
+        <div class="bench-canvas-host">
+          <canvas id="bench-canvas" class="bench-canvas" data-testid="bench-canvas" width="1100" height="700"></canvas>
+        </div>
+        <aside class="bench-side">
+          <p class="deck-eyebrow">Structure deck (bounded 512 rows)</p>
+          <div id="bench-deck" class="deck-list"></div>
+          <p class="deck-eyebrow">Command map (bounded 12 results)</p>
+          <div id="bench-search" class="search-results"></div>
+        </aside>
+      </section>
+      <pre id="bench-metrics" data-testid="bench-metrics" class="bench-metrics"></pre>
+    </main>
+    <script type="module" src="/dist/assets/benchmark.js"></script>
+  </body>
+</html>

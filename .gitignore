@@ -21,3 +21,7 @@ cache.kv.tmp
 # Rendered images written by the browser acceptance tests when a visual
 # baseline mismatches; they are review evidence, never committed baselines.
 /editor/tests/baselines/*.actual.png
+
+# Deterministic 100k-node editor fixture is generated on demand by
+# `workflowd generate-100k-fixture` (Rust) or `npm run generate:fixture` (Node).
+/editor/tests/fixtures/

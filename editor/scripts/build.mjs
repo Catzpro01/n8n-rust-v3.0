@@ -2,7 +2,7 @@
 
 import { build } from "esbuild";
 import { createHash } from "node:crypto";
-import { mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { copyFile, mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -11,14 +11,19 @@ const outputDirectory = join(editorRoot, "dist");
 await rm(outputDirectory, { recursive: true, force: true });
 await mkdir(outputDirectory, { recursive: true });
 
+const entries = {
+  main: join(editorRoot, "src/main.tsx"),
+  benchmark: join(editorRoot, "src/benchmark-main.ts"),
+};
+
 const result = await build({
-  entryPoints: [join(editorRoot, "src/main.tsx")],
+  entryPoints: entries,
   bundle: true,
   minify: true,
   format: "esm",
   target: ["chrome120", "edge120", "firefox121", "safari17"],
   outdir: join(outputDirectory, "assets"),
-  entryNames: "main-[hash]",
+  entryNames: "[name]-[hash]",
   assetNames: "asset-[hash]",
   metafile: true,
   legalComments: "eof",
@@ -27,11 +32,17 @@ const result = await build({
 const outputs = Object.keys(result.metafile.outputs).map((path) =>
   relative(outputDirectory, path).replaceAll("\\", "/"),
 );
-const script = outputs.find((path) => path.endsWith(".js"));
-const stylesheet = outputs.find((path) => path.endsWith(".css"));
-if (!script || !stylesheet) {
-  throw new Error(`editor build did not emit JS and CSS: ${outputs.join(", ")}`);
+
+function findByPrefix(prefix, suffix) {
+  const found = outputs.find((p) => p.startsWith(`assets/${prefix}-`) && p.endsWith(suffix));
+  if (!found) throw new Error(`missing ${prefix} ${suffix} in outputs: ${outputs.join(", ")}`);
+  return found;
 }
+
+const script = findByPrefix("main", ".js");
+const stylesheet = findByPrefix("main", ".css");
+const benchScript = findByPrefix("benchmark", ".js");
+const benchStylesheet = findByPrefix("benchmark", ".css");
 
 const html = `<!doctype html>
 <html lang="en">
@@ -51,6 +62,14 @@ const html = `<!doctype html>
 </html>
 `;
 await writeFile(join(outputDirectory, "index.html"), html);
+
+// Benchmark page with substituted asset paths.
+const benchTemplate = await readFile(join(editorRoot, "bench.html"), "utf8");
+const benchHtml = benchTemplate
+  .replace("/dist/assets/benchmark.css", `/${benchStylesheet}`)
+  .replace("/dist/assets/benchmark.js", `/${benchScript}`);
+await writeFile(join(outputDirectory, "bench.html"), benchHtml);
+
 const contracts = await Promise.all([
   "manual-trigger.v1alpha1.json",
   "generate-items.v1alpha1.json",
@@ -79,13 +98,41 @@ const catalogNodes = contracts.map((contract) => {
 });
 await writeFile(
   join(outputDirectory, "catalog.v1.json"),
-  JSON.stringify({schema: 1, nodes: catalogNodes}),
+  JSON.stringify({ schema: 1, nodes: catalogNodes }),
 );
+
+// Symlink/copy the generated fixtures directory so the benchmark page can
+// fetch /tests/fixtures/...cwbt when served from a static host (used by
+// Playwright CI runs that don't start workflowd).
+const fixturesOut = join(outputDirectory, "tests", "fixtures");
+await mkdir(fixturesOut, { recursive: true });
+
+// Copy the 100k fixture (if present) so the /bench.html page can load it
+// from the same origin without requiring workflowd to be running.
+const fixtureSrc = join(editorRoot, "tests", "fixtures");
+const fixtureDst = join(outputDirectory, "tests", "fixtures");
+await mkdir(fixtureDst, { recursive: true });
+for (const name of ["eco-100k-editor-fixture.cwbt", "eco-100k-editor-fixture.manifest.json"]) {
+  try {
+    await copyFile(join(fixtureSrc, name), join(fixtureDst, name));
+  } catch {
+    // Fixture is generated on demand (`npm run generate:fixture`); build
+    // must still succeed without it so embedded-asset generation works.
+  }
+}
 
 const files = await listFiles(outputDirectory);
 const manifest = {
   schema: 1,
   generatedBy: "editor/scripts/build.mjs",
+  entrypoints: {
+    index: "/index.html",
+    benchmark: "/bench.html",
+    script: `/${script}`,
+    stylesheet: `/${stylesheet}`,
+    benchScript: `/${benchScript}`,
+    benchStylesheet: `/${benchStylesheet}`,
+  },
   files: await Promise.all(
     files.map(async (path) => {
       const bytes = await readFile(path);

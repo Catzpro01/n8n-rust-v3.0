@@ -1288,7 +1288,6 @@ mod tests {
                 values,
             },
             memory: empty(),
-            tasks: empty(),
         }
     }
 

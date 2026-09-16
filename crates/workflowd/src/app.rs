@@ -6,6 +6,7 @@ use crate::{
     database::{DatabaseIdentity, DatabaseWorker},
     draft::DraftService,
     draft_http,
+    governor::{self, Governor, GovernorDecision},
     identity::{CapabilityIdentity, ReleaseIdentity, API_VERSION},
     owner_http,
     publication::PublicationService,
@@ -32,6 +33,7 @@ pub struct AppState {
     pub drafts: Arc<DraftService>,
     pub publications: Arc<PublicationService>,
     pub runs: Arc<RunService>,
+    pub governor: Arc<Governor>,
 }
 #[derive(Serialize)]
 struct LiveResponse {
@@ -57,6 +59,7 @@ pub fn router(state: AppState) -> Router {
         .route("/api/v1/release", get(release))
         .route("/api/v1/capabilities", get(capabilities))
         .route("/api/v1/resources", get(resources))
+        .route("/api/v1/governor", get(governor_status))
         .route("/api/v1/setup", post(owner_http::setup))
         .route("/api/v1/session/login", post(owner_http::login))
         .route("/api/v1/session/renew", post(owner_http::renew))
@@ -85,7 +88,19 @@ pub fn router(state: AppState) -> Router {
             get(draft_http::contract),
         )
         .route("/api/v1/workflows", post(draft_http::create))
+        .route(
+            "/api/v1/workflows/import/n8n",
+            post(draft_http::import_n8n),
+        )
         .route("/api/v1/workflows/{id}", get(draft_http::load))
+        .route(
+            "/api/v1/workflows/{id}/topology",
+            get(draft_http::packed_topology),
+        )
+        .route(
+            "/api/v1/topology/verify",
+            post(draft_http::verify_topology_blob),
+        )
         .route(
             "/api/v1/workflows/{id}/draft-commands",
             post(draft_http::command),
@@ -194,4 +209,19 @@ async fn capabilities() -> Json<CapabilityIdentity> {
 }
 async fn resources(State(s): State<AppState>) -> Json<ResourceIdentity> {
     Json(s.resources)
+}
+
+#[derive(Serialize)]
+struct GovernorResponse {
+    decision: GovernorDecision,
+    eco_profile_targets: serde_json::Value,
+    scheduler: &'static str,
+}
+
+async fn governor_status(State(s): State<AppState>) -> Json<GovernorResponse> {
+    Json(GovernorResponse {
+        decision: s.governor.decision(),
+        eco_profile_targets: governor::eco_profile_targets(),
+        scheduler: "adaptive-cgroup-aware-weighted-fair",
+    })
 }

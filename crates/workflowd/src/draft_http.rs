@@ -5,11 +5,15 @@ use crate::{
         ApplyForkRequest, CreateWorkflow, DraftCommand, DraftError, EditingQuery, OpenEditing,
         ReconcileRequest, SessionOnly, TakeoverRequest, TakeoverResponse,
     },
-    owner_http,
+    owner_http, topology,
 };
 use axum::{
+    body::Bytes,
     extract::{Path, Query, State},
-    http::{HeaderMap, StatusCode},
+    http::{
+        header::{self, HeaderName},
+        HeaderMap, HeaderValue, StatusCode,
+    },
     response::{IntoResponse, Response},
     Json,
 };
@@ -19,7 +23,7 @@ use serde_json::{json, Value};
 #[derive(Serialize)]
 struct Problem {
     r#type: &'static str,
-    title: &'static str,
+    title: String,
     status: u16,
     code: &'static str,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -32,6 +36,56 @@ pub struct EditorSessionState {
     selection: Vec<String>,
     open_panels: Vec<String>,
     search_query: String,
+}
+
+#[derive(Deserialize)]
+struct ImportN8nRequest {
+    workflow_id: String,
+    /// Raw n8n workflow JSON document (owner-authored export).
+    document: Value,
+}
+
+pub async fn import_n8n(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(request): Json<ImportN8nRequest>,
+) -> Response {
+    if let Err(error) = write_auth(&state, &headers).await {
+        return error;
+    }
+    if request.workflow_id.is_empty() {
+        return problem(DraftError::Invalid("workflow_id".to_string()));
+    }
+    let bytes = match serde_json::to_vec(&request.document) {
+        Ok(b) => b,
+        Err(e) => {
+            return problem(DraftError::Storage(format!(
+                "document re-serialize failed (client sent invalid JSON): {e}"
+            )));
+        }
+    };
+    if bytes.len() > super::n8n_import::MAX_IMPORT_BYTES {
+        return problem(DraftError::ImportRejected(format!(
+            "document exceeds {} bytes",
+            super::n8n_import::MAX_IMPORT_BYTES
+        )));
+    }
+    let drafts = state.drafts.clone();
+    let workflow_id = request.workflow_id.clone();
+    match tokio::task::spawn_blocking(move || drafts.import_n8n_v2(&workflow_id, &bytes)).await {
+        Ok(Ok((draft, report))) => (
+            StatusCode::CREATED,
+            Json(json!({
+                "workflow_id": draft.workflow_id,
+                "draft_version": draft.draft_version,
+                "node_count": draft.nodes.len(),
+                "compatibility_report": report,
+            })),
+        )
+            .into_response(),
+        Ok(Err(error)) => problem(error),
+        Err(_) => problem(DraftError::Storage("import worker failed".into())),
+    }
 }
 
 pub async fn catalog(State(state): State<AppState>, headers: HeaderMap) -> Response {
@@ -294,10 +348,74 @@ pub async fn editor_session(
         request.search_query,
     );
     let drafts = state.drafts.clone();
-    match tokio::task::spawn_blocking(move||drafts.load(&workflow_id)).await{
-        Ok(Ok(value))=>Json(json!({"workflow_id":value.workflow_id,"draft_version":value.draft_version,"stored":false})).into_response(),
-        Ok(Err(error))=>problem(error),Err(_)=>problem(DraftError::Storage("worker".into())),
+    match tokio::task::spawn_blocking(move || drafts.load(&workflow_id)).await {
+        Ok(Ok(value)) => Json(json!({
+            "workflow_id": value.workflow_id,
+            "draft_version": value.draft_version,
+            "stored": false,
+        }))
+        .into_response(),
+        Ok(Err(error)) => problem(error),
+        Err(_) => problem(DraftError::Storage("worker".into())),
     }
+}
+
+pub async fn packed_topology(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(workflow_id): Path<String>,
+) -> Response {
+    if let Err(error) = read_auth(&state, &headers).await {
+        return error;
+    }
+    let drafts = state.drafts.clone();
+    match tokio::task::spawn_blocking(move || {
+        let draft = drafts.load(&workflow_id)?;
+        topology::pack(&draft).map_err(|e| DraftError::Storage(format!("topology pack: {e:?}")))
+    })
+    .await
+    {
+        Ok(Ok(packed)) => {
+            let verify = topology::verify(&packed.packed_bytes);
+            if !verify.valid {
+                return problem(DraftError::Storage(format!(
+                    "topology verification failed: {:?}",
+                    verify.error
+                )));
+            }
+            let mut response = (StatusCode::OK, Bytes::from(packed.packed_bytes)).into_response();
+            response.headers_mut().insert(
+                header::CONTENT_TYPE,
+                HeaderValue::from_static("application/vnd.canopy.topology+v1"),
+            );
+            if let Ok(value) = HeaderValue::from_str(&packed.topology_digest) {
+                response.headers_mut().insert(
+                    HeaderName::from_static("x-canopy-topology-digest"),
+                    value,
+                );
+            }
+            if let Ok(value) = HeaderValue::from_str(&packed.node_count.to_string()) {
+                response.headers_mut().insert(
+                    HeaderName::from_static("x-canopy-topology-node-count"),
+                    value,
+                );
+            }
+            response
+        }
+        Ok(Err(error)) => problem(error),
+        Err(_) => problem(DraftError::Storage("worker".into())),
+    }
+}
+
+pub async fn verify_topology_blob(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    body: Bytes,
+) -> Response {
+    if let Err(error) = read_auth(&state, &headers).await {
+        return error;
+    }
+    Json(json!(topology::verify(&body))).into_response()
 }
 
 async fn run<T, F>(operation: F, status: StatusCode) -> Response
@@ -343,72 +461,78 @@ fn forbidden(code: &str) -> Response {
         .into_response()
 }
 fn problem(error: DraftError) -> Response {
-    let (status, code, current, title) = match error {
+    let (status, code, current, title): (_, _, _, String) = match error {
         DraftError::NotFound => (
             StatusCode::NOT_FOUND,
             "not_found",
             None,
-            "Draft resource was not found",
+            "Draft resource was not found".into(),
         ),
         DraftError::AlreadyExists => (
             StatusCode::CONFLICT,
             "workflow_exists",
             None,
-            "Workflow already exists",
+            "Workflow already exists".into(),
         ),
         DraftError::Stale { current } => (
             StatusCode::CONFLICT,
             "stale_draft_version",
             Some(current),
-            "Draft Version is stale",
+            "Draft Version is stale".into(),
         ),
         DraftError::DuplicateIdentity => (
             StatusCode::CONFLICT,
             "duplicate_identity",
             None,
-            "Identity already exists",
+            "Identity already exists".into(),
         ),
         DraftError::InvalidContractLock => (
             StatusCode::UNPROCESSABLE_ENTITY,
             "invalid_contract_lock",
             None,
-            "Node Contract Lock was rejected",
+            "Node Contract Lock was rejected".into(),
         ),
         DraftError::LeaseRequired => (
             StatusCode::LOCKED,
             "draft_lease_required",
             None,
-            "This Editor Session is read-only",
+            "This Editor Session is read-only".into(),
         ),
         DraftError::TakeoverPending => (
             StatusCode::CONFLICT,
             "takeover_pending",
             None,
-            "Another takeover request is pending",
+            "Another takeover request is pending".into(),
         ),
         DraftError::TakeoverTooEarly => (
             StatusCode::CONFLICT,
             "takeover_grace_active",
             None,
-            "Takeover grace has not elapsed",
+            "Takeover grace has not elapsed".into(),
         ),
         DraftError::NothingToUndo => (
             StatusCode::CONFLICT,
             "nothing_to_undo",
             None,
-            "No retained command can be undone",
+            "No retained command can be undone".into(),
         ),
         DraftError::NothingToRedo => (
             StatusCode::CONFLICT,
             "nothing_to_redo",
             None,
-            "No retained command can be redone",
+            "No retained command can be redone".into(),
+        ),
+        DraftError::ImportRejected(reason) => (
+            StatusCode::UNPROCESSABLE_ENTITY,
+            "import_rejected",
+            None,
+            format!("n8n import rejected: {reason}"),
         ),
         DraftError::ForkResolved => (
             StatusCode::CONFLICT,
             "recovery_fork_resolved",
             None,
-            "Recovery fork is already resolved",
+            "Recovery fork is already resolved".into(),
         ),
         DraftError::Invalid(field) => {
             tracing::info!(event = "draft_input_rejected", field);
@@ -416,7 +540,7 @@ fn problem(error: DraftError) -> Response {
                 StatusCode::UNPROCESSABLE_ENTITY,
                 "invalid_draft_command",
                 None,
-                "Draft request was rejected",
+                format!("Draft request was rejected: {field}"),
             )
         }
         DraftError::Storage(reason) => {
@@ -425,7 +549,7 @@ fn problem(error: DraftError) -> Response {
                 StatusCode::INTERNAL_SERVER_ERROR,
                 "internal_error",
                 None,
-                "Draft request failed",
+                "Draft request failed".into(),
             )
         }
     };
