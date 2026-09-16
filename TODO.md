@@ -10,7 +10,7 @@
 - [x] Ticket 17: Retain, pin, compact, and expire evidence safely (Storage quotas, Pins, Compaction)
 - [x] Ticket 18: Create verified Recovery Sets and Quarantine Mode
 - [x] Ticket 19: Activate signed Release Slots and roll back failed upgrades
-- [ ] Ticket 20: Run the identical signed bundle with Podman and Docker
+- [x] Ticket 20: Run the identical signed bundle with Podman and Docker
 - [ ] Ticket 21: Certify the Eco 100K first runnable release candidate
 
 ## Next Milestones

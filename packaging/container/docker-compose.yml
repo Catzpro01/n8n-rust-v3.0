@@ -1,0 +1,33 @@
+﻿# SPDX-License-Identifier: AGPL-3.0-or-later
+# Ticket 20: Hardened Docker Compose configuration matching systemd resource bounds
+
+services:
+  workflowd:
+    image: ghcr.io/catzpro01/workflowd:latest
+    build:
+      context: .
+      dockerfile: Dockerfile
+    user: "10001:10001"
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          cpus: "0.50"
+          memory: 500M
+    ports:
+      - "8000:8000"
+    volumes:
+      - workflow-data:/var/lib/workflow-rust:Z
+      - /tmp:/tmp
+    environment:
+      - WORKFLOWD_STATE_DIR=/var/lib/workflow-rust
+      - WORKFLOWD_LISTEN_ADDR=0.0.0.0:8000
+    restart: unless-stopped
+
+volumes:
+  workflow-data:
+    driver: local
