@@ -11,7 +11,7 @@
 - [x] Ticket 18: Create verified Recovery Sets and Quarantine Mode
 - [x] Ticket 19: Activate signed Release Slots and roll back failed upgrades
 - [x] Ticket 20: Run the identical signed bundle with Podman and Docker
-- [ ] Ticket 21: Certify the Eco 100K first runnable release candidate
+- [x] Ticket 21: Certify the Eco 100K first runnable release candidate
 
 ## Next Milestones
 - [ ] Milestone 2: Extension Foundation (WASM & External Process Lanes, ADR 0059)

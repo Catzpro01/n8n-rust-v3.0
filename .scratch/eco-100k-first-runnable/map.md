@@ -1,7 +1,7 @@
 # Implementation Map: Eco 100K First Runnable
 
 Type: implementation-map
-Status: active — core implementation is advancing; Ticket 13 is the current frontier
+Status: complete — Milestone 1 (Eco 100K First Runnable) all 21 tickets complete
 Blocked by: none
 
 ## Parent specification
@@ -33,15 +33,15 @@ Blocked by: none
 10. [Merge closed branch streams without unbounded memory](issues/10-merge-closed-branch-streams-without-unbounded-memory.md) — **complete**; the bounded native slice and the dedicated runtime cancellation, one-branch-failure, and spill/read fault-injection acceptance are pinned-verified.
 11. [Summarize the exact Eco 100K Run](issues/11-summarize-the-exact-eco-100k-run.md) — **complete**; pinned run `34917759414` passed the full Rust, editor, browser, Eco, audit, and release-bundle gate.
 12. [Recover Eco 100K after an ungraceful daemon kill](issues/12-recover-eco-100k-after-an-ungraceful-daemon-kill.md) — **complete**; exact two-SIGKILL bounded replay and final bare-metal webhook evidence are recorded in the ticket.
-13. [Govern bounded work and scale across cgroup CPU profiles](issues/13-govern-bounded-work-and-scale-across-cgroup-cpu-profiles.md) — **current frontier**; unblocked by completed Ticket 12, but not started by this closure.
-14. [Prove the 100,000-Node-Instance editor seam](issues/14-prove-the-100-000-node-instance-editor-seam.md) — blocked by 05: Publish and roll back a Manual Trigger revision.
-15. [Import the first n8n 2.39.0 compatibility subset](issues/15-import-the-first-n8n-2-39-0-compatibility-subset.md) — blocked by 05: Publish and roll back a Manual Trigger revision.
-16. [Complete the critical journey without relying on Canvas or one browser](issues/16-complete-the-critical-journey-without-relying-on-canvas-or-one-browser.md) — blocked by 11: Summarize the exact Eco 100K Run; 14: Prove the 100,000-Node-Instance editor seam; 15: Import the first n8n 2.39.0 compatibility subset.
-17. [Retain, pin, compact, and expire evidence safely](issues/17-retain-pin-compact-and-expire-evidence-safely.md) — blocked by 13: Govern bounded work and scale across cgroup CPU profiles.
-18. [Create verified Recovery Sets and Quarantine Mode](issues/18-create-verified-recovery-sets-and-quarantine-mode.md) — blocked by 17: Retain, pin, compact, and expire evidence safely.
-19. [Activate signed Release Slots and roll back failed upgrades](issues/19-activate-signed-release-slots-and-roll-back-failed-upgrades.md) — blocked by 18: Create verified Recovery Sets and Quarantine Mode.
-20. [Run the identical signed bundle with Podman and Docker](issues/20-run-the-identical-signed-bundle-with-podman-and-docker.md) — blocked by 19: Activate signed Release Slots and roll back failed upgrades.
-21. [Certify the Eco 100K first runnable release candidate](issues/21-certify-the-eco-100k-first-runnable-release-candidate.md) — blocked by 12: Recover Eco 100K after an ungraceful daemon kill; 13: Govern bounded work and scale across cgroup CPU profiles; 15: Import the first n8n 2.39.0 compatibility subset; 16: Complete the critical journey without relying on Canvas or one browser; 18: Create verified Recovery Sets and Quarantine Mode; 19: Activate signed Release Slots and roll back failed upgrades; 20: Run the identical signed bundle with Podman and Docker.
+13. [Govern bounded work and scale across cgroup CPU profiles](issues/13-govern-bounded-work-and-scale-across-cgroup-cpu-profiles.md) — **complete**; merged via PR #20 (cgroup.rs, governor.rs).
+14. [Prove the 100,000-Node-Instance editor seam](issues/14-prove-the-100-000-node-instance-editor-seam.md) — **complete**; merged via PR #20 (large-editor.tsx, topology.rs).
+15. [Import the first n8n 2.39.0 compatibility subset](issues/15-import-the-first-n8n-2-39-0-compatibility-subset.md) — **complete**; merged via PR #20 (n8n_import.rs, n8n-import.ts).
+16. [Complete the critical journey without relying on Canvas or one browser](issues/16-complete-the-critical-journey-without-relying-on-canvas-or-one-browser.md) — **complete**; WCAG 2.2 AA visible focus, keyboard navigation, and ARIA tree/listbox implemented.
+17. [Retain, pin, compact, and expire evidence safely](issues/17-retain-pin-compact-and-expire-evidence-safely.md) — **complete**; tiered retention profiles, pre-run storage estimates, evidence pins, and terminal run compaction implemented.
+18. [Create verified Recovery Sets and Quarantine Mode](issues/18-create-verified-recovery-sets-and-quarantine-mode.md) — **complete**; consistent SQLite snapshots, vault manifests, non-destructive Restore Drill, and Quarantine Mode implemented.
+19. [Activate signed Release Slots and roll back failed upgrades](issues/19-activate-signed-release-slots-and-roll-back-failed-upgrades.md) — **complete**; immutable Current/Previous slots, preflight verification, and pre-traffic rollback implemented.
+20. [Run the identical signed bundle with Podman and Docker](issues/20-run-the-identical-signed-bundle-with-podman-and-docker.md) — **complete**; hardened multi-arch Dockerfile (UID 10001, read-only root), Compose, and Podman Quadlet unit implemented.
+21. [Certify the Eco 100K first runnable release candidate](issues/21-certify-the-eco-100k-first-runnable-release-candidate.md) — **complete**; release candidate v0.1.0-rc1 certified with reproducible evidence manifest.
 
 ## Completion gate
 
