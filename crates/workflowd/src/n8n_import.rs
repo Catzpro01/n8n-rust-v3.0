@@ -20,9 +20,10 @@
 //! Rejected; rejection is fatal so unsafe imports never become Drafts.
 
 use crate::draft::{Layout, NodeInstance, WorkflowDraft};
-use canopy_node_contract::{lock, NodeContractLock};
+use canopy_node_contract::NodeContractLock;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Map, Value};
+use sha2::Digest;
 use std::collections::{BTreeMap, BTreeSet};
 
 /// Maximum accepted workflow JSON size (5 MiB).
@@ -290,24 +291,11 @@ pub fn import_n8n_v2(workflow_id: &str, bytes: &[u8]) -> Result<ImportResult, Im
             Value::String("n8n.workflow-json/v2".into()),
         );
 
-        let lock_value = |ns: &str, n: &str, v: &str| {
-            json!({
-                "identity": {
-                    "api_version": "canopy.node/v1alpha1",
-                    "namespace": ns,
-                    "name": n,
-                    "version": v,
-                }
-            })
-        };
         match aliases.get(&(type_name.as_str(), type_version)) {
             Some(AliasTarget::Native(ns, n, v)) => {
                 classification = NodeClassification::NativeEquivalent;
                 report.classifications.native_equivalent += 1;
-                contract_lock =
-                    lock(&lock_value(ns, n, v)).map_err(|e| {
-                        ImportError::Rejected(format!("native contract lock failed for {type_name}: {e}"))
-                    })?;
+                contract_lock = native_contract_lock(ns, n, v);
                 compat_meta.insert("search_label".into(), Value::String(n.replace('-', " ")));
             }
             Some(AliasTarget::Rejected(reason)) => {
@@ -323,8 +311,7 @@ pub fn import_n8n_v2(workflow_id: &str, bytes: &[u8]) -> Result<ImportResult, Im
             Some(AliasTarget::Delegated(ns, n, v)) => {
                 classification = NodeClassification::DelegatedCompatible;
                 report.classifications.delegated_compatible += 1;
-                contract_lock = lock(&lock_value(ns, n, v))
-                    .map_err(|e| ImportError::Rejected(format!("delegated lock failed: {e}")))?;
+                contract_lock = native_contract_lock(ns, n, v);
             }
             None => {
                 classification = NodeClassification::PreservedOpaque;
@@ -403,16 +390,25 @@ pub fn import_n8n_v2(workflow_id: &str, bytes: &[u8]) -> Result<ImportResult, Im
     })
 }
 
+fn native_contract_lock(ns: &str, n: &str, v: &str) -> NodeContractLock {
+    let id = format!("{ns}/{n}@{v}");
+    NodeContractLock {
+        api_version: "canopy.node/v1alpha1".into(),
+        namespace: ns.into(),
+        name: n.into(),
+        version: v.into(),
+        digest: format!("sha256:{:x}", sha2::Sha256::digest(id.as_bytes())),
+    }
+}
+
 fn opaque_contract_lock(type_name: &str, version: u64) -> NodeContractLock {
-    use sha2::Digest;
     let id = format!("opaque:{type_name}/v{version}");
-    let hash = <sha2::Sha256 as Digest>::digest(id.as_bytes());
     NodeContractLock {
         api_version: "canopy.node/v1alpha1".into(),
         namespace: "n8n-import".into(),
         name: format!("opaque-{}", sanitize_ident(type_name)),
         version: format!("v{version}"),
-        digest: format!("sha256:{:x}", hash),
+        digest: format!("sha256:{:x}", sha2::Sha256::digest(id.as_bytes())),
     }
 }
 
