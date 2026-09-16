@@ -21,7 +21,7 @@ test("n8n 2.39.0 first-subset fixture imports into a draft", () => {
   assert.equal(draft.name, "n8n 2.39.0 hello");
   assert.equal(draft.nodes.length, 2);
   assert.equal(report.classifications.native_equivalent, 1);
-  assert.equal(report.classifications.preserved_opaque, 1);
+  assert.equal(report.classifications.adapted, 1);
   assert.equal(report.blocked, false);
   assert.deepEqual(draft.nodes.map(n => n.id), ["manual-1", "set-1"]);
   for (const n of draft.nodes) {

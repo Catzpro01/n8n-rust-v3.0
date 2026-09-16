@@ -25,8 +25,19 @@ const SECRET_KEY_DENYLIST = [
 ];
 
 const ALIAS_TABLE = new Map([
-  ["n8n-nodes-base.manualTrigger@1", { kind: "native", ns: "canopy", name: "manual-trigger", ver: "v1alpha1" }],
+  ["n8n-nodes-base.manualTrigger@1", { kind: "native", ns: "canopy.native", name: "manual-trigger", ver: "0.1.0" }],
+  ["n8n-nodes-base.if@1", { kind: "native", ns: "canopy.native", name: "if", ver: "0.1.0" }],
+  ["n8n-nodes-base.merge@1", { kind: "native", ns: "canopy.native", name: "merge", ver: "0.1.0" }],
+  ["n8n-nodes-base.set@3", {
+    kind: "adapted",
+    ns: "canopy.native",
+    name: "edit-fields",
+    ver: "0.2.0",
+    note: "assignments.assignments[] translated to field_overrides; includeOtherFields, dot-notation, and expression-mode values preserved as compatibility metadata",
+  }],
   ["n8n-nodes-base.executeCommand@1", { kind: "rejected", reason: "executeCommand runs arbitrary shell commands; unsafe" }],
+  ["n8n-nodes-base.code@1", { kind: "rejected", reason: "n8n-nodes-base.code runs arbitrary JavaScript; unsafe" }],
+  ["n8n-nodes-base.code@2", { kind: "rejected", reason: "n8n-nodes-base.code runs arbitrary JavaScript; unsafe" }],
 ]);
 
 export { MAX_IMPORT_BYTES };
@@ -82,14 +93,23 @@ export function import_n8n_v2(workflow_id, bytes) {
 
   for (let i = 0; i < nodes_in.length; i++) {
     const node = nodes_in[i];
-    const name = typeof node.name === "string" ? node.name : `Imported node ${i + 1}`;
+    const raw_name = typeof node.name === "string" ? node.name : `Imported node ${i + 1}`;
+    const name = raw_name.trim();
+    if (!name) throw new Error(`node #${i} has empty or whitespace-only name`);
     if ([...name].length > MAX_NAME_CHARS) {
       throw new Error(`node #${i} name exceeds ${MAX_NAME_CHARS} characters`);
     }
     const external_id = typeof node.id === "string" && node.id.length ? node.id : `n8n-import-${i}`;
+    if ([...external_id].some(c => c.charCodeAt(0) < 0x20 && c !== "\t")) {
+      throw new Error(`node ${external_id} id contains control characters`);
+    }
     const type_name = typeof node.type === "string" ? node.type : "";
-    let type_version = 1;
-    if (typeof node.typeVersion === "number") type_version = Math.trunc(node.typeVersion);
+    let type_version = 0;
+    if (typeof node.typeVersion === "number") {
+      const v = Math.trunc(node.typeVersion);
+      if (v >= 1) type_version = v;
+    }
+    if (type_version < 1) throw new Error(`node ${external_id} (${type_name}) has invalid typeVersion (must be a positive integer)`);
 
     let safe_params = deepClone(node.parameters ?? {});
     sanitize(safe_params, `nodes[${i}].parameters`, external_id, report);
@@ -122,6 +142,17 @@ export function import_n8n_v2(workflow_id, bytes) {
         digest: `mirror:${alias.ns}/${alias.name}/${alias.ver}`,
       };
       compat_meta.search_label = alias.name.replace(/-/g, " ");
+    } else if (alias.kind === "adapted") {
+      classification = "adapted";
+      report.classifications.adapted += 1;
+      contract_lock = {
+        api_version: "canopy.node/v1alpha1",
+        namespace: alias.ns,
+        name: alias.name,
+        version: alias.ver,
+        digest: `mirror:${alias.ns}/${alias.name}/${alias.ver}`,
+      };
+      compat_meta.adaptation_note = alias.note;
     } else if (alias.kind === "rejected") {
       classification = "rejected_unsafe";
       report.classifications.rejected += 1;
@@ -130,11 +161,16 @@ export function import_n8n_v2(workflow_id, bytes) {
       contract_lock = opaqueLock(type_name, type_version);
     }
 
+    let message = `${type_name} v${type_version} -> ${classification}`;
+    if (classification === "adapted" && compat_meta.adaptation_note) {
+      message = `${type_name} v${type_version} -> adapted: ${compat_meta.adaptation_note}`;
+    }
+
     report.findings.push({
       node_id: external_id,
       code: classification,
       classification,
-      message: `${type_name} v${type_version} -> ${classification}`,
+      message,
     });
 
     nodes.push({

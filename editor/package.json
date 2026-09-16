@@ -12,7 +12,7 @@
     "typecheck": "tsc --noEmit",
     "generate:fixture": "node scripts/generate-100k-fixture.mjs",
     "benchmark:topology": "node scripts/benchmark-topology.mjs",
-    "test:node": "node --test tests/lib/*.test.mjs",
+    "test:node": "node --test tests/lib/topology.test.mjs tests/lib/n8n-import.test.mjs tests/lib/visual-baseline.test.mjs",
     "test:browser": "node tests/two-tab.mjs && node tests/publish-rollback.mjs && node tests/run-trace.mjs && node tests/generate-artifact.mjs && node tests/edit-fields-run.mjs",
     "test:browser:eco": "node tests/eco-summarize.mjs"
   },

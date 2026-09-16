@@ -17,6 +17,15 @@ export type Classification =
   | "unsupported"
   | "rejected_unsafe";
 
+export const CLASSIFICATION_LABEL: Record<Classification, string> = {
+  native_equivalent: "Native",
+  delegated_compatible: "Delegated",
+  preserved_opaque: "Opaque",
+  adapted: "Adapted",
+  unsupported: "Unsupported",
+  rejected_unsafe: "Rejected",
+};
+
 export interface ImportFinding {
   node_id: string | null;
   code: string;

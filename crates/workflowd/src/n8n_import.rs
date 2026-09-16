@@ -189,28 +189,62 @@ struct N8nNode {
 
 /// Map of documented n8n node type/version → Canopy contract lock alias.
 /// Only the first Ticket 15 subset is supported.
+enum AliasTarget {
+    /// Native Canopy contract that is behaviour-equivalent. Round-trips
+    /// through the existing native node path without parameter rewriting.
+    Native(&'static str, &'static str, &'static str),
+    /// Node whose execution is delegated to a compatible runtime shim but
+    /// whose parameters are preserved verbatim.
+    #[allow(dead_code)]
+    Delegated(&'static str, &'static str, &'static str),
+    /// Close to a native node but parameters require a documented rewrite.
+    /// The adaptation note is recorded as an Adapted finding per node.
+    Adapted(&'static str, &'static str, &'static str, &'static str),
+    /// Import must be refused (arbitrary shell/code execution).
+    Rejected(&'static str),
+}
+
 fn alias_table() -> BTreeMap<(&'static str, u64), AliasTarget> {
     let mut t = BTreeMap::new();
+    // Native equivalents (parameter shape matches native contract closely
+    // enough that import preserves semantics without adaptation).
     t.insert(
         ("n8n-nodes-base.manualTrigger", 1),
-        AliasTarget::Native("canopy", "manual-trigger", "v1alpha1"),
+        AliasTarget::Native("canopy.native", "manual-trigger", "0.1.0"),
     );
+    t.insert(
+        ("n8n-nodes-base.if", 1),
+        AliasTarget::Native("canopy.native", "if", "0.1.0"),
+    );
+    t.insert(
+        ("n8n-nodes-base.merge", 1),
+        AliasTarget::Native("canopy.native", "merge", "0.1.0"),
+    );
+    // Adapted: n8n's "Set" has overlapping semantics with edit-fields
+    // (assignments → field_overrides) but parameters need a declared rewrite.
+    t.insert(
+        ("n8n-nodes-base.set", 3),
+        AliasTarget::Adapted(
+            "canopy.native",
+            "edit-fields",
+            "0.2.0",
+            "assignments.assignments[] translated to field_overrides; includeOtherFields, dot-notation, and expression-mode values preserved as compatibility metadata",
+        ),
+    );
+    // Hard-rejected unsafe nodes (capability exceeds the bounded engine).
     t.insert(
         ("n8n-nodes-base.executeCommand", 1),
         AliasTarget::Rejected("executeCommand runs arbitrary shell commands; unsafe for a bounded safe-execution engine"),
     );
-    // The remaining built-ins encountered in a workflow that don't match an
-    // alias are preserved as opaque (not executable but still represented as
-    // draft nodes with a compatibility marker), per the clean-room contract.
+    t.insert(
+        ("n8n-nodes-base.code", 1),
+        AliasTarget::Rejected("n8n-nodes-base.code runs arbitrary JavaScript; unsafe within the bounded safe-execution engine"),
+    );
+    t.insert(
+        ("n8n-nodes-base.code", 2),
+        AliasTarget::Rejected("n8n-nodes-base.code runs arbitrary JavaScript; unsafe within the bounded safe-execution engine"),
+    );
     t
-}
-
-enum AliasTarget {
-    Native(&'static str, &'static str, &'static str),
-    #[allow(dead_code)]
-    Delegated(&'static str, &'static str, &'static str),
-    #[allow(dead_code)]
-    Rejected(&'static str),
 }
 
 pub fn import_n8n_v2(workflow_id: &str, bytes: &[u8]) -> Result<ImportResult, ImportError> {
@@ -256,7 +290,13 @@ pub fn import_n8n_v2(workflow_id: &str, bytes: &[u8]) -> Result<ImportResult, Im
     let mut node_index = BTreeMap::new();
 
     for (i, node) in src.nodes.iter().enumerate() {
-        let name = string_value(node.name.as_ref()).unwrap_or_else(|| format!("Imported node {}", i + 1));
+        let raw_name = string_value(node.name.as_ref()).unwrap_or_else(|| format!("Imported node {}", i + 1));
+        let name = raw_name.trim();
+        if name.is_empty() {
+            return Err(ImportError::Rejected(format!(
+                "node #{i} has empty or whitespace-only name"
+            )));
+        }
         if name.chars().count() > MAX_NAME_CHARS {
             return Err(ImportError::Rejected(format!(
                 "node #{i} name exceeds {MAX_NAME_CHARS} characters"
@@ -264,11 +304,21 @@ pub fn import_n8n_v2(workflow_id: &str, bytes: &[u8]) -> Result<ImportResult, Im
         }
         let external_id = string_value(node.external_id.as_ref())
             .unwrap_or_else(|| format!("n8n-import-{i}"));
+        if external_id.chars().any(|c| c.is_control()) {
+            return Err(ImportError::Rejected(format!(
+                "node #{i} id contains control characters"
+            )));
+        }
         let type_name = string_value(node.node_type.as_ref()).unwrap_or_default();
         let type_version = match &node.typeVersion {
-            Value::Number(n) => n.as_u64().unwrap_or(1),
-            _ => 1,
+            Value::Number(n) => n.as_u64().filter(|&v| v >= 1).unwrap_or(0),
+            _ => 0,
         };
+        if type_version == 0 {
+            return Err(ImportError::Rejected(format!(
+                "node {external_id} ({type_name}) has invalid typeVersion (must be a positive integer)"
+            )));
+        }
 
         // Sanitize parameters recursively before preserving them.
         let mut safe_params = node.parameters.clone();
@@ -313,6 +363,12 @@ pub fn import_n8n_v2(workflow_id: &str, bytes: &[u8]) -> Result<ImportResult, Im
                 report.classifications.delegated_compatible += 1;
                 contract_lock = native_contract_lock(ns, n, v);
             }
+            Some(AliasTarget::Adapted(ns, n, v, note)) => {
+                classification = NodeClassification::Adapted;
+                report.classifications.adapted += 1;
+                contract_lock = native_contract_lock(ns, n, v);
+                compat_meta.insert("adaptation_note".into(), Value::String((*note).into()));
+            }
             None => {
                 classification = NodeClassification::PreservedOpaque;
                 report.classifications.preserved_opaque += 1;
@@ -321,18 +377,29 @@ pub fn import_n8n_v2(workflow_id: &str, bytes: &[u8]) -> Result<ImportResult, Im
             }
         }
 
+        let code = match classification {
+            NodeClassification::NativeEquivalent => "native_equivalent",
+            NodeClassification::DelegatedCompatible => "delegated_compatible",
+            NodeClassification::PreservedOpaque => "preserved_opaque",
+            NodeClassification::Adapted => "adapted",
+            NodeClassification::Unsupported => "unsupported",
+            NodeClassification::RejectedUnsafe => "rejected_unsafe",
+        };
+        let message = match classification {
+            NodeClassification::Adapted => {
+                let note = compat_meta
+                    .get("adaptation_note")
+                    .and_then(Value::as_str)
+                    .unwrap_or("");
+                format!("{type_name} v{type_version} → adapted: {note}")
+            }
+            _ => format!("{type_name} v{type_version} → {code}"),
+        };
         report.findings.push(ImportFinding {
             node_id: Some(external_id.clone()),
-            code: match classification {
-                NodeClassification::NativeEquivalent => "native_equivalent",
-                NodeClassification::DelegatedCompatible => "delegated_compatible",
-                NodeClassification::PreservedOpaque => "preserved_opaque",
-                NodeClassification::Adapted => "adapted",
-                NodeClassification::Unsupported => "unsupported",
-                NodeClassification::RejectedUnsafe => "rejected_unsafe",
-            },
+            code,
             classification,
-            message: format!("{type_name} v{type_version} → {classification:?}"),
+            message,
         });
 
         nodes.push(NodeInstance {
@@ -590,11 +657,13 @@ mod tests {
         assert_eq!(r.draft.name, "n8n 2.39.0 hello");
         assert_eq!(r.draft.nodes.len(), 2);
         assert_eq!(r.report.classifications.native_equivalent, 1);
-        assert_eq!(r.report.classifications.preserved_opaque, 1);
+        assert_eq!(r.report.classifications.adapted, 1);
+        assert_eq!(r.report.classifications.preserved_opaque, 0);
         assert!(!r.report.blocked);
         assert_eq!(r.draft.nodes[0].id, "manual-1");
         assert_eq!(r.draft.nodes[1].id, "set-1");
         assert_eq!(r.draft.nodes[0].contract_lock.name, "manual-trigger");
+        assert_eq!(r.draft.nodes[1].contract_lock.name, "edit-fields");
         assert_eq!(r.draft.connections.len(), 1);
         assert_eq!(r.draft.connections[0]["source"]["node_id"], "manual-1");
         assert_eq!(r.draft.connections[0]["target"]["node_id"], "set-1");
@@ -672,6 +741,60 @@ mod tests {
         let r = import_n8n_v2("wf", serde_json::to_vec(&doc).unwrap().as_slice()).unwrap();
         let ids: Vec<&str> = r.draft.nodes.iter().map(|n| n.id.as_str()).collect();
         assert_eq!(ids, vec!["b", "a"]);
+    }
+
+    #[test]
+    fn set_v3_adapted_with_note_if_merge_native_equivalents() {
+        let doc = json!({"name":"branch",
+            "nodes":[
+                {"id":"m","name":"Manual","type":"n8n-nodes-base.manualTrigger","typeVersion":1,"position":[0,0],"parameters":{}},
+                {"id":"i","name":"If","type":"n8n-nodes-base.if","typeVersion":1,"position":[200,0],"parameters":{}},
+                {"id":"mg","name":"Merge","type":"n8n-nodes-base.merge","typeVersion":1,"position":[400,0],"parameters":{}},
+                {"id":"s","name":"Set","type":"n8n-nodes-base.set","typeVersion":3,"position":[600,0],"parameters":{}}
+            ],
+            "connections":{}});
+        let r = import_n8n_v2("wf", serde_json::to_vec(&doc).unwrap().as_slice()).unwrap();
+        assert_eq!(r.report.classifications.native_equivalent, 3);
+        assert_eq!(r.report.classifications.adapted, 1);
+        let set_node = &r.draft.nodes[3];
+        assert_eq!(set_node.contract_lock.name, "edit-fields");
+        assert!(set_node
+            .compatibility_metadata
+            .get("adaptation_note")
+            .and_then(Value::as_str)
+            .unwrap_or("")
+            .contains("assignments"));
+        assert!(r.report.findings.iter().any(|f| f.code == "adapted"));
+    }
+
+    #[test]
+    fn code_node_rejected_in_any_version() {
+        for v in [1u64, 2] {
+            let doc = json!({"name":"c","nodes":[{"id":"js","name":"Code","type":"n8n-nodes-base.code","typeVersion":v,"position":[0,0],"parameters":{"jsCode":"while(1){}"}}],"connections":{}});
+            let err = import_n8n_v2("wf", serde_json::to_vec(&doc).unwrap().as_slice()).unwrap_err();
+            assert!(err.to_string().contains("code"), "msg: {err}");
+        }
+    }
+
+    #[test]
+    fn nested_secret_keys_redacted_in_arrays_and_subobjects() {
+        let doc = json!({"name":"s","nodes":[{"id":"http","name":"HTTP","type":"n8n-nodes-base.httpRequest","typeVersion":4,"position":[0,0],
+            "parameters":{"url":"https://x","options":{"headers":{"Authorization":"Bearer X"}},"chain":[{"apiKey":"K","body":{"client_secret":"S"}}]}}],
+            "connections":{}});
+        let r = import_n8n_v2("wf", serde_json::to_vec(&doc).unwrap().as_slice()).unwrap();
+        let p = &r.draft.nodes[0].configuration;
+        assert_eq!(p["options"]["headers"]["Authorization"], "[REDACTED]");
+        assert_eq!(p["chain"][0]["apiKey"], "[REDACTED]");
+        assert_eq!(p["chain"][0]["body"]["client_secret"], "[REDACTED]");
+        assert!(r.report.redactions.len() >= 3);
+    }
+
+    #[test]
+    fn empty_name_and_bad_type_version_rejected() {
+        let empty_name = json!({"name":"x","nodes":[{"id":"a","name":"   ","type":"t","typeVersion":1,"parameters":{}}],"connections":{}});
+        assert!(import_n8n_v2("wf", serde_json::to_vec(&empty_name).unwrap().as_slice()).is_err());
+        let bad_ver = json!({"name":"x","nodes":[{"id":"a","name":"n","type":"t","typeVersion":0,"parameters":{}}],"connections":{}});
+        assert!(import_n8n_v2("wf", serde_json::to_vec(&bad_ver).unwrap().as_slice()).is_err());
     }
 
     #[test]
