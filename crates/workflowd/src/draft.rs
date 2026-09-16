@@ -441,10 +441,10 @@ impl DraftService {
         // see the imported graph.  Uses the same storage format as `create`.
         connection
             .execute(
-                "INSERT INTO drafts(workflow_id, draft_version, json)
-                 VALUES(?1, 1, ?2)
-                 ON CONFLICT(workflow_id) DO UPDATE SET draft_version=1, json=excluded.json",
-                params![workflow_id, serde_json::to_vec(&import.draft).map_err(|e| DraftError::Storage(format!("import serialize: {e}")))?],
+                "INSERT INTO workflow_drafts(workflow_id, draft_version, name, document_json)
+                 VALUES(?1, 1, ?2, ?3)
+                 ON CONFLICT(workflow_id) DO UPDATE SET draft_version=1, name=excluded.name, document_json=excluded.document_json",
+                params![workflow_id, import.draft.name.clone(), serde_json::to_vec(&import.draft).map_err(|e| DraftError::Storage(format!("import serialize: {e}")))?],
             )
             .map_err(|e| DraftError::Storage(format!("import persist: {e}")))?;
         let report = serde_json::to_value(&import.report)

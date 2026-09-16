@@ -570,3 +570,161 @@ fn sanitize_ident(s: &str) -> String {
         .trim_matches('-')
         .to_ascii_lowercase()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    const HELLO: &str = r#"{
+      "name": "n8n 2.39.0 hello",
+      "versionId": "e2e-hello-world-v1",
+      "nodes": [
+        {"id":"manual-1","name":"When clicking Test","type":"n8n-nodes-base.manualTrigger","typeVersion":1,"position":[200,200],"parameters":{}},
+        {"id":"set-1","name":"Set greeting","type":"n8n-nodes-base.set","typeVersion":3,"position":[460,200],
+         "parameters":{"assignments":{"assignments":[{"id":"a1","name":"message","value":"=Hello","type":"string"}]}}}
+      ],
+      "connections": {"manual-1": {"main": [[{"node":"set-1","type":"main","index":0}]]}}
+    }"#;
+
+    #[test]
+    fn hello_world_classifies_and_preserves_identity() {
+        let r = import_n8n_v2("wf-h", HELLO.as_bytes()).expect("import ok");
+        assert_eq!(r.draft.workflow_id, "wf-h");
+        assert_eq!(r.draft.name, "n8n 2.39.0 hello");
+        assert_eq!(r.draft.nodes.len(), 2);
+        assert_eq!(r.report.classifications.native_equivalent, 1);
+        assert_eq!(r.report.classifications.preserved_opaque, 1);
+        assert!(!r.report.blocked);
+        assert_eq!(r.draft.nodes[0].id, "manual-1");
+        assert_eq!(r.draft.nodes[1].id, "set-1");
+        assert_eq!(r.draft.nodes[0].contract_lock.name, "manual-trigger");
+        assert_eq!(r.draft.connections.len(), 1);
+        assert_eq!(r.draft.connections[0]["source"]["node_id"], "manual-1");
+        assert_eq!(r.draft.connections[0]["target"]["node_id"], "set-1");
+    }
+
+    #[test]
+    fn secret_keys_and_credentials_redacted() {
+        let doc = json!({
+            "name":"s","nodes":[{"id":"h1","name":"HTTP","type":"n8n-nodes-base.httpRequest","typeVersion":4,"position":[0,0],
+                "credentials":{"basic":{"user":"u","password":"P"}},
+                "parameters":{"url":"https://x","apiKey":"S3CR3T","headers":{"Authorization":"Bearer x"}}
+            }],"connections":{}
+        });
+        let r = import_n8n_v2("wf", serde_json::to_vec(&doc).unwrap().as_slice()).unwrap();
+        let params = &r.draft.nodes[0].configuration;
+        assert_eq!(params["apiKey"], "[REDACTED]");
+        assert_eq!(params["headers"]["Authorization"], "[REDACTED]");
+        assert!(r.report.redactions.iter().any(|red| red.path == "credentials"));
+        assert!(r.report.redactions.iter().any(|red| red.path.endsWith(".apiKey")));
+    }
+
+    #[test]
+    fn execute_command_blocks_import() {
+        let doc = json!({
+            "name":"e","nodes":[
+                {"id":"m","name":"M","type":"n8n-nodes-base.manualTrigger","typeVersion":1,"position":[0,0],"parameters":{}},
+                {"id":"sh","name":"Sh","type":"n8n-nodes-base.executeCommand","typeVersion":1,"position":[0,0],"parameters":{"command":"id"}}
+            ],"connections":{"m":{"main":[[{"node":"sh","type":"main","index":0}]]}}
+        });
+        let err = import_n8n_v2("wf", serde_json::to_vec(&doc).unwrap().as_slice()).unwrap_err();
+        assert!(matches!(err, ImportError::Rejected(_)), "expected reject, got {err}");
+        assert!(err.to_string().contains("executeCommand"), "msg: {err}");
+    }
+
+    #[test]
+    fn oversized_string_rejected() {
+        let big = "A".repeat(MAX_STRING_VALUE_BYTES + 1);
+        let doc = json!({"name":"b","nodes":[{"id":"1","name":"n","type":"t","typeVersion":1,"parameters":{"d":big}}],"connections":{}});
+        let err = import_n8n_v2("wf", serde_json::to_vec(&doc).unwrap().as_slice()).unwrap_err();
+        assert!(err.to_string().contains("exceeds"), "msg: {err}");
+    }
+
+    #[test]
+    fn large_base64_blob_redacted() {
+        let b64 = "Q".repeat(1500);
+        let doc = json!({"name":"x","nodes":[{"id":"1","name":"n","type":"t","typeVersion":1,"parameters":{"blob":b64}}],"connections":{}});
+        let r = import_n8n_v2("wf", serde_json::to_vec(&doc).unwrap().as_slice()).unwrap();
+        assert_eq!(r.draft.nodes[0].configuration["blob"], "[REDACTED]");
+    }
+
+    #[test]
+    fn dangling_connection_reported_as_adapted() {
+        let doc = json!({"name":"d","nodes":[{"id":"m","name":"M","type":"n8n-nodes-base.manualTrigger","typeVersion":1,"position":[0,0],"parameters":{}}],
+            "connections":{"m":{"main":[[{"node":"missing","type":"main","index":0}]]}}});
+        let r = import_n8n_v2("wf", serde_json::to_vec(&doc).unwrap().as_slice()).unwrap();
+        assert!(r.draft.connections.is_empty());
+        assert!(r.report.findings.iter().any(|f| f.code == "dangling_connection"));
+        assert_eq!(r.report.classifications.adapted, 1);
+    }
+
+    #[test]
+    fn size_cap_enforced() {
+        let pad = "x".repeat(MAX_IMPORT_BYTES);
+        let body = format!("{{\"name\":\"x\",\"nodes\":[],\"connections\":{{}},\"pad\":\"{pad}\"}}");
+        let err = import_n8n_v2("wf", body.as_bytes()).unwrap_err();
+        assert!(matches!(err, ImportError::TooLarge(_)));
+    }
+
+    #[test]
+    fn node_order_preserved_for_canonical_comparison() {
+        let doc = json!({"name":"o","nodes":[
+            {"id":"b","name":"B","type":"t","typeVersion":1,"position":[0,0],"parameters":{}},
+            {"id":"a","name":"A","type":"t","typeVersion":1,"position":[0,0],"parameters":{}}
+        ],"connections":{}});
+        let r = import_n8n_v2("wf", serde_json::to_vec(&doc).unwrap().as_slice()).unwrap();
+        let ids: Vec<&str> = r.draft.nodes.iter().map(|n| n.id.as_str()).collect();
+        assert_eq!(ids, vec!["b", "a"]);
+    }
+
+    #[test]
+    fn import_persists_and_roundtrips_through_draft_service() {
+        use crate::config::ServeConfig;
+        use crate::draft::DraftService;
+        use std::net::SocketAddr;
+
+        let tmp = std::env::temp_dir().join(format!(
+            "canopy-import-test-{}-{}",
+            std::process::id(),
+            rand_suffix()
+        ));
+        std::fs::create_dir_all(&tmp).unwrap();
+        let cfg = ServeConfig {
+            bind: "127.0.0.1:0".parse::<SocketAddr>().unwrap(),
+            state_dir: tmp.clone(),
+            cgroup_dir: None,
+            sqlite_min_version: 3_039_000,
+            tls: None,
+            master_key_file: None,
+            control_origin: "http://localhost".into(),
+            session_ttl_seconds: 3600,
+            login_max_failures: 5,
+            argon_memory_kib: 1024,
+            argon_iterations: 1,
+            draft_lease_ttl_seconds: 60,
+            draft_takeover_grace_seconds: 1,
+            draft_snapshot_interval: 100,
+            draft_history_limit: 16,
+            draft_undo_limit: 32,
+        };
+        let svc = DraftService::initialize(&cfg).expect("service init");
+        let (draft, report) = svc.import_n8n_v2("wf-rt", HELLO.as_bytes()).expect("import");
+        assert_eq!(draft.nodes.len(), 2);
+        assert!(!report.blocked);
+        // Load back and verify identity preservation survives the SQLite roundtrip.
+        let loaded = svc.load("wf-rt").expect("load");
+        assert_eq!(loaded.workflow_id, "wf-rt");
+        assert_eq!(loaded.nodes.len(), 2);
+        assert_eq!(loaded.nodes[0].id, "manual-1");
+        assert_eq!(loaded.nodes[0].compatibility_metadata["n8n_type"], "n8n-nodes-base.manualTrigger");
+        assert_eq!(loaded.connections.len(), 1);
+        std::fs::remove_dir_all(&tmp).ok();
+    }
+
+    fn rand_suffix() -> String {
+        use std::time::{SystemTime, UNIX_EPOCH};
+        format!("{:x}", SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.subsec_nanos()).unwrap_or(0))
+    }
+}
+
