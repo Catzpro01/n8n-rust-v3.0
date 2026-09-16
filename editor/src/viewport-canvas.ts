@@ -32,6 +32,25 @@ const NODE_WIDTH = 160;
 const NODE_HEIGHT = 72;
 const MIN_ZOOM_DETAIL = 0.35;
 
+function drawRoundedRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number) {
+  if (typeof ctx.roundRect === "function") {
+    ctx.beginPath();
+    ctx.roundRect(x, y, w, h, r);
+  } else {
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.lineTo(x + w - r, y);
+    ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+    ctx.lineTo(x + w, y + h - r);
+    ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+    ctx.lineTo(x + r, y + h);
+    ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+    ctx.lineTo(x, y + r);
+    ctx.quadraticCurveTo(x, y, x + r, y);
+    ctx.closePath();
+  }
+}
+
 export class ViewportCanvas {
   private canvas: HTMLCanvasElement;
   private ctx: CanvasRenderingContext2D;
@@ -153,7 +172,8 @@ export class ViewportCanvas {
     const ctx = this.ctx;
     const { width, height, zoom, offsetX, offsetY } = this.viewport;
     ctx.setTransform(this.devicePixelRatio, 0, 0, this.devicePixelRatio, 0, 0);
-    ctx.fillStyle = "#0f172a";
+    // n8n dark canvas background
+    ctx.fillStyle = "#18181f";
     ctx.fillRect(0, 0, width, height);
 
     const stats: RenderStats = { nodesInViewport: 0, connectionsInViewport: 0, drawCalls: 0 };
@@ -170,64 +190,29 @@ export class ViewportCanvas {
     const hw = NODE_WIDTH / 2;
     const hh = NODE_HEIGHT / 2;
 
-    // Grid
-    ctx.strokeStyle = "rgba(148,163,184,0.08)";
-    ctx.lineWidth = 1;
-    const gridSize = zoom > 0.7 ? 40 : zoom > 0.35 ? 80 : 160;
+    // n8n-style Dot Matrix Canvas Grid
+    const dotSpacing = zoom > 0.7 ? 24 : zoom > 0.35 ? 48 : 96;
+    const dotRadius = Math.max(1, 1.25 * Math.min(zoom, 1.2));
+    ctx.fillStyle = "rgba(255, 255, 255, 0.12)";
     ctx.beginPath();
-    const startGX = Math.floor(wx0 / gridSize) * gridSize;
-    const endGX = Math.ceil(wx1 / gridSize) * gridSize;
-    for (let x = startGX; x <= endGX; x += gridSize) {
+    const startGX = Math.floor(wx0 / dotSpacing) * dotSpacing;
+    const endGX = Math.ceil(wx1 / dotSpacing) * dotSpacing;
+    const startGY = Math.floor(wy0 / dotSpacing) * dotSpacing;
+    const endGY = Math.ceil(wy1 / dotSpacing) * dotSpacing;
+    for (let x = startGX; x <= endGX; x += dotSpacing) {
       const sx = (x - wx0) * zoom;
-      ctx.moveTo(sx, 0);
-      ctx.lineTo(sx, height);
+      for (let y = startGY; y <= endGY; y += dotSpacing) {
+        const sy = (y - wy0) * zoom;
+        ctx.moveTo(sx + dotRadius, sy);
+        ctx.arc(sx, sy, dotRadius, 0, Math.PI * 2);
+      }
     }
-    const startGY = Math.floor(wy0 / gridSize) * gridSize;
-    const endGY = Math.ceil(wy1 / gridSize) * gridSize;
-    for (let y = startGY; y <= endGY; y += gridSize) {
-      const sy = (y - wy0) * zoom;
-      ctx.moveTo(0, sy);
-      ctx.lineTo(width, sy);
-    }
-    ctx.stroke();
+    ctx.fill();
     stats.drawCalls++;
 
-    // Nodes: only draw if their box intersects the viewport.
-    const showDetail = zoom >= MIN_ZOOM_DETAIL;
-    ctx.strokeStyle = "#334155";
-    ctx.lineWidth = 1;
-    for (let i = 0; i < nodes.length; i++) {
-      const n = nodes[i];
-      if (n.x + hw < wx0 || n.x - hw > wx1 || n.y + hh < wy0 || n.y - hh > wy1) continue;
-      stats.nodesInViewport++;
-      const sx = (n.x - hw - wx0) * zoom;
-      const sy = (n.y - hh - wy0) * zoom;
-      const sw = NODE_WIDTH * zoom;
-      const sh = NODE_HEIGHT * zoom;
-      if (this.selected.has(i)) {
-        ctx.fillStyle = "#1d4ed8";
-      } else if (i === this.hoveredIndex) {
-        ctx.fillStyle = "#1e293b";
-      } else {
-        ctx.fillStyle = "#0b1220";
-      }
-      ctx.fillRect(sx, sy, sw, sh);
-      ctx.strokeRect(sx, sy, sw, sh);
-      if (showDetail && sw > 48 && sh > 24) {
-        ctx.fillStyle = "#e2e8f0";
-        ctx.font = `${Math.max(10, 12 * zoom)}px ui-sans-serif, system-ui`;
-        const label = truncate(n.name, Math.max(6, Math.floor(sw / 7)));
-        ctx.fillText(label, sx + 8 * zoom, sy + 18 * zoom);
-        ctx.fillStyle = "#94a3b8";
-        ctx.font = `${Math.max(8, 10 * zoom)}px ui-monospace, monospace`;
-        ctx.fillText(n.contract.split("/").pop() ?? "", sx + 8 * zoom, sy + 36 * zoom);
-      }
-      stats.drawCalls++;
-    }
-
-    // Draw only connections where source OR target is in viewport.
-    ctx.strokeStyle = "rgba(96,165,250,0.4)";
-    ctx.lineWidth = Math.max(1, zoom);
+    // Draw n8n-style Cubic Bezier connections between ports
+    ctx.strokeStyle = "rgba(148, 163, 184, 0.55)";
+    ctx.lineWidth = Math.max(1.8, 2.2 * zoom);
     ctx.beginPath();
     for (const c of t.sections.connections) {
       const sIdx = t.nodeIdToIndex.get(c.source_node);
@@ -239,15 +224,135 @@ export class ViewportCanvas {
       const tvx = tgt.x >= wx0 - hw && tgt.x <= wx1 + hw && tgt.y >= wy0 - hh && tgt.y <= wy1 + hh;
       if (!svx && !tvx) continue;
       stats.connectionsInViewport++;
-      const x1 = (s.x - wx0) * zoom;
+
+      // Source output port (right center) to target input port (left center)
+      const x1 = (s.x + hw - wx0) * zoom;
       const y1 = (s.y - wy0) * zoom;
-      const x2 = (tgt.x - wx0) * zoom;
+      const x2 = (tgt.x - hw - wx0) * zoom;
       const y2 = (tgt.y - wy0) * zoom;
+      const dx = Math.max(32 * zoom, Math.abs(x2 - x1) * 0.45);
+
       ctx.moveTo(x1, y1);
-      ctx.lineTo(x2, y2);
+      ctx.bezierCurveTo(x1 + dx, y1, x2 - dx, y2, x2, y2);
     }
     ctx.stroke();
     stats.drawCalls++;
+
+    // Nodes: n8n modern card geometry with category icon badge & ports
+    const showDetail = zoom >= MIN_ZOOM_DETAIL;
+    for (let i = 0; i < nodes.length; i++) {
+      const n = nodes[i];
+      if (n.x + hw < wx0 || n.x - hw > wx1 || n.y + hh < wy0 || n.y - hh > wy1) continue;
+      stats.nodesInViewport++;
+      const sx = (n.x - hw - wx0) * zoom;
+      const sy = (n.y - hh - wy0) * zoom;
+      const sw = NODE_WIDTH * zoom;
+      const sh = NODE_HEIGHT * zoom;
+      const isSelected = this.selected.has(i);
+      const isHovered = i === this.hoveredIndex;
+
+      ctx.save();
+      const cornerRadius = Math.max(4, Math.min(8 * zoom, 10));
+      drawRoundedRect(ctx, sx, sy, sw, sh, cornerRadius);
+
+      // Node background
+      if (isSelected) {
+        ctx.fillStyle = "#202330";
+      } else if (isHovered) {
+        ctx.fillStyle = "#272a38";
+      } else {
+        ctx.fillStyle = "#1e2029";
+      }
+      ctx.fill();
+
+      // Node border
+      if (isSelected) {
+        ctx.strokeStyle = "#ff6d5a"; // Coral n8n glow
+        ctx.lineWidth = Math.max(2, 2.5 * zoom);
+      } else if (isHovered) {
+        ctx.strokeStyle = "#4e546a";
+        ctx.lineWidth = Math.max(1, 1.5 * zoom);
+      } else {
+        ctx.strokeStyle = "#303443";
+        ctx.lineWidth = Math.max(1, 1 * zoom);
+      }
+      ctx.stroke();
+
+      // Connector ports: Left (Input) & Right (Output)
+      const portRadius = Math.max(3, 4.5 * zoom);
+
+      // Left input port
+      ctx.beginPath();
+      ctx.arc(sx, sy + sh / 2, portRadius, 0, Math.PI * 2);
+      ctx.fillStyle = isSelected ? "#ff6d5a" : "#45495b";
+      ctx.fill();
+      ctx.strokeStyle = "#ffffff";
+      ctx.lineWidth = Math.max(1, 1.2 * zoom);
+      ctx.stroke();
+
+      // Right output port
+      ctx.beginPath();
+      ctx.arc(sx + sw, sy + sh / 2, portRadius, 0, Math.PI * 2);
+      ctx.fillStyle = isSelected ? "#ff6d5a" : "#45495b";
+      ctx.fill();
+      ctx.strokeStyle = "#ffffff";
+      ctx.lineWidth = Math.max(1, 1.2 * zoom);
+      ctx.stroke();
+
+      // Inner details: Category icon, label, and sublabel
+      if (showDetail && sw > 48 && sh > 24) {
+        const iconSize = Math.min(28 * zoom, 28);
+        const iconMargin = 8 * zoom;
+        const iconX = sx + iconMargin;
+        const iconY = sy + (sh - iconSize) / 2;
+
+        let catColor = "#ff6d5a"; // n8n coral for triggers/manual
+        const nameLower = n.name.toLowerCase();
+        const contractLower = n.contract.toLowerCase();
+        if (contractLower.includes("http") || nameLower.includes("http") || nameLower.includes("request") || nameLower.includes("api")) {
+          catColor = "#38bdf8"; // blue
+        } else if (contractLower.includes("code") || nameLower.includes("transform") || nameLower.includes("code") || nameLower.includes("eval")) {
+          catColor = "#10b981"; // emerald
+        } else if (contractLower.includes("agent") || nameLower.includes("ai") || nameLower.includes("llm")) {
+          catColor = "#a855f7"; // purple
+        } else if (contractLower.includes("hub") || nameLower.includes("webhook") || nameLower.includes("poll")) {
+          catColor = "#f59e0b"; // amber
+        }
+
+        drawRoundedRect(ctx, iconX, iconY, iconSize, iconSize, Math.max(3, Math.min(5 * zoom, 6)));
+        ctx.fillStyle = catColor;
+        ctx.fill();
+
+        // Icon glyph
+        ctx.fillStyle = "#ffffff";
+        ctx.font = `bold ${Math.max(9, 12 * zoom)}px ui-sans-serif, system-ui`;
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        const glyph = (n.name[0] || "N").toUpperCase();
+        ctx.fillText(glyph, iconX + iconSize / 2, iconY + iconSize / 2);
+
+        // Text titles
+        ctx.textAlign = "left";
+        ctx.textBaseline = "alphabetic";
+        const textX = iconX + iconSize + 8 * zoom;
+        const maxTextWidth = sw - (textX - sx) - 8 * zoom;
+
+        // Title
+        ctx.fillStyle = "#f3f4f6";
+        ctx.font = `600 ${Math.max(10, 12 * zoom)}px ui-sans-serif, system-ui`;
+        const label = truncate(n.name, Math.max(6, Math.floor(maxTextWidth / (7 * zoom))));
+        ctx.fillText(label, textX, sy + 23 * zoom);
+
+        // Subtitle
+        ctx.fillStyle = "#9ca3af";
+        ctx.font = `${Math.max(8, 10 * zoom)}px ui-sans-serif, system-ui`;
+        const subtext = n.contract.split("/").pop() || "action";
+        ctx.fillText(truncate(subtext, Math.max(6, Math.floor(maxTextWidth / (6 * zoom)))), textX, sy + 39 * zoom);
+      }
+
+      ctx.restore();
+      stats.drawCalls++;
+    }
 
     return stats;
   }

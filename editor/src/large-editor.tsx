@@ -342,6 +342,47 @@ export function LargeEditor({ workflowId }: Props) {
     if (event.key === "Escape") setSearchQuery("");
   };
 
+  const handleZoomIn = () => {
+    const t = viewTransformRef.current;
+    const rect = canvasRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    const nextZoom = Math.min(2.0, t.zoom * 1.2);
+    const cx = rect.width / 2;
+    const cy = rect.height / 2;
+    const wx = (cx - t.offsetX) / t.zoom;
+    const wy = (cy - t.offsetY) / t.zoom;
+    const next = { offsetX: cx - wx * nextZoom, offsetY: cy - wy * nextZoom, zoom: nextZoom };
+    viewTransformRef.current = next;
+    viewportRef.current?.setViewport(next);
+  };
+
+  const handleZoomOut = () => {
+    const t = viewTransformRef.current;
+    const rect = canvasRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    const nextZoom = Math.max(0.08, t.zoom / 1.2);
+    const cx = rect.width / 2;
+    const cy = rect.height / 2;
+    const wx = (cx - t.offsetX) / t.zoom;
+    const wy = (cy - t.offsetY) / t.zoom;
+    const next = { offsetX: cx - wx * nextZoom, offsetY: cy - wy * nextZoom, zoom: nextZoom };
+    viewTransformRef.current = next;
+    viewportRef.current?.setViewport(next);
+  };
+
+  const handleResetZoom = () => {
+    const t = viewTransformRef.current;
+    const rect = canvasRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    const cx = rect.width / 2;
+    const cy = rect.height / 2;
+    const wx = (cx - t.offsetX) / t.zoom;
+    const wy = (cy - t.offsetY) / t.zoom;
+    const next = { offsetX: cx - wx, offsetY: cy - wy, zoom: 1 };
+    viewTransformRef.current = next;
+    viewportRef.current?.setViewport(next);
+  };
+
   const totalNodes = state.phase === "ready" ? state.topology.sections.nodes.length : 0;
   const totalConnections = state.phase === "ready" ? state.topology.sections.connections.length : 0;
   const totalGroups = state.phase === "ready" ? state.topology.sections.groups.length : 0;
@@ -449,6 +490,11 @@ export function LargeEditor({ workflowId }: Props) {
             tabIndex={0}
             aria-label="Workflow viewport canvas (pan with drag, zoom with wheel)"
           />
+          <div class="canvas-zoom-controls" aria-label="Canvas zoom controls">
+            <button type="button" class="zoom-btn" onClick={handleZoomIn} title="Zoom in" aria-label="Zoom in">+</button>
+            <button type="button" class="zoom-btn" onClick={handleResetZoom} title="Reset zoom to 100%" aria-label="Reset zoom">100%</button>
+            <button type="button" class="zoom-btn" onClick={handleZoomOut} title="Zoom out" aria-label="Zoom out">−</button>
+          </div>
           {state.phase === "ready" && (
             <p class="viewport-help">Drag to pan · wheel to zoom · click to select · shift+click to multi-select</p>
           )}

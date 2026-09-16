@@ -39,10 +39,10 @@ pub struct EditorSessionState {
 }
 
 #[derive(Deserialize)]
-struct ImportN8nRequest {
-    workflow_id: String,
+pub struct ImportN8nRequest {
+    pub workflow_id: String,
     /// Raw n8n workflow JSON document (owner-authored export).
-    document: Value,
+    pub document: Value,
 }
 
 pub async fn import_n8n(
