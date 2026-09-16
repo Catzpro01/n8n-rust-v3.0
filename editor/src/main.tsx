@@ -10,7 +10,7 @@ import type { ArtifactView, Catalog, CompilePreview, EditingStatus, PublicationS
 import "./styles.css";
 
 type Release = { product: string; version: string; build_commit: string };
-type Readiness = { status: string; checks: { sqlite: { journal_mode: string; synchronous: string } } };
+type Readiness = { status: string; checks: { sqlite: { journal_mode: string; synchronous: string } }; recovery?: { state: string; disaster_recovery_ready: boolean } };
 type Resources = { cpu: { available: boolean }; memory: { available: boolean } };
 type Snapshot = { release?: Release; readiness?: Readiness; resources?: Resources; catalog?: Catalog; error?: string };
 type SaveState = "saved" | "saving" | "offline" | "conflict";
@@ -212,6 +212,45 @@ function App() {
     const value = await response.json() as T & { code?: string };
     if (!response.ok) throw Object.assign(new Error(value.code ?? "Request failed"), { response, value });
     return value;
+  }
+  async function handleAuthSubmit(event: Event) {
+    event.preventDefault();
+    const isSetupRequired = snapshot.readiness?.recovery?.state === "setup-required";
+    if (isSetupRequired) {
+      if (password.length < 12) {
+        showError(new Error("Password minimal 12 karakter untuk inisialisasi akun Owner."));
+        return;
+      }
+      setAction("Mendaftarkan akun Owner baru…");
+      try {
+        const passphrase = `${password}-recovery-passphrase-kit`;
+        const response = await fetch("/api/v1/setup", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            email: email.trim().toLowerCase(),
+            password,
+            recovery_passphrase: passphrase.length >= 16 ? passphrase : `${passphrase}-123456`,
+          }),
+        });
+        if (!response.ok) {
+          const body = await response.json().catch(() => ({})) as { code?: string; title?: string };
+          throw new Error(body.code ?? body.title ?? "Setup akun Owner gagal");
+        }
+        if (snapshot.readiness) {
+          setSnapshot((prev) => ({
+            ...prev,
+            readiness: prev.readiness ? { ...prev.readiness, recovery: { state: "local-recovery-only", disaster_recovery_ready: false } } : prev.readiness,
+          }));
+        }
+        setAction("Akun Owner berhasil dibuat. Melakukan autentikasi…");
+        await signIn();
+      } catch (err) {
+        showError(err);
+      }
+    } else {
+      void signIn().catch(showError);
+    }
   }
   async function signIn() {
     setAction("Signing in…");
@@ -487,7 +526,7 @@ function App() {
   return <main class="shell">
     <header class="masthead"><div class="identity"><Mark /><div><p class="eyebrow">Independent automation workspace</p><h1>Canopy Workbench</h1></div></div><span class={`health ${snapshot.readiness?.status === "ready" ? "ready" : "waiting"}`}><span aria-hidden="true" />{snapshot.readiness?.status ?? "connecting"}</span></header>
     <section class={`welcome ${workflowId ? "editor-context" : ""}`} aria-labelledby="welcome-title"><p class="eyebrow">Loss-aware Draft editing</p><h2 id="welcome-title">One writer. Honest recovery.</h2><p>The daemon grants one renewable Draft Lease. Every uncertain command is encrypted locally until acknowledged.</p>
-      {!owner ? <form class="owner-login" onSubmit={(event) => { event.preventDefault(); void signIn().catch(showError); }}><label>Owner email<input data-testid="email" type="email" required value={email} onInput={(event) => setEmail(event.currentTarget.value)} /></label><label>Password<input data-testid="password" type="password" required value={password} onInput={(event) => setPassword(event.currentTarget.value)} /></label><button data-testid="sign-in" type="submit">Sign in</button></form> : <button data-testid="logout" type="button" onClick={() => void logout().catch(showError)}>Sign out and clear recovery copies</button>}
+      {!owner ? <form class="owner-login" onSubmit={handleAuthSubmit}><label>Owner email<input data-testid="email" type="email" required value={email} onInput={(event) => setEmail(event.currentTarget.value)} /></label><label>Password{snapshot.readiness?.recovery?.state === "setup-required" ? " (min. 12 karakter)" : ""}<input data-testid="password" type="password" required minLength={snapshot.readiness?.recovery?.state === "setup-required" ? 12 : undefined} value={password} onInput={(event) => setPassword(event.currentTarget.value)} /></label><button data-testid="sign-in" type="submit">{snapshot.readiness?.recovery?.state === "setup-required" ? "Set up Owner & Sign in" : "Sign in"}</button></form> : <button data-testid="logout" type="button" onClick={() => void logout().catch(showError)}>Sign out and clear recovery copies</button>}
       <p class={`action ${saveState}`} data-testid="save-state" data-state={saveState} role="status">{action}</p>
     </section>
     {!workflowId && <section class="cards" aria-label="Installation identity and native catalog"><article><span class="number">01</span><h3>Release</h3><strong>{snapshot.release ? `v${snapshot.release.version}` : "—"}</strong><p>{snapshot.release?.build_commit ?? "Reading build identity…"}</p></article><article><span class="number">02</span><h3>Storage</h3><strong>{snapshot.readiness?.checks.sqlite.journal_mode?.toUpperCase() ?? "—"}</strong><p>Full durability</p></article><article><span class="number">03</span><h3>Resource view</h3><strong>{snapshot.resources?.cpu.available ? "Observed" : "Unavailable"}</strong><p>{snapshot.resources?.memory.available ? "Memory controller visible" : "Reported honestly"}</p></article><article><span class="number">04</span><h3>Native catalog</h3><strong>{snapshot.catalog?.nodes[0]?.display_name ?? "Loading…"}</strong><p>{snapshot.catalog?.nodes[0]?.description ?? "Reading contract metadata…"}</p><button data-testid="create-draft" type="button" disabled={!owner || !snapshot.catalog?.nodes[0] || !editorSessionId} onClick={() => void createManualDraft().catch(showError)}>Add to new Draft</button></article><article><span class="number">05</span><h3>n8n 2.39.0 import</h3><strong>First subset</strong><p>Owner-authored workflow JSON. Credentials redacted fail-closed; unsafe nodes (e.g. executeCommand) rejected.</p><label class="import-picker"><input data-testid="import-n8n-file" type="file" accept="application/json,.json" disabled={!owner || !editorSessionId} onChange={(event) => void handleImportFile(event).catch(showError)} /><span>Import n8n workflow JSON…</span></label>{importReport && <details class="import-report"><summary>Compatibility report</summary><pre>{JSON.stringify(importReport.compatibility_report, null, 2)}</pre></details>}</article></section>}
