@@ -135,7 +135,7 @@ impl SecurityService {
 
     pub fn initialize(state: &Path, config: &ServeConfig) -> Result<Self, AppError> {
         let database = state.join("workflow.sqlite3");
-        let master_key = read_master_key(config.master_key_file.as_deref())?;
+        let master_key = read_or_create_master_key(state, config.master_key_file.as_deref())?;
         let service = Self {
             database,
             master_key,
@@ -604,10 +604,27 @@ impl SecurityService {
         Ok(c)
     }
 }
-fn read_master_key(path: Option<&Path>) -> Result<Option<Zeroizing<[u8; 32]>>, AppError> {
-    let Some(path) = path else { return Ok(None) };
+fn read_or_create_master_key(
+    state: &Path,
+    path: Option<&Path>,
+) -> Result<Option<Zeroizing<[u8; 32]>>, AppError> {
+    let key_path = match path {
+        Some(p) => p.to_path_buf(),
+        None => state.join("master.key"),
+    };
+    if !key_path.exists() {
+        let mut key = [0u8; 32];
+        OsRng.fill_bytes(&mut key);
+        let _ = fs::write(&key_path, &key);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let _ = fs::set_permissions(&key_path, fs::Permissions::from_mode(0o600));
+        }
+        return Ok(Some(Zeroizing::new(key)));
+    }
     let bytes = Zeroizing::new(
-        fs::read(path).map_err(|e| AppError::Security(format!("cannot read master key: {e}")))?,
+        fs::read(&key_path).map_err(|e| AppError::Security(format!("cannot read master key: {e}")))?,
     );
     if bytes.len() != 32 {
         return Err(AppError::Security(
