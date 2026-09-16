@@ -4,7 +4,9 @@ use crate::canonical::{digest, CANONICALIZATION, DIGEST_ALGORITHM};
 use crate::draft::WorkflowDraft;
 use crate::edit_fields;
 use crate::{if_node, merge, summarize};
-use canopy_node_contract::{lock, validate, NodeContractLock};
+use canopy_node_contract::{
+    lock, validate, ExecutionLane, NodeContractLock, NodeForm, NodeImplementationLock,
+};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::collections::{BTreeMap, BTreeSet};
@@ -36,6 +38,10 @@ pub struct RevisionPayload {
     pub contract_locks: Vec<NodeContractLock>,
 }
 
+fn default_lane() -> String {
+    "native-cpu".to_string()
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct PlanNode {
     pub node_instance_id: String,
@@ -47,6 +53,14 @@ pub struct PlanNode {
     pub resources: Value,
     pub input_ports: Value,
     pub output_ports: Value,
+    #[serde(default)]
+    pub node_form: NodeForm,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub implementation_lock: Option<NodeImplementationLock>,
+    #[serde(default = "default_lane")]
+    pub selected_lane: String,
+    #[serde(default, skip_serializing_if = "Value::is_null")]
+    pub budget_lock: Value,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
@@ -405,6 +419,7 @@ fn validate_all(
         validate_effects(contract, node, diagnostics)?;
         validate_budgets(contract, node, policy, diagnostics)?;
         validate_compatibility(contract, node, profile, diagnostics)?;
+        validate_lane_isolation(node, diagnostics)?;
     }
     validate_connections(draft, &contracts_by_digest, diagnostics)?;
     validate_unused_outputs(draft, &contracts_by_digest, policy, diagnostics)?;
@@ -862,6 +877,121 @@ fn validate_compatibility(
     Ok(())
 }
 
+fn validate_lane_isolation(
+    node: &crate::draft::NodeInstance,
+    diagnostics: &mut Vec<Diagnostic>,
+) -> Result<(), String> {
+    let ext = node.compatibility_metadata.get("extension");
+    let form_str = ext
+        .and_then(|e| e.get("form"))
+        .or_else(|| node.compatibility_metadata.get("form"))
+        .and_then(Value::as_str);
+
+    let form = match form_str {
+        Some("external_process") => NodeForm::ExternalProcess,
+        Some("wasm") => NodeForm::Wasm,
+        Some("agent_engine") => NodeForm::AgentEngine,
+        _ => NodeForm::Native,
+    };
+
+    let cheapest_lane = match form {
+        NodeForm::Native => ExecutionLane::NativeCpu,
+        NodeForm::ExternalProcess => ExecutionLane::IsolatedProcess,
+        NodeForm::Wasm => ExecutionLane::WasmSandbox,
+        NodeForm::AgentEngine => ExecutionLane::RemoteWorker,
+    };
+
+    let requested_lane_str = ext
+        .and_then(|e| e.get("requested_lane"))
+        .or_else(|| node.compatibility_metadata.get("requested_lane"))
+        .and_then(Value::as_str);
+
+    if let Some(req) = requested_lane_str {
+        let Some(req_lane) = ExecutionLane::from_str_lossy(req) else {
+            push(
+                diagnostics,
+                "E_LANE_UNKNOWN",
+                "error",
+                format!("node:{}", node.id),
+                "Unknown execution lane requested.",
+                json!({"requested_lane": req}),
+                false,
+            )?;
+            return Ok(());
+        };
+
+        if !req_lane.is_at_least_as_isolated_as(&cheapest_lane) {
+            push(
+                diagnostics,
+                "E_LANE_ISOLATION_VIOLATION",
+                "error",
+                format!("node:{}", node.id),
+                "Requested execution lane violates minimum isolation requirements.",
+                json!({
+                    "node_instance_id": node.id,
+                    "form": format!("{:?}", form),
+                    "requested_lane": req_lane.as_str(),
+                    "minimum_lane": cheapest_lane.as_str()
+                }),
+                false,
+            )?;
+        }
+    }
+    Ok(())
+}
+
+pub fn resolve_node_form_and_lane(
+    node: &crate::draft::NodeInstance,
+) -> Result<(NodeForm, Option<NodeImplementationLock>, ExecutionLane), String> {
+    let ext = node.compatibility_metadata.get("extension");
+    let form_str = ext
+        .and_then(|e| e.get("form"))
+        .or_else(|| node.compatibility_metadata.get("form"))
+        .and_then(Value::as_str);
+
+    let form = match form_str {
+        Some("external_process") => NodeForm::ExternalProcess,
+        Some("wasm") => NodeForm::Wasm,
+        Some("agent_engine") => NodeForm::AgentEngine,
+        _ => NodeForm::Native,
+    };
+
+    let implementation_lock: Option<NodeImplementationLock> = ext
+        .and_then(|e| e.get("implementation_lock"))
+        .or_else(|| node.compatibility_metadata.get("implementation_lock"))
+        .and_then(|v| serde_json::from_value(v.clone()).ok());
+
+    let cheapest_lane = match form {
+        NodeForm::Native => ExecutionLane::NativeCpu,
+        NodeForm::ExternalProcess => ExecutionLane::IsolatedProcess,
+        NodeForm::Wasm => ExecutionLane::WasmSandbox,
+        NodeForm::AgentEngine => ExecutionLane::RemoteWorker,
+    };
+
+    let requested_lane_str = ext
+        .and_then(|e| e.get("requested_lane"))
+        .or_else(|| node.compatibility_metadata.get("requested_lane"))
+        .and_then(Value::as_str);
+
+    let selected_lane = if let Some(req) = requested_lane_str {
+        let Some(req_lane) = ExecutionLane::from_str_lossy(req) else {
+            return Err(format!("Unknown execution lane requested: '{req}'"));
+        };
+        if !req_lane.is_at_least_as_isolated_as(&cheapest_lane) {
+            return Err(format!(
+                "Requested lane '{}' violates minimum isolation for form '{:?}'",
+                req_lane.as_str(),
+                form
+            ));
+        }
+        req_lane
+    } else {
+        cheapest_lane
+    };
+
+    Ok((form, implementation_lock, selected_lane))
+}
+
 fn validate_connections(
     draft: &WorkflowDraft,
     contracts: &BTreeMap<String, &Value>,
@@ -1080,6 +1210,7 @@ fn build_plan(
         let contract = contracts_by_digest
             .get(&node.contract_lock.digest)
             .ok_or_else(|| "validated contract lock disappeared".to_string())?;
+        let (node_form, implementation_lock, selected_lane) = resolve_node_form_and_lane(node)?;
         nodes.push(PlanNode {
             node_instance_id: node.id.clone(),
             contract_lock: node.contract_lock.clone(),
@@ -1096,6 +1227,10 @@ fn build_plan(
             resources: contract["resources"].clone(),
             input_ports: contract["ports"]["inputs"].clone(),
             output_ports: contract["ports"]["outputs"].clone(),
+            node_form,
+            implementation_lock,
+            selected_lane: selected_lane.as_str().to_string(),
+            budget_lock: contract["resources"]["defaults"].clone(),
         });
     }
     nodes.sort_by(|left, right| left.node_instance_id.cmp(&right.node_instance_id));
@@ -1117,6 +1252,14 @@ fn build_plan(
         .iter()
         .map(|node| vec![node.node_instance_id.clone()])
         .collect();
+
+    let mut lanes_set = BTreeSet::new();
+    lanes_set.insert("native-cpu".to_string());
+    for n in &nodes {
+        lanes_set.insert(n.selected_lane.clone());
+    }
+    let lane_eligibility = lanes_set.into_iter().collect();
+
     Ok(ExecutionPlan {
         format: PLAN_FORMAT.into(),
         compiler_abi: COMPILER_ABI.into(),
@@ -1127,7 +1270,7 @@ fn build_plan(
         nodes,
         scheduling_dependencies,
         segment_candidates,
-        lane_eligibility: vec!["native-cpu".into()],
+        lane_eligibility,
     })
 }
 

@@ -79,7 +79,7 @@ pub fn execute_manual(input: ManualActivationInput) -> ManualActivationResult {
         "revision_digest": input.revision_digest,
         "plan_digest": input.plan_digest,
         "node_contract": input.plan.nodes.first().map(|node| &node.contract_lock),
-        "lane": "native-cpu",
+        "lane": input.plan.nodes.first().map(|node| node.selected_lane.as_str()).unwrap_or("native-cpu"),
         "effect_class": "pure"
     });
 

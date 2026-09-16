@@ -373,7 +373,60 @@ export function LargeEditor({ workflowId }: Props) {
         <aside class="structure-deck-host" data-testid="structure-deck" aria-label="Structure deck">
           <p class="deck-eyebrow">Structure deck</p>
           <div ref={deckRef} class="deck-list" />
-          {selectedNodeId && <p class="selected-note">Selected: <code>{selectedNodeId}</code></p>}
+          {selectedNodeId && (
+            <div
+              class="extension-inspector"
+              data-testid="extension-inspector"
+              style={{
+                marginTop: "12px",
+                padding: "8px",
+                background: "rgba(30, 41, 59, 0.8)",
+                borderRadius: "4px",
+                border: "1px solid #334155",
+              }}
+            >
+              <p class="selected-note" style={{ margin: "0 0 4px 0", color: "#f8fafc", fontWeight: 600 }}>
+                Selected: <code>{selectedNodeId}</code>
+              </p>
+              <div
+                style={{
+                  display: "flex",
+                  gap: "6px",
+                  alignItems: "center",
+                  fontSize: "11px",
+                  marginBottom: "4px",
+                }}
+              >
+                <span style={{ color: "#94a3b8" }}>Form:</span>
+                <span
+                  class="badge badge-form"
+                  style={{
+                    background: "#0ea5e9",
+                    color: "#ffffff",
+                    padding: "1px 5px",
+                    borderRadius: "3px",
+                  }}
+                >
+                  Native
+                </span>
+                <span style={{ color: "#94a3b8", marginLeft: "4px" }}>Lane:</span>
+                <span
+                  class="badge badge-lane"
+                  style={{
+                    background: "#10b981",
+                    color: "#ffffff",
+                    padding: "1px 5px",
+                    borderRadius: "3px",
+                  }}
+                >
+                  native-cpu
+                </span>
+              </div>
+              <p style={{ margin: 0, fontSize: "10px", color: "#64748b" }}>
+                Isolation: in-process thread pool · Verified
+              </p>
+            </div>
+          )}
         </aside>
         <div class="canvas-host">
           <div class="command-map">

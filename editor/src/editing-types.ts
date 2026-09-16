@@ -1,6 +1,34 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 export type ContractLock = { api_version: string; namespace: string; name: string; version: string; digest: string };
+export type NodeForm = "native" | "external_process" | "wasm" | "agent_engine";
+export type ExecutionLane = "native-cpu" | "isolated-process" | "wasm-sandbox" | "remote-worker";
+export type NodeImplementationLock = {
+  api_version: string;
+  namespace: string;
+  name: string;
+  version: string;
+  digest: string;
+  form: NodeForm;
+  entrypoint: string;
+  runtime_requirements: unknown;
+};
+export type CapabilityGrant = {
+  kind: string;
+  scope: string;
+  parameters: Record<string, unknown>;
+};
+export type PlanNodeView = {
+  node_instance_id: string;
+  contract_lock: ContractLock;
+  node_form?: NodeForm;
+  implementation_lock?: NodeImplementationLock;
+  selected_lane?: ExecutionLane;
+  capabilities: string[];
+  resources: Record<string, unknown>;
+  input_ports: unknown[];
+  output_ports: unknown[];
+};
 export type Catalog = { nodes: Array<{ display_name: string; description: string; contract_lock: ContractLock; configuration_schema: unknown; editor_hints: unknown }> };
 export type WorkflowDraft = { workflow_id: string; name: string; draft_version: number; annotation: string; nodes: unknown[] };
 export type CompileDiagnostic = {

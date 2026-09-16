@@ -5,7 +5,15 @@ use sha2::{Digest, Sha256};
 use std::collections::BTreeMap;
 use thiserror::Error;
 
+pub mod extension;
 pub mod universal_scraper;
+
+pub use extension::{
+    CapabilityGrant, ExecutionLane, HandshakeAckResponse, HandshakeRequest,
+    LaneActivationRequest, LaneActivationResultResponse, LaneMessagePayload,
+    LaneProtocolEnvelope, LaneProtocolError, LaneResourceMetrics, NodeForm,
+    NodeImplementationLock, SecretLeaseHandle, LANE_PROTOCOL_ABI,
+};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]

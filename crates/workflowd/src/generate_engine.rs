@@ -327,7 +327,7 @@ fn overflow() -> GenerateFailure {
 mod tests {
     use super::*;
     use crate::compiler::{CompatibilityProfile, PlanDependency, PlanNode};
-    use canopy_node_contract::lock;
+    use canopy_node_contract::{lock, NodeForm};
 
     fn plan(count: u64, start: i64, step: i64, data: Value) -> ExecutionPlan {
         let manual_contract: Value = serde_json::from_str(include_str!(
@@ -348,6 +348,10 @@ mod tests {
             resources: contract["resources"]["hard"].clone(),
             input_ports: contract["ports"]["inputs"].clone(),
             output_ports: contract["ports"]["outputs"].clone(),
+            node_form: NodeForm::Native,
+            implementation_lock: None,
+            selected_lane: "native-cpu".into(),
+            budget_lock: Value::Null,
         };
         ExecutionPlan {
             format: PLAN_FORMAT.into(),

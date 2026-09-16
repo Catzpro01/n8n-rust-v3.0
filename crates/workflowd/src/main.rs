@@ -35,6 +35,14 @@ mod retention;
 mod recovery_set;
 #[allow(dead_code)]
 mod release_slots;
+#[allow(dead_code)]
+mod extension_lane;
+#[allow(dead_code)]
+mod wasm_lane;
+#[allow(dead_code)]
+mod hub;
+#[allow(dead_code)]
+mod agent;
 // Issue 04 wires the scraper engine into the run dispatch and the acceptance
 // suite. Until then the engine is exercised by its own lib tests, so the
 // binary would otherwise report its public surface as dead code.
