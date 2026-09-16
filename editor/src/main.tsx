@@ -4,6 +4,7 @@ import { render } from "preact";
 import { useEffect, useState } from "preact/hooks";
 import { clearOwnerSession, claimEditorSession, loadOwnerSession, saveOwnerSession, type OwnerSession } from "./editor-session";
 import { LargeEditor } from "./large-editor";
+import { importN8nDocument, suggestedWorkflowId, type ImportResponse } from "./n8n-import";
 import { clearRecoveryCopies, deleteRecoveryCopy, loadRecoveryCopies, purgeExpired, saveRecoveryCopy, type RecoveryCommand } from "./recovery";
 import type { ArtifactView, Catalog, CompilePreview, EditingStatus, PublicationStatus, RecoveryFork, RevisionSummary, RunView, TraceView, WorkflowDraft } from "./editing-types";
 import "./styles.css";
@@ -242,6 +243,34 @@ function App() {
     setActiveRunId(""); setRun(undefined); setTrace(undefined);
     history.replaceState(null, "", `/?workflow=${encodeURIComponent(id)}`);
   }
+
+  const [importReport, setImportReport] = useState<ImportResponse | null>(null);
+  async function handleImportFile(event: Event) {
+    const input = event.currentTarget as HTMLInputElement;
+    const file = input.files?.[0];
+    input.value = "";
+    if (!file || !owner) return;
+    setAction(`Reading ${file.name}…`);
+    try {
+      const text = await file.text();
+      let document: unknown;
+      try { document = JSON.parse(text); } catch (e) { throw new Error(`File is not valid JSON: ${(e as Error).message}`); }
+      const id = suggestedWorkflowId(typeof document === "object" && document && "name" in document ? String((document as { name?: unknown }).name ?? file.name) : file.name);
+      setAction(`Importing n8n 2.39.0 workflow as ${id}…`);
+      const response = await importN8nDocument(id, document);
+      setImportReport(response);
+      // Open the new draft in the editor.
+      const lease = await mutateJson<EditingStatus>(`/api/v1/workflows/${id}/editing/open`, { editor_session_id: editorSessionId, label: tabLabel(editorSessionId) });
+      setEditing(lease);
+      setWorkflowId(id);
+      setActiveRunId(""); setRun(undefined); setTrace(undefined);
+      history.replaceState(null, "", `/?workflow=${encodeURIComponent(id)}`);
+      const rejected = response.compatibility_report.classifications.rejected;
+      setAction(`Imported ${response.node_count} nodes. Native ${response.compatibility_report.classifications.native_equivalent} · Preserved ${response.compatibility_report.classifications.preserved_opaque}${rejected ? ` · Rejected ${rejected}` : ""}.`);
+    } catch (e) {
+      showError(e);
+    }
+  }
   async function sendRecoverable(id: string, command: RecoveryCommand) {
     if (!owner) return;
     setCompilePreview(undefined);
@@ -461,7 +490,7 @@ function App() {
       {!owner ? <form class="owner-login" onSubmit={(event) => { event.preventDefault(); void signIn().catch(showError); }}><label>Owner email<input data-testid="email" type="email" required value={email} onInput={(event) => setEmail(event.currentTarget.value)} /></label><label>Password<input data-testid="password" type="password" required value={password} onInput={(event) => setPassword(event.currentTarget.value)} /></label><button data-testid="sign-in" type="submit">Sign in</button></form> : <button data-testid="logout" type="button" onClick={() => void logout().catch(showError)}>Sign out and clear recovery copies</button>}
       <p class={`action ${saveState}`} data-testid="save-state" data-state={saveState} role="status">{action}</p>
     </section>
-    {!workflowId && <section class="cards" aria-label="Installation identity and native catalog"><article><span class="number">01</span><h3>Release</h3><strong>{snapshot.release ? `v${snapshot.release.version}` : "—"}</strong><p>{snapshot.release?.build_commit ?? "Reading build identity…"}</p></article><article><span class="number">02</span><h3>Storage</h3><strong>{snapshot.readiness?.checks.sqlite.journal_mode?.toUpperCase() ?? "—"}</strong><p>Full durability</p></article><article><span class="number">03</span><h3>Resource view</h3><strong>{snapshot.resources?.cpu.available ? "Observed" : "Unavailable"}</strong><p>{snapshot.resources?.memory.available ? "Memory controller visible" : "Reported honestly"}</p></article><article><span class="number">04</span><h3>Native catalog</h3><strong>{snapshot.catalog?.nodes[0]?.display_name ?? "Loading…"}</strong><p>{snapshot.catalog?.nodes[0]?.description ?? "Reading contract metadata…"}</p><button data-testid="create-draft" type="button" disabled={!owner || !snapshot.catalog?.nodes[0] || !editorSessionId} onClick={() => void createManualDraft().catch(showError)}>Add to new Draft</button></article></section>}
+    {!workflowId && <section class="cards" aria-label="Installation identity and native catalog"><article><span class="number">01</span><h3>Release</h3><strong>{snapshot.release ? `v${snapshot.release.version}` : "—"}</strong><p>{snapshot.release?.build_commit ?? "Reading build identity…"}</p></article><article><span class="number">02</span><h3>Storage</h3><strong>{snapshot.readiness?.checks.sqlite.journal_mode?.toUpperCase() ?? "—"}</strong><p>Full durability</p></article><article><span class="number">03</span><h3>Resource view</h3><strong>{snapshot.resources?.cpu.available ? "Observed" : "Unavailable"}</strong><p>{snapshot.resources?.memory.available ? "Memory controller visible" : "Reported honestly"}</p></article><article><span class="number">04</span><h3>Native catalog</h3><strong>{snapshot.catalog?.nodes[0]?.display_name ?? "Loading…"}</strong><p>{snapshot.catalog?.nodes[0]?.description ?? "Reading contract metadata…"}</p><button data-testid="create-draft" type="button" disabled={!owner || !snapshot.catalog?.nodes[0] || !editorSessionId} onClick={() => void createManualDraft().catch(showError)}>Add to new Draft</button></article><article><span class="number">05</span><h3>n8n 2.39.0 import</h3><strong>First subset</strong><p>Owner-authored workflow JSON. Credentials redacted fail-closed; unsafe nodes (e.g. executeCommand) rejected.</p><label class="import-picker"><input data-testid="import-n8n-file" type="file" accept="application/json,.json" disabled={!owner || !editorSessionId} onChange={(event) => void handleImportFile(event).catch(showError)} /><span>Import n8n workflow JSON…</span></label>{importReport && <details class="import-report"><summary>Compatibility report</summary><pre>{JSON.stringify(importReport.compatibility_report, null, 2)}</pre></details>}</article></section>}
     {workflowId && <section class="editor" data-testid="editor" data-workflow-id={workflowId} data-draft-version={draft?.draft_version ?? -1}><div class="editor-head"><div><p class="eyebrow">Mutable Draft</p><h2>{draft?.name ?? workflowId}</h2><code>{workflowId}</code></div><div class={`lease ${editing?.role ?? "waiting"}`} data-testid="lease-role"><strong>{editing?.role === "holder" ? "Lease holder" : editing?.role === "read_only" ? "Read only" : "Lease available"}</strong><span>generation {editing?.lease_generation ?? "—"}</span>{editing?.holder && <small>{editing.holder.label} · expires {new Date(editing.holder.expires_at).toLocaleTimeString()}</small>}</div></div>
       <div class="editor-actions">{editing?.role === "read_only" && !editing.takeover && <button data-testid="request-takeover" onClick={() => void requestTakeover().catch(showError)}>Request takeover</button>}{editing?.role === "read_only" && editing.takeover?.requested_by_me && <button data-testid="claim-takeover" disabled={editing.server_time < editing.takeover.eligible_at} onClick={() => void claimTakeover().catch(showError)}>Claim after grace</button>}{canWrite && editing?.takeover && <><button data-testid="approve-takeover" onClick={() => void respondTakeover(true).catch(showError)}>Approve takeover</button><button onClick={() => void respondTakeover(false).catch(showError)}>Decline</button></>}{canWrite && <button data-testid="release-lease" onClick={() => void releaseLease().catch(showError)}>Release Lease</button>}<button data-testid="refresh-draft" onClick={() => void refreshDraft().catch(showError)}>Refresh Draft</button></div>
       <label class="annotation">Workflow annotation<textarea data-testid="annotation" disabled={!canWrite} value={annotation} onInput={(event) => setAnnotation(event.currentTarget.value)} /></label><div class="editor-actions"><button data-testid="save-annotation" disabled={!canWrite} onClick={() => void saveAnnotation().catch(showError)}>Save annotation</button><button data-testid="undo" disabled={!canWrite} onClick={() => void historyCommand("undo").catch(showError)}>Undo</button><button data-testid="redo" disabled={!canWrite} onClick={() => void historyCommand("redo").catch(showError)}>Redo</button>{pendingCount > 0 && <button data-testid="recover-pending" onClick={() => void recoverPending().catch(showError)}>Reconcile {pendingCount} recovery copy</button>}</div>
