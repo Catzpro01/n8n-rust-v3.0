@@ -31,6 +31,8 @@ mod summarize;
 mod topology;
 #[allow(dead_code)]
 mod retention;
+#[allow(dead_code)]
+mod recovery_set;
 // Issue 04 wires the scraper engine into the run dispatch and the acceptance
 // suite. Until then the engine is exercised by its own lib tests, so the
 // binary would otherwise report its public surface as dead code.
