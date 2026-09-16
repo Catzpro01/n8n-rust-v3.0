@@ -284,20 +284,42 @@ export class BoundedResultList {
     this.container.innerHTML = "";
     const visible = this.items.slice(0, this.maxVisible);
     const ul = document.createElement("ul");
+    ul.setAttribute("role", "listbox");
+    ul.setAttribute("aria-label", "Search results");
     ul.style.margin = "0";
     ul.style.padding = "0";
     ul.style.listStyle = "none";
     for (const item of visible) {
       const li = document.createElement("li");
+      li.tabIndex = 0;
+      li.setAttribute("role", "option");
       li.dataset.nodeIndex = String(item.index);
       li.style.height = `${this.rowHeight}px`;
       li.style.padding = "6px 8px";
       li.style.font = "12px ui-monospace, monospace";
       li.style.color = "#e2e8f0";
       li.style.cursor = "pointer";
+      li.classList.add("search-result-row");
       li.textContent = `${item.node.name} — ${item.node.id}`;
-      li.addEventListener("click", () => {
+
+      const activate = () => {
         this.onSelect?.(item.node.id, item.index);
+      };
+
+      li.addEventListener("click", activate);
+      li.addEventListener("keydown", (event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          activate();
+        } else if (event.key === "ArrowDown") {
+          event.preventDefault();
+          const next = li.nextElementSibling as HTMLElement | null;
+          next?.focus();
+        } else if (event.key === "ArrowUp") {
+          event.preventDefault();
+          const prev = li.previousElementSibling as HTMLElement | null;
+          prev?.focus();
+        }
       });
       ul.appendChild(li);
     }

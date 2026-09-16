@@ -129,12 +129,18 @@ export class StructureDeck {
   private render() {
     this.container.innerHTML = "";
     const list = document.createElement("ul");
+    list.setAttribute("role", "tree");
+    list.setAttribute("aria-label", "Workflow node structure");
     list.style.listStyle = "none";
     list.style.margin = "0";
     list.style.padding = "0";
     const rows = this.visibleRows();
     for (const row of rows) {
       const li = document.createElement("li");
+      li.tabIndex = 0;
+      li.setAttribute("role", "treeitem");
+      li.setAttribute("aria-level", String(row.depth + 1));
+      li.setAttribute("aria-selected", row.selected ? "true" : "false");
       li.dataset.rowKind = row.kind;
       li.dataset.rowId = row.id;
       li.style.paddingLeft = `${8 + row.depth * 12}px`;
@@ -144,24 +150,54 @@ export class StructureDeck {
       li.style.font = "12px ui-sans-serif, system-ui";
       li.style.color = row.selected ? "#fbbf24" : "#cbd5e1";
       li.style.cursor = "pointer";
+      li.classList.add("deck-row");
+
+      const activate = () => {
+        if (row.kind === "group") {
+          this.toggleGroup(row.id);
+          this.onToggleGroup?.(row.id);
+        } else {
+          this.selectOnlyNode(row.id);
+          this.onSelectNode?.(row.id);
+        }
+      };
+
+      li.addEventListener("click", activate);
+      li.addEventListener("keydown", (event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          activate();
+        } else if (event.key === "ArrowRight" && row.kind === "group" && row.groupCollapsed) {
+          event.preventDefault();
+          this.toggleGroup(row.id);
+          this.onToggleGroup?.(row.id);
+        } else if (event.key === "ArrowLeft" && row.kind === "group" && !row.groupCollapsed) {
+          event.preventDefault();
+          this.toggleGroup(row.id);
+          this.onToggleGroup?.(row.id);
+        } else if (event.key === "ArrowDown") {
+          event.preventDefault();
+          const next = li.nextElementSibling as HTMLElement | null;
+          next?.focus();
+        } else if (event.key === "ArrowUp") {
+          event.preventDefault();
+          const prev = li.previousElementSibling as HTMLElement | null;
+          prev?.focus();
+        }
+      });
+
       if (row.kind === "group") {
+        li.setAttribute("aria-expanded", row.groupCollapsed ? "false" : "true");
         const marker = document.createElement("span");
         marker.textContent = row.groupCollapsed ? "▸" : "▾";
         marker.style.width = "16px";
+        marker.setAttribute("aria-hidden", "true");
         li.appendChild(marker);
         const label = document.createElement("span");
         label.textContent = `${row.label} (${row.nodeCount ?? 0})`;
         li.appendChild(label);
-        li.addEventListener("click", () => {
-          this.toggleGroup(row.id);
-          this.onToggleGroup?.(row.id);
-        });
       } else {
         li.textContent = row.label;
-        li.addEventListener("click", () => {
-          this.selectOnlyNode(row.id);
-          this.onSelectNode?.(row.id);
-        });
       }
       list.appendChild(li);
     }
