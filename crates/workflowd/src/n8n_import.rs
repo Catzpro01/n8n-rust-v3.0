@@ -20,7 +20,7 @@
 //! Rejected; rejection is fatal so unsafe imports never become Drafts.
 
 use crate::draft::{Layout, NodeInstance, WorkflowDraft};
-use canopy_node_contract::NodeContractLock;
+use canopy_node_contract::{lock, NodeContractLock};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Map, Value};
 use std::collections::{BTreeMap, BTreeSet};
@@ -192,7 +192,7 @@ fn alias_table() -> BTreeMap<(&'static str, u64), AliasTarget> {
     let mut t = BTreeMap::new();
     t.insert(
         ("n8n-nodes-base.manualTrigger", 1),
-        AliasTarget::Native(("canopy", "manual-trigger", "v1alpha1")),
+        AliasTarget::Native("canopy", "manual-trigger", "v1alpha1"),
     );
     t.insert(
         ("n8n-nodes-base.executeCommand", 1),
@@ -300,7 +300,7 @@ pub fn import_n8n_v2(workflow_id: &str, bytes: &[u8]) -> Result<ImportResult, Im
                 }
             })
         };
-        match aliases.get((type_name.as_str(), type_version)) {
+        match aliases.get(&(type_name.as_str(), type_version)) {
             Some(AliasTarget::Native(ns, n, v)) => {
                 classification = NodeClassification::NativeEquivalent;
                 report.classifications.native_equivalent += 1;

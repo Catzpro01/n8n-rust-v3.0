@@ -291,7 +291,7 @@ fn memory_identity(directory: &Path) -> ControllerIdentity {
         ("memory.oom.group", "oom_group"),
     ] {
         if let Some(text) = read(directory, file) {
-            values.insert(key.into(), parse_key_value_map(&text).into());
+            values.insert(key.into(), serde_json::to_value(parse_key_value_map(&text)).unwrap_or_default());
         }
     }
     ControllerIdentity {

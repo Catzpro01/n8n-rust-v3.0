@@ -64,7 +64,7 @@ pub struct NodeInstance {
     pub annotation: String,
     pub compatibility_metadata: Value,
 }
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct WorkflowDraft {
     pub workflow_id: String,
     pub name: String,
@@ -435,7 +435,7 @@ impl DraftService {
         bytes: &[u8],
     ) -> Result<(WorkflowDraft, Value), DraftError> {
         let import = crate::n8n_import::import_n8n_v2(workflow_id, bytes)
-            .map_err(DraftError::ImportRejected)?;
+            .map_err(|e| DraftError::ImportRejected(e.to_string()))?;
         let connection = self.connect().map_err(DraftError::Storage)?;
         // Persist snapshot (overwrite any prior draft) so subsequent loads
         // see the imported graph.  Uses the same storage format as `create`.

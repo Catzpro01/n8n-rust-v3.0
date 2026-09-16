@@ -54,7 +54,7 @@ pub async fn import_n8n(
         return error;
     }
     if request.workflow_id.is_empty() {
-        return problem(DraftError::Invalid("workflow_id"));
+        return problem(DraftError::Invalid("workflow_id".to_string()));
     }
     let bytes = match serde_json::to_vec(&request.document) {
         Ok(b) => b,

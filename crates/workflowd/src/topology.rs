@@ -130,7 +130,7 @@ pub fn pack(draft: &WorkflowDraft) -> Result<PackedTopology, PackError> {
     // with future drafts; this gives the editor a first-class group map
     // without schema changes.
     let mut groups: BTreeMap<String, PackedGroupEntry> = BTreeMap::new();
-    for node in &nodes {
+    for node in &draft.nodes {
         if let Some(group_id) = extract_group_id(&node.compatibility_metadata) {
             groups
                 .entry(group_id.clone())
