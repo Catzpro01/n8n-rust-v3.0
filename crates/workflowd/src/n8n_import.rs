@@ -617,7 +617,7 @@ mod tests {
         assert_eq!(params["apiKey"], "[REDACTED]");
         assert_eq!(params["headers"]["Authorization"], "[REDACTED]");
         assert!(r.report.redactions.iter().any(|red| red.path == "credentials"));
-        assert!(r.report.redactions.iter().any(|red| red.path.endsWith(".apiKey")));
+        assert!(r.report.redactions.iter().any(|red| red.path.ends_with(".apiKey")));
     }
 
     #[test]
@@ -709,9 +709,9 @@ mod tests {
             draft_undo_limit: 32,
         };
         let svc = DraftService::initialize(&cfg).expect("service init");
-        let (draft, report) = svc.import_n8n_v2("wf-rt", HELLO.as_bytes()).expect("import");
+        let (draft, report_value) = svc.import_n8n_v2("wf-rt", HELLO.as_bytes()).expect("import");
         assert_eq!(draft.nodes.len(), 2);
-        assert!(!report.blocked);
+        assert_eq!(report_value["blocked"], serde_json::Value::Bool(false));
         // Load back and verify identity preservation survives the SQLite roundtrip.
         let loaded = svc.load("wf-rt").expect("load");
         assert_eq!(loaded.workflow_id, "wf-rt");

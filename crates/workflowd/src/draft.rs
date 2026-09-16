@@ -47,13 +47,13 @@ pub enum DraftError {
     Storage(String),
     ImportRejected(String),
 }
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Layout {
     pub x: f64,
     pub y: f64,
 }
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct NodeInstance {
     pub id: String,
